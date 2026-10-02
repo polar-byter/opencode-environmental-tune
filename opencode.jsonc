@@ -1,20 +1,24 @@
 {
   "$schema": "https://opencode.ai/config.json",
 
-  // Моя фронтирная модель архитектор и PM.
-  // План, архитектура, маркетинг, билд-режим (для реализации слоя - каркас с комментариями-ТЗ).
+  // BRAIN (cloud frontier model)
+  //It is gotta be resp. for planning, architecture, marketing, build mode .
   "model": "opencode-go/deepseek-v4.1-flash",
   "default_agent": "build",
 
-  // Основные провайдеры, с которыми я работаю.
+  // PROVIDERS
   "providers": {
+    // LM Studio runs locally. It is a built-in provider with local model
+    // (http://127.0.0.1:1234/v1);
+    // pin the endpoint explicitly in that section.
     "lmstudio": {
-      // LM Studio локально: http://127.0.0.1:1234/v1
+      "name": "LM Studio",
       "settings": {
         "baseURL": "http://127.0.0.1:1234/v1"
       },
-      // Локальные модели, LM Studio.
-      // Ключ = id lmstudio/<ключ>, modelID = имя модели в LM Studio.
+      // Aliases for the local models.
+      // key is the id you use as lmstudio/<key>
+      // modelID = the real model name inside LM Studio
       "models": {
         "qwen3-27b-coder": {
           "modelID": "qwen3.8-27b-turbo-fable-cold-fusion-735-882-heretic-uncensored-neo-coder-max-mtp",
@@ -36,30 +40,33 @@
     }
   },
 
-  // АГЕНТЫ
+  // AGENTS
   "agents": {
-    //override встроенного build под мои инструкции. Под каждую модель, лучше настроить уникальный промпт. данная шапка - у нас шаблон.
+    // BRAIN: overrides the built-in `build` agent with our own instructions.
+    // Each model has its own prompt; this block is the template for customization.
     "build": {
-      "description": "Мозг: план, архитектура, маркетинг, билд-режим, каркас тестов, ревью",
-      "system": "Ты — мозг проекта. Работаешь по пунктам:\n1. ПЛАН: разбей задачу на шаги, обнови план работ (00. План работ.md в Obsidian).\n2. АРХИТЕКТУРА: предложи структуру файлов, классов, модулей.\n3. МАРКЕТИНГ: тексты для людей — ясно и кратко.\n4. БИЛД-РЕЖИМ: накидай каркас — файлы, классы, функции, сигнатуры. Внутри каждой функции ПОДРОБНЫЙ комментарий-ТЗ: что делает, что вернуть, граничные случаи. Так, чтобы тупой локальной модели хватило на реализацию без догадок.\n5. ТЕСТЫ: сразу накидай каркас юнит-тестов отдельным зависимым проектом (папка tests/), тесты пиши под созданный каркас. Пока реализации нет — тесты падают, это нормально.\n6. ДЕЛЕГИРОВАНИЕ: куски реализации отдавай субагенту executor (через subagent). executor-fast — для мелких правок. ОДНОМУ СУБАГЕНТУ — ОДИН КУСОК: файл/функция/класс.\n7. РЕВЬЮ: после ответа исполнителя прочитай код, гоняй тесты, правь ошибки или отправь на доработку. Пока тесты не зелёные — работа не закончена."
+      "model": "opencode-go/deepseek-v4.1-flash",
+      "description": "Brain: planning, architecture, marketing, build mode, test skeleton, review",
+      "system": "You are the project brain. Work through these steps:\n1. PLAN: break the task into steps and update the work plan (`00. План работ.md` in the Obsidian vault).\n2. ARCHITECTURE: propose the file, class, and module structure.\n3. MARKETING: write human-facing text clearly and briefly.\n4. BUILD MODE: draft a skeleton — files, classes, functions, signatures. Inside every function add a DETAILED spec comment: what it does, what it returns, edge cases. Detailed enough that a weak local model can implement it with no guesswork.\n5. TESTS: immediately draft unit tests as a separate dependent project (the `tests/` folder); write the tests against the skeleton. Until the implementation exists the tests fail — that is expected.\n6. DELEGATION: hand implementation pieces to the `executor` subagent (via the subagent tool). Use `executor-fast` for small edits. ONE SUBAGENT — ONE PIECE: a file/function/class.\n7. REVIEW: after the executor replies, read the code, run the tests, fix errors, or send it back. The work is not done until the tests are green."
     },
 
-    // Тупой исполнитель: локальная модель LM Studio или дешевая модель опенроутера
+    // EXECUTOR: local LM Studio model. Implements code from spec comments.
+    // no need to be strong, but better to be not quiet silly.
     "executor": {
-      "description": "Реализует код по комментариям-ТЗ. Локальная модель LM Studio.",
+      "description": "Implements code from spec comments. Local LM Studio model.",
       "mode": "subagent",
-      "model": "lmstudio/qwen3.8-27b-turbo-fable-cold-fusion-735-882-heretic-uncensored-neo-coder-max-mtp",
+      "model": "lmstudio/qwen3-27b-coder",
       "permissions": [
         { "action": "shell", "resource": "*", "effect": "deny" },
         { "action": "edit", "resource": "*", "effect": "allow" },
         { "action": "read", "resource": "*", "effect": "allow" }
       ],
-      "system": "Ты — исполнитель.\nСтрого следуй комментариям-ТЗ в коде. Не добавляй лишнего, не меняй сигнатуры, не переписывай каркас.\nСначала прочитай файл, затем реализуй. Отчитайся кратко: что изменил, что осталось."
+      "system": "You are the executor.\nFollow the spec comments in the code strictly. Do not add anything extra, do not change signatures, do not rewrite the skeleton.\nRead the file first, then implement. Report briefly: what you changed, what is left."
     },
 
-    //лёгкая модель для простых правок.
+    // FAST EXECUTOR: lightweight model for small edits.
     "executor-fast": {
-      "description": "Быстрый исполнитель для простых задач: мелкие правки, форматирование.",
+      "description": "Fast executor for simple tasks: small edits, formatting.",
       "mode": "subagent",
       "model": "lmstudio/spark-4b",
       "permissions": [
@@ -67,7 +74,7 @@
         { "action": "edit", "resource": "*", "effect": "allow" },
         { "action": "read", "resource": "*", "effect": "allow" }
       ],
-      "system": "Быстрый исполнитель. Минимальные точечные правки по ТЗ. Ничего лишнего."
+      "system": "Fast executor. Minimal targeted edits from the spec. Nothing extra."
     }
   }
 }
