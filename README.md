@@ -3,6 +3,11 @@
 
 This repository contains the configuration for a custom multi-agent system, designed to automate development, architecture planning, and code execution.
 
+## Getting started
+
+- 🇷🇺 [QUICKSTART.ru.md](QUICKSTART.ru.md) — как подключить кит к своему проекту с нуля (пример: Java / Spring Boot).
+- 🇬🇧 [QUICKSTART.en.md](QUICKSTART.en.md) — the same guide in English.
+
 ## Architecture Overview
 The system uses a hierarchical agent structure defined in `opencode.jsonc`:
 
