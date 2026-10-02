@@ -2,10 +2,7 @@
 """
 find_vault.py — locate Obsidian vaults and notes on this machine.
 
-Why: the project template must not hardcode a vault path. The brain runs this
-script (it has shell access) to get the absolute path to the work plan.
-
-Discovery order:
+Seeking db order:
   1. Obsidian's own registry: %APPDATA%/obsidian/obsidian.json
   2. Fallback: scan common roots for directories containing a .obsidian folder.
 
@@ -25,16 +22,16 @@ import os
 import sys
 from pathlib import Path
 
-# Windows console: make Cyrillic and emoji print correctly.
+# Windows console: cyrillic print correctly.
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
     pass
 
-VAULT_MARKER = ".obsidian"  # a folder containing this name is a vault root
+VAULT_MARKER = ".obsidian"  
 
-# Directories never worth descending into while scanning.
+# To ignore
 SKIP_DIRS = {
     "node_modules", "appdata", "windows", "program files", "program files (x86)",
     "$recycle.bin", "system volume information", ".git", "venv", ".venv",
@@ -89,12 +86,12 @@ def vaults_from_config(config: dict) -> list[Path]:
     - config: dict as returned by read_obsidian_config().
 
     Returns:
-    - Absolute-ish Paths in registry order, de-duplicated (case-insensitive).
-    - Skips entries without a "path" and folders that do not exist.
-    - Returns [] for a malformed config (never raises).
+    - an absolute paths in registry order,that is not duplicated (case-insensitive).
+    - skips entries without a path and folders that do not exist.
+    - Returns [X] or [].
     """
     result: list[Path] = []
-    seen: set[str] = set()
+    visited: set[str] = set()
     vaults = config.get("vaults", {}) if isinstance(config, dict) else {}
     if not isinstance(vaults, dict):
         return result
@@ -105,10 +102,10 @@ def vaults_from_config(config: dict) -> list[Path]:
         if not raw:
             continue
         path = Path(raw)
-        key = os.path.normcase(str(path))
-        if key in seen or not path.is_dir():
+        keyFromPathString = os.path.normcase(str(path))
+        if keyFromPathString in visited or not path.is_dir():
             continue
-        seen.add(key)
+        visited.add(keyFromPathString)
         result.append(path)
     return result
 
@@ -187,17 +184,14 @@ def scan_for_vaults(roots=None, max_depth: int = 3) -> list[Path]:
 
     return sorted(found)
 
-
 def list_vaults(config_path: Path | None = None, do_scan: bool = True) -> list[Path]:
     """
-    All vaults on this machine.
-
+    enumerate vaults on this pc.
     Args:
-    - config_path: registry file to read (used by tests).
-    - do_scan: also run the filesystem fallback scan.
-
+    - config_path: registry file to read (used by tests cases).
+    - do_scan: in case we don't find any vaults in the registry.
     Returns:
-    - Registry vaults first, then scan-only vaults. De-duplicated.
+    - Registry vaults first, then scan-only vaults. with no duplicates.
     """
     vaults = vaults_from_config(read_obsidian_config(config_path))
     seen = {os.path.normcase(str(vault)) for vault in vaults}
@@ -213,13 +207,11 @@ def list_vaults(config_path: Path | None = None, do_scan: bool = True) -> list[P
 def filter_vaults(vaults: list[Path], name: str | None) -> list[Path]:
     """
     Filters vaults by a case-insensitive substring of the folder name.
-
     Args:
     - vaults: list of vault paths.
     - name: substring to match; None or "" returns the input unchanged.
-
     Returns:
-    - A new list with matching vaults, original order preserved.
+    - copy list with matching vaults.
     """
     if not name:
         return list(vaults)
@@ -230,14 +222,11 @@ def filter_vaults(vaults: list[Path], name: str | None) -> list[Path]:
 def find_note(note_name: str, vaults=None) -> list[Path]:
     """
     Finds files named note_name inside the given vaults (recursive).
-
     Args:
     - note_name: file name to match, e.g. "00. План работ.md".
-    - vaults: iterable of vault roots. Defaults to list_vaults().
-
+    - vaults: iterable of vault roots..
     Returns:
     - Sorted absolute Paths of matching files. Empty list if none found.
-    - Skips unreadable directories (never raises).
     """
     if vaults is None:
         vaults = list_vaults()
@@ -273,11 +262,9 @@ def main(argv=None) -> int:
     """
     CLI entry point.
 
-    Behavior:
+    Behavior and parameters:
     - No --note: prints vault paths (one per line or a JSON array).
     - With --note: prints matching note paths; exit code 1 if none.
-    - Prints a message to stderr and returns 1 when nothing is found.
-
     Returns:
     - 0 on success (at least one result), 1 otherwise.
     """

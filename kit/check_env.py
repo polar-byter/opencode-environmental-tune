@@ -36,38 +36,21 @@ CONFIG_PATH = Path(__file__).resolve().parent.parent / "opencode.jsonc"
 # embedding models are for vectorization / rag, not for generation, so we skip them in the live test.
 EMBED_ONLY_SUBSTRINGS = ("embed", "embedding")
 
+# Matches either a JSON string (kept) or a comment (removed).
+# The string alternative comes first, so "//" inside a string is never a comment.
+_STRING_OR_COMMENT = re.compile(
+    r'("(?:\\.|[^"\\])*")'  # group 1: a full string "abcdef..etc", escapes included
+    r"|//[^\r\n]*"          # or a // line comment
+    r"|/\*.*?\*/",          # or a /* block comment */
+    re.DOTALL,
+)
+
+
 def strip_jsonc(text: str) -> str:
-    #Removes // comments outside strings and trailing commas before }].
-    # json.loads() cannot read comments, so we clean the text first.
-    out = []
-    i = 0
-    n = len(text)
-    in_string = False
-    while i < n:
-        c = text[i]
-        if in_string:
-            out.append(c)
-            if c == "\\" and i + 1 < n:
-                out.append(text[i + 1])
-                i += 2
-                continue
-            if c == '"':
-                in_string = False
-            i += 1
-            continue
-        if c == '"':
-            in_string = True
-            out.append(c)
-            i += 1
-            continue
-        if c == "/" and i + 1 < n and text[i + 1] == "/":
-            while i < n and text[i] not in "\r\n":
-                i += 1
-            continue
-        out.append(c)
-        i += 1
-    cleaned = "".join(out)
-    return re.sub(r",(\s*[}\]])", r"\1", cleaned)
+    # To convert jsonc(comments) into plain json
+    text = _STRING_OR_COMMENT.sub(lambda m: m.group(1) or "", text)
+    #remove commas before "]"
+    return re.sub(r",(\s*[}\]])", r"\1", text)
 
 
 def check_config() -> bool:
@@ -116,7 +99,10 @@ def http_post_json(url: str, payload: dict):
     with urllib.request.urlopen(req, timeout=180) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
-
+"""
+    Returns a list of model IDs visible to LM Studio
+    or an empty list if the server is not reachable.
+"""   
 def check_lmstudio() -> list:
     print()
     print("=" * 60)
@@ -138,6 +124,7 @@ def check_lmstudio() -> list:
         return []
 
 
+#Main test: send a simple prompt to the first generative model found.
 def live_test(models: list):
     print()
     print("=" * 60)
@@ -145,7 +132,7 @@ def live_test(models: list):
     print("=" * 60)
     # keep only models that are not embeddings
     candidates = [m for m in models if not any(s in m.lower() for s in EMBED_ONLY_SUBSTRINGS)]
-    
+
     if not candidates:
         print("  No generative models found — live test skipped.")
         return
@@ -154,7 +141,7 @@ def live_test(models: list):
     print(f"  Model: {target}")
     payload = {
         "model": target,
-        # local models often think (reasoning_tokens), give a budget big enough to allow for the answer.
+        # local models reasoning_tokens; create a budget enough for the answer.
         "messages": [{"role": "user", "content": "Reply with exactly one word: OK"}],
         "max_tokens": 200,
         "temperature": 0.0,
@@ -184,6 +171,5 @@ def main():
     print(f"Result: {summary}")
     return 0 if (ok_config and models) else 1
 
-# run main() only when this file is started directly, not when it is imported
 if __name__ == "__main__":
     sys.exit(main())
