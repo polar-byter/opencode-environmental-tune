@@ -1,123 +1,98 @@
-# Multi-Agent AI Development Environment
-# My private fine-tuned opencode system.
+# OpenCode: мозг и локальные исполнители
 
-This repository contains the configuration for a custom multi-agent system, designed to automate development, architecture planning, and code execution.
+Ты описываешь задачу в OpenCode. Основной агент `build`, которого мы называем мозгом, организует работу: составляет план, поручает реализацию локальным моделям, проверяет код и запускает тесты. В конце он показывает результат и статистику задачи.
 
-## Getting started
+Этот проект содержит настройки такого порядка работы. Их можно добавить в свой проект, например приложение на Java. Облачная модель отвечает за решения и проверку, а модели в LM Studio выполняют небольшие задания на твоём компьютере.
 
-- 🇷🇺 [QUICKSTART.ru.md](QUICKSTART.ru.md) — как подключить кит к своему проекту с нуля (пример: Java / Spring Boot).
-- 🇬🇧 [QUICKSTART.en.md](QUICKSTART.en.md) — the same guide in English.
+## Как пользоваться
 
-## Architecture Overview
-The system uses a hierarchical agent structure defined in `opencode.jsonc`:
+После подключения настроек открой проект в OpenCode и опиши, что хочешь получить. Например:
 
-* **The Brain (`build` agent):** Acts as the project manager and architect. It uses a frontier model (`opencode-go/deepseek-v4.1-flash`) to generate task plans, design architecture, write test skeletons, and delegate specific tasks.
-* **The Executor (`executor` agent):** A strict coding agent powered by a local model via LM Studio (Qwen3.8 27B). It implements code based on the detailed specifications provided by the Brain without altering the core architecture.
-* **Fast Executor (`executor-fast`):** A lightweight local model (Spark X2.5 4B) dedicated to minor, rapid code adjustments and formatting.
+> Добавь учёт расходов: сумма, категория и дата. Отрицательную сумму принимать нельзя. Сначала покажи план.
 
-## Features
+Мозг предложит решение. Ты обсуждаешь требования и утверждаешь план. После этого он сам распределяет задания, вызывает нужные скрипты и проверяет результат. Если ему не хватает информации или доступа, он объясняет, что нужно от тебя.
 
-* **Local Execution:** Integration with LM Studio (`http://127.0.0.1:1234/v1`) keeps coding tasks on local hardware, reducing API costs and preserving privacy.
-* **Test-Driven Workflow:** The Brain agent is instructed to generate test skeletons first, and code is iterated upon until the tests pass.
-* **Granular Permissions:** Subagents operate with restricted permissions (shell access denied, read/edit allowed) to ensure safe execution.
+Твоя роль — поставить задачу, принять решения о поведении приложения и оценить результат. Управление исполнителями, запись ревью, запуск тестов и сбор статистики входят в работу мозга.
 
-## Workflow explanation:
-`My aim is to divide all tasks given the frontier model by user onto separate specific actions.`
-**opencode.jsonc** is responsible for pointing out certain roles of each model.
-**AGENTS.md** is responsible for the rules of the project — how the work is done, not who does it.
+Для первого подключения есть [быстрый старт на Java](QUICKSTART.ru.md) и [английская версия](QUICKSTART.en.md). Установка инструментов и настройка доступа выполняются при подготовке компьютера; повторять их перед каждой задачей не нужно.
 
-The rules created with that goals, say the brain must start with a skeleton: signatures plus a detailed spec comment inside every function, with the body left as like `raise NotImplementedError`.
-Then the brain writes the tests right away, against that skeleton. 
-Red tests are expected at this point.
+## Что мозг делает по ходу работы
 
-Only after that does the brain delegate the implementation: one function per `executor` call, never a whole file.
-The executor reads the file and fills in only the body. It never touches signatures, imports, or the skeleton.
-When the executor replies, the brain reads the code and runs the tests. Green means done; red means fix it or send it back.
-So the flow is always: plan → skeleton → tests → delegate → review → green.
+Мозг разбивает задачу на небольшие части, чтобы локальный исполнитель получал понятное задание. Например, вместо просьбы написать весь учёт расходов — реализовать функцию проверки суммы.
 
-Commands are just the trigger for this flow:
-* `/plan-project <description>` — plan only: split a big task into modules and write the checklist to the Obsidian plan. No code.
-* `/module <name>` — build one module end to end using the flow above.
+1. Читает план проекта и текущий код, уточняет требования.
+2. Открывает учёт задачи, чтобы её статистика не смешалась с предыдущей работой.
+3. Создаёт каркас кода и пишет тесты. Пока функции не реализованы, падение этих тестов ожидаемо.
+4. Передаёт исполнителю одну функцию или класс с требованиями.
+5. Проверяет полученный код. Если нужны исправления, записывает возврат и даёт исполнителю новое задание.
+6. Запускает тесты через скрипт учёта и проверяет результаты. Продолжает работу до прохождения необходимых проверок.
+7. Обновляет план, собирает статистику и показывает итог.
 
-In short: 
-- `opencode.jsonc` in general means **who** works and with what;
-- `AGENTS.md` says **how** the work is done; the commands **start** the work.
+Эти действия прописаны в инструкциях агента. Полный цикл с реальным исполнителем ещё предстоит проверить в OpenCode; отдельные скрипты и чтение токенов уже проверены.
 
-## Requirements
+## Что ты получишь в конце
 
-- OpenCode.
-- LM Studio running at `http://127.0.0.1:1234/v1` with the executor model loaded.
-- **Python** — needed only for the kit's own utility scripts in `kit/` (`find_vault.py`, `check_env.py`, `pipeline_smoke.py`), independent of the project's language. Run them with `py` from the project root.
-- The project itself can use any language/toolchain — set it in the `# EDIT` → **Project stack** section of `AGENTS.md`.
+Мозг объяснит, что сделано, какие проверки прошли и что осталось нерешённым. Отдельным блоком покажет:
 
-## How to run
-```powershell
-py kit/check_env.py                          # check config + LM Studio
-py -m unittest discover -s tests -v          # run the project's tests
-py -m unittest discover -s kit/tests -v      # run the kit's tests
-py kit/find_vault.py                         # locate an Obsidian vault (if any)
-```
+- время задачи;
+- токены платных моделей;
+- токены бесплатных / локальных моделей — всё, что работает через `lmstudio`;
+- число возвратов кода на исправление после ревью;
+- сколько полных запусков тестов завершилось успешно и как закончился последний запуск.
 
-In OpenCode:
+Токены — единицы текста, который модель получает и генерирует. Они помогают увидеть распределение работы между моделями. Стоимость и процент экономии скрипт пока не рассчитывает.
 
-```
-/plan-project <description>    # plan a multi-module task
-/module <name>                 # build one module
-```
+## Как мозг собирает статистику
 
-## Utility scripts (when to use them)
+Мозг сам вызывает `kit/task_metrics.py` в нужные моменты. Это часть его оркестрации — управления порядком работы и исполнителями. В обычной задаче вводить команды этого скрипта тебе не требуется.
 
-Three small Python tools ship with the kit. Run them with `py`.
+1. **Начало задачи.** Мозг передаёт скрипту время и ID сессии — текущего разговора в OpenCode. Это отделяет новую задачу от предыдущей работы.
+2. **Ревью.** После проверки кода мозг записывает, принят он или возвращён на исправление. Один возврат считается одной переделкой, даже если замечаний несколько.
+3. **Тесты.** Мозг запускает их через скрипт. Скрипт сохраняет настоящий результат команды. «3 из 5 успешных прогонов» означает три успешных запуска всего набора из пяти попыток. Пустой набор и пропущенные тесты полным успехом не считаются.
+4. **Токены.** Перед итоговым ответом мозг поручает скрипту прочитать сообщения основной и дочерних сессий OpenCode. Скрипт выбирает завершённые сообщения за время задачи и складывает их счётчики по моделям.
+5. **Группы моделей.** Все модели провайдера `lmstudio` попадают в локальную группу, остальные известные провайдеры — в платную по умолчанию. Новые модели LM Studio учитываются без ручного списка.
+6. **Отчёт.** Скрипт сохраняет `.metrics/<ID задачи>/report.md`. Мозг вставляет его в итоговый ответ. Если ответ готовит планировщик, он использует тот же файл.
 
-### `check_env.py` — "is my environment ready?"
+Если OpenCode не отдаёт данные, отчёт сообщает «нет данных». Время включает ожидание твоих ответов, а токены сообщения после сборки отчёта ещё не учтены. Подробности и команды для отладки находятся в [инструкции по статистике](METRICS.ru.md).
 
-```powershell
-py kit/check_env.py
-```
+## Как продолжить после перерыва
 
-It checks three things:
-- `opencode.jsonc` is valid and prints the configured agents and models;
-- LM Studio answers at `http://127.0.0.1:1234/v1` and lists the loaded models;
-- a live request to a local model returns an answer.
+Мозг ведёт `currentsteps.md`: записывает завершённые шаги, решения и следующие задачи. В новом разговоре можно попросить:
 
-Use it when:
-- you run the kit on a new machine for the first time;
-- you get `Model not loaded` or an empty model list;
-- you edited `opencode.jsonc` and want to confirm it still parses.
+> Прочитай план проекта и продолжи следующую задачу.
 
-### `pipeline_smoke.py` — "can the local executor really implement?"
+Мозг должен сам найти план по правилу из `AGENTS.md`. По умолчанию файл хранится в выбранном Obsidian Vault, а без Obsidian — в корне проекта.
 
-An offline smoke test of the brain → executor → review flow. It does **not** use OpenCode.
+## Если что-то перестало работать
 
-```powershell
-py kit/pipeline_smoke.py
-py kit/pipeline_smoke.py --model spark-x2.5-4b   # try another local model
-py kit/pipeline_smoke.py --keep                  # keep the temp dir for inspection
-```
+Начни с описания проблемы мозгу. Например:
 
-What it does:
-1. writes a skeleton with spec comments and its tests into a temp folder;
-2. asks the executor model (taken from `opencode.jsonc`) to fill the bodies;
-3. runs the tests and prints green or red.
+> Локальный исполнитель перестал отвечать. Проверь настройки и связь с LM Studio, покажи причину.
 
-Use it when:
-- you want to check whether a local model is good enough before trusting it with real work;
-- you want to compare two models;
-- OpenCode misbehaves: if this test is green but OpenCode fails, the problem is in the kit config, not in the model.
+Мозг может прочитать конфиг, запустить проверку подключения и небольшой пример для локальной модели. Если проблема требует твоего действия — например, загрузить модель в LM Studio, — он объяснит, что сделать. Команды диагностики предназначены для агента и ручной отладки; весь список перед каждой задачей запускать не нужно.
 
-### `find_vault.py` — "where is my Obsidian?"
+## Версии и обновления
 
-```powershell
-py kit/find_vault.py --no-scan    # fast: registry only
-py kit/find_vault.py              # also scan the filesystem
-```
+Сбор данных проверен на **OpenCode CLI 2.0.21** и **Python 3.13** 3 октября 2026 года. CLI — OpenCode, который скрипт вызывает из терминала. Он должен видеть те же сессии, с которыми ты работаешь в Desktop.
 
-Prints any Obsidian vault found. The brain uses it to decide where the work plan lives: inside the vault (`currentsteps.md`) or in the project when there is no vault.
+После обновления попроси мозг проверить совместимость:
 
-## How to use this template
+> OpenCode обновился. Проверь версию, доступ к сессиям и работу статистики на небольшой задаче.
 
-1. Copy into your project root: `opencode.jsonc`, `AGENTS.md`, the `kit/` folder, and the `.opencode/commands/` folder.
-2. The kit is self-contained: all rules live in the project `AGENTS.md`. No machine-global config is needed.
-3. Edit the sections marked `# EDIT` in `AGENTS.md`: **Stack** (language, interpreter, test command), **Layout**, **Memory** (name of the plan note).
-4. Start in OpenCode: `/plan-project <description>` to plan, then `/module <name>` to build.
+Мозг должен проверить доступные команды, выполнить тесты кита и сверить отчёт с экспортом сообщений. Если формат изменился, он покажет, какую часть чтения данных нужно поправить. Новую версию отмечаем как проверенную после такого прогона.
 
+## Где находятся настройки
+
+Эта справка пригодится при первом подключении или если захочешь изменить устройство системы.
+
+| Файл | За что отвечает |
+|---|---|
+| `opencode.jsonc` | Модели, подключения и права агентов |
+| `AGENTS.md` | Порядок работы, команда тестов приложения и расположение плана |
+| `.opencode/commands/` | Необязательные шаблоны запросов `/plan-project` и `/module` |
+| `kit/` | Скрипты, которые вызывает мозг, и их тесты |
+| `.metrics/` | Журналы и отчёты задач; в Git не отправляются |
+
+Сейчас `build` использует `opencode-go/deepseek-v4.1-flash`, обычный исполнитель `executor` — `lmstudio/qwen3-27b-coder`, быстрый `executor-fast` — `lmstudio/spark-4b`. Команда `/plan-project` тоже вызывает `build`; отдельная модель для `plan` пока не задана.
+
+Для другого проекта нужно скопировать файлы кита и указать в `AGENTS.md` его язык, папки и команду тестов. Пошаговое подключение описано в быстром старте. После подготовки можно ставить задачи обычным текстом.

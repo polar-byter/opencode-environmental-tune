@@ -15,11 +15,14 @@ This kit turns OpenCode into a **"brain + executors"** setup:
 The cycle is always the same:
 
 ```
-you:  /module task
+you:  Build a task-list API. Show me the plan first.
+brain: proposes a plan and explains the module order
+you:  The plan looks good. Implement the whole plan.
 brain: skeleton + specs + tests (tests are red for now — that is normal)
        └─ delegates to the executor, one method at a time
 executor: fills in the body per spec
-brain: runs the tests → green → module done
+brain: reviews code and tests → marks the module done → starts the next module
+       at the end — results and statistics for the whole task
 ```
 
 The example below is a **Java (Spring Boot)** project. The same flow works for any language — only the test command changes.
@@ -120,15 +123,14 @@ Open `AGENTS.md` and edit the **two sections** marked `# EDIT`.
 
 ## 6. Step 4. Check the environment
 
-Open a terminal in the project folder and run:
+This check confirms whether the brain can reach the local executor. After opening the project, ask the brain:
 
-```powershell
-py kit/check_env.py
+```text
+Check the environment using kit/check_env.py. Read the result of the
+trial model request and explain what needs configuring if it fails.
 ```
 
-Expected: `Result: ready for use`.
-
-If it is red, see **10. Troubleshooting**.
+The brain runs the check. The current script's `ready for use` status does not guarantee that the trial request succeeded, so it must read that result too. See **11. Troubleshooting** for possible issues.
 
 ---
 
@@ -147,10 +149,12 @@ Make sure everything is visible:
 Type in the OpenCode chat:
 
 ```text
-/plan-project Task REST API on Spring Boot: model, service, controller
+Build a task-list REST API on Spring Boot: create, list, complete, and
+delete tasks. Keep data in memory for now.
+Show me the plan first and explain the order of work.
 ```
 
-The brain **only plans** (splits the task into modules and writes a checklist) — it writes no code.
+The brain first splits the task into modules and records the work plan. It writes no code before approval.
 
 Example result:
 
@@ -161,21 +165,19 @@ Example result:
 - [ ] controller — REST endpoints
 ```
 
-Review the plan and say "ok, go".
+The brain chooses the modules and their order. Here, task data (`model`) comes first, operations on that data (`service`) come next, and HTTP endpoints (`controller`) depend on those operations. You do not need to know these names in advance.
+
+Check that the plan matches your requirements, then reply: "The plan looks good. Implement the whole plan, verify it, and show task statistics."
 
 ---
 
-## 9. Step 7. Build module by module
+## 9. Step 7. The brain implements the approved plan
 
-For each module in the plan:
-
-```text
-/module model
-```
+After approval, the brain starts the first module according to the dependencies in the plan. You do not need to choose or start each module separately.
 
 What happens automatically:
 
-1. The brain creates a **skeleton** `Task.java` with Javadoc specs and a placeholder:
+1. The brain creates a **method skeleton** with Javadoc specs and a placeholder:
    ```java
    public Task create(String title) {
        throw new UnsupportedOperationException("TODO: executor");
@@ -184,31 +186,27 @@ What happens automatically:
 2. The brain creates **tests** `TaskServiceTest.java` and runs `mvn -q test` — they are **red** (that is expected).
 3. The brain asks the **executor** to fill the method body per spec.
 4. The executor fills **only the body**.
-5. The brain runs `mvn -q test` again → **green** → module done, move on.
+5. The brain reviews the code and runs tests again. It gets errors corrected, marks the module complete after successful verification, and starts the next module whose dependencies are ready.
 
-Repeat:
+The brain continues until the approved plan is complete. It asks for your input when access or tools are missing, or when a decision would change the task. Ordinary module transitions need no further approval.
 
-```text
-/module service
-/module controller
-```
-
-> Rule: **one piece per executor**. Never ask for "the whole project at once".
+You can request the whole project in one task. The brain splits it into small executor assignments. `/module` remains useful when you want to limit a task to one module.
 
 ---
 
 ## 10. Step 8. Verify and run
 
-```powershell
-mvn -q test             # tests
-mvn spring-boot:run     # start the app
+The brain checks that the modules work together and explains the result. A separate section contains statistics from `kit/task_metrics.py`: tokens for LM Studio and other providers, code returns for rework, and fully successful test runs. Statistics cover the whole task.
+
+To check the running API, ask:
+
+```text
+Start the application and check creating, listing, completing, and
+deleting a task through the API. Show the results and explain how
+to stop the application.
 ```
 
-In another window:
-
-```powershell
-curl http://localhost:8080/tasks
-```
+The brain starts the application and sends the requests. It must identify any checks it could not complete.
 
 ---
 
@@ -232,4 +230,4 @@ curl http://localhost:8080/tasks
 
 ---
 
-> Short version: **copy the kit into the project → edit two sections in `AGENTS.md` → `/plan-project` → `/module` one by one → tests green.**
+After the one-time setup, describe your task and approve the plan. The brain manages module order, executors, checks, and statistics.
