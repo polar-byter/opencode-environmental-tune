@@ -35,11 +35,13 @@ The example below is a **Java (Spring Boot)** project. The same flow works for a
 | --- | --- | --- |
 | OpenCode | the agent itself | — |
 | LM Studio | local executor model | `py kit/check_env.py` |
-| Python 3.13 | **only** the kit's utilities | `py --version` |
+| Python 3.13 | **only** the kit's utilities | `py --version` (macOS, Linux: `python3 --version`) |
 | JDK 21 | compile Java | `java -version` |
 | Maven | build and test Java | `mvn -v` |
 
 > Python is needed by the kit (Obsidian lookup and checks), not by your Java project.
+>
+> Commands in this guide are written for Windows, where Python starts with `py`. On macOS and Linux use `python3` instead of `py`. The brain learns this from `AGENTS.md` and picks the right command itself.
 
 In LM Studio you must **load a model** (the **Load** button) and start the server: **Developer → Start Server**.
 
@@ -103,7 +105,9 @@ Open `AGENTS.md` and edit the **two sections** marked `# EDIT`.
 ```md
 ## Project stack  # EDIT: language, build tool, test command
 - Language: Java 21 (`java -version`). Build tool: Maven (`mvn`).
-- Tests: JUnit 5. Run: `mvn -q test`.
+- Tests: JUnit 5. Maven writes one JUnit XML file per test class into `target/surefire-reports`.
+- Test command (always through task_metrics):
+  `py kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test`
 - Compile only: `mvn -q compile`.
 - Run the app: `mvn spring-boot:run`.
 ```
@@ -130,7 +134,20 @@ Check the environment using kit/check_env.py. Read the result of the
 trial model request and explain what needs configuring if it fails.
 ```
 
-The brain runs the check. The current script's `ready for use` status does not guarantee that the trial request succeeded, so it must read that result too. See **11. Troubleshooting** for possible issues.
+The brain runs the check. The final `ready for use` line appears only when the config is valid, LM Studio responds and the trial model request succeeded. See **11. Troubleshooting** for possible issues.
+
+### Check that statistics can read test results
+
+The statistics script must understand how many tests passed and failed. Check it once yourself, in a terminal in the project root:
+
+```bash
+py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
+```
+
+- `CHECK OK` — everything is set up. Failing tests do not matter at this step.
+- `CHECK FAILED` — the script cannot read the result. Hints follow: for example, Maven not found, the project does not build, or no reports were written.
+
+Other languages need their own command — see the table "Подключение своего языка" in `README.md`. The brain also runs this check before every task and does not write code until it passes.
 
 ---
 
@@ -183,10 +200,11 @@ What happens automatically:
        throw new UnsupportedOperationException("TODO: executor");
    }
    ```
-2. The brain creates **tests** `TaskServiceTest.java` and runs `mvn -q test` — they are **red** (that is expected).
+2. The brain creates **tests** `TaskServiceTest.java` and runs them through `kit/task_metrics.py` — they are **red** (that is expected).
 3. The brain asks the **executor** to fill the method body per spec.
 4. The executor fills **only the body**.
-5. The brain reviews the code and runs tests again. It gets errors corrected, marks the module complete after successful verification, and starts the next module whose dependencies are ready.
+5. The brain reviews the code and runs tests again. A failing test goes back to the executor as a rework. A build or setup problem is fixed by the brain or brought to you; the executor is not asked to fix it. After successful verification the brain marks the module complete and starts the next module whose dependencies are ready.
+6. If one piece has been sent back 3 times, or 3 test runs in a row gave no result, the statistics script stops the task (`STOP`). The brain explains what happened and waits for your decision: clarify the spec, fix the tests, or fix the setup. This way the test-and-rework loop cannot run forever.
 
 The brain continues until the approved plan is complete. It asks for your input when access or tools are missing, or when a decision would change the task. Ordinary module transitions need no further approval.
 
@@ -217,7 +235,9 @@ The brain starts the application and sends the requests. It must identify any ch
 | `Result: test failed` in `check_env` | LM Studio not running / model not loaded | Developer → Start Server; press Load on the model |
 | `/module` not visible | `.opencode/` not copied, or OpenCode opened outside the project root | Check the project folder |
 | `mvn` not found | Maven not installed / not on PATH | Install Maven, restart the terminal |
-| Tests do not compile | Executor forgot an import | Tell the brain: "review and fix it" |
+| Tests do not compile | An import is missing in the skeleton (the executor does not add imports) | Tell the brain: "add the missing import to the skeleton" |
+| `CHECK FAILED` | The script cannot read test results | Read the hints below that line; check the test command in `AGENTS.md` |
+| The brain writes `STOP` and waits | A loop guard fired: reworks or build | Read the reason, decide, and tell the brain to continue |
 | The brain does everything itself | It is not reading `AGENTS.md` | Make sure `AGENTS.md` is in the project root |
 | `currentsteps.md` is not created | Obsidian not found | Normal: the plan stays in the project |
 

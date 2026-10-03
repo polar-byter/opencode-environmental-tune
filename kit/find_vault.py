@@ -43,15 +43,21 @@ def obsidian_config_path() -> Path:
     """
     Returns the path to Obsidian's registry file (obsidian.json).
 
-    Behavior:
-    - Uses %APPDATA% on Windows.
-    - Falls back to ~/.config/obsidian/obsidian.json elsewhere.
-    - Returns the path even if the file does not exist; callers check existence.
+    Where Obsidian keeps it:
+    - Windows: %APPDATA%/obsidian/obsidian.json
+    - macOS:   ~/Library/Application Support/obsidian/obsidian.json
+    - Linux:   $XDG_CONFIG_HOME/obsidian/obsidian.json, by default ~/.config/obsidian/obsidian.json
+
+    APPDATA is checked first: it is set on Windows, and tests set it to point at a fake registry.
+    Returns the path even if the file does not exist; callers check existence.
     """
     appdata = os.environ.get("APPDATA")
     if appdata:
         return Path(appdata) / "obsidian" / "obsidian.json"
-    return Path.home() / ".config" / "obsidian" / "obsidian.json"
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "obsidian" / "obsidian.json"
+    config_home = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+    return Path(config_home) / "obsidian" / "obsidian.json"
 
 
 def read_obsidian_config(config_path: Path | None = None) -> dict:
@@ -116,7 +122,8 @@ def default_scan_roots() -> list[Path]:
 
     Returns:
     - Existing directories only: user home, Documents, Desktop, OneDrive and
-      its Documents folders, plus existing drive letters (C:, D:, ...).
+      its Documents folders, the macOS iCloud folder of Obsidian,
+      plus existing drive letters (C:, D:, ...) on Windows.
     """
     home = Path.home()
     candidates = [
@@ -126,6 +133,8 @@ def default_scan_roots() -> list[Path]:
         home / "OneDrive",
         home / "OneDrive" / "Documents",
         home / "OneDrive" / "Документы",
+        # macOS: vaults synced with iCloud live here.
+        home / "Library" / "Mobile Documents" / "iCloud~md~obsidian" / "Documents",
     ]
     for letter in "CDEFGH":
         candidates.append(Path(f"{letter}:\\"))

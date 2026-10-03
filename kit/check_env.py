@@ -125,7 +125,8 @@ def check_lmstudio() -> list:
 
 
 #Main test: send a simple prompt to the first generative model found.
-def live_test(models: list):
+#Returns True only when the model really answered.
+def live_test(models: list) -> bool:
     print()
     print("=" * 60)
     print("[3] Live generation test (chat/completions)")
@@ -135,7 +136,7 @@ def live_test(models: list):
 
     if not candidates:
         print("  No generative models found — live test skipped.")
-        return
+        return False
     
     target = candidates[0]
     print(f"  Model: {target}")
@@ -152,11 +153,13 @@ def live_test(models: list):
         finish = resp["choices"][0].get("finish_reason", "?")
         print(f"  Model answer: «{content}» (finish_reason={finish})")
         print("   Local generation works!")
+        return True
     except urllib.error.HTTPError as e:
         print(f"  HTTP {e.code}: {e.read().decode('utf-8', 'replace')[:300]}")
         print("   The model may not be loaded in LM Studio (press Load).")
     except Exception as e:
         print(f"  Error: {e}")
+    return False
 
 
 def main():
@@ -164,12 +167,12 @@ def main():
     print("🧪 Checking agentic environment\n")
     ok_config = check_config()
     models = check_lmstudio()
-    live_test(models)
+    live_ok = live_test(models)
     print()
     print("=" * 60)
-    summary = "ready for use" if (ok_config and models) else "test failed"
+    summary = "ready for use" if (ok_config and models and live_ok) else "test failed"
     print(f"Result: {summary}")
-    return 0 if (ok_config and models) else 1
+    return 0 if (ok_config and models and live_ok) else 1
 
 if __name__ == "__main__":
     sys.exit(main())

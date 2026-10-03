@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 # find_vault.py lives in the project root, tests in tests/.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -176,6 +177,37 @@ class TestMain(TempCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out.getvalue()), [str(self.note)])
 
+
+class TestObsidianConfigPath(unittest.TestCase):
+    """Registry location on Windows, macOS and Linux."""
+
+    def env_without(self, *names):
+        """Copy of the environment without the given variables (HOME/USERPROFILE stay)."""
+        return {k: v for k, v in os.environ.items() if k not in names}
+
+    def test_windows_uses_appdata(self):
+        with patch.dict(os.environ, {"APPDATA": "C:/Users/u/AppData/Roaming"}):
+            path = find_vault.obsidian_config_path()
+        self.assertEqual(path, Path("C:/Users/u/AppData/Roaming") / "obsidian" / "obsidian.json")
+
+    def test_macos_uses_application_support(self):
+        env = self.env_without("APPDATA", "XDG_CONFIG_HOME")
+        with patch.dict(os.environ, env, clear=True), patch.object(find_vault.sys, "platform", "darwin"):
+            path = find_vault.obsidian_config_path()
+        self.assertEqual(path.parts[-4:], ("Library", "Application Support", "obsidian", "obsidian.json"))
+
+    def test_linux_uses_xdg_config_home(self):
+        env = self.env_without("APPDATA")
+        env["XDG_CONFIG_HOME"] = "/tmp/cfg"
+        with patch.dict(os.environ, env, clear=True), patch.object(find_vault.sys, "platform", "linux"):
+            path = find_vault.obsidian_config_path()
+        self.assertEqual(path, Path("/tmp/cfg") / "obsidian" / "obsidian.json")
+
+    def test_linux_defaults_to_dot_config(self):
+        env = self.env_without("APPDATA", "XDG_CONFIG_HOME")
+        with patch.dict(os.environ, env, clear=True), patch.object(find_vault.sys, "platform", "linux"):
+            path = find_vault.obsidian_config_path()
+        self.assertEqual(path.parts[-3:], (".config", "obsidian", "obsidian.json"))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

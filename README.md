@@ -96,3 +96,40 @@
 Сейчас `build` использует `opencode-go/deepseek-v4.1-flash`, обычный исполнитель `executor` — `lmstudio/qwen3-27b-coder`, быстрый `executor-fast` — `lmstudio/spark-4b`. Команда `/plan-project` тоже вызывает `build`; отдельная модель для `plan` пока не задана.
 
 Для другого проекта нужно скопировать файлы кита и указать в `AGENTS.md` его язык, папки и команду тестов. Пошаговое подключение описано в быстром старте. После подготовки можно ставить задачи обычным текстом.
+
+## Подключение своего языка
+
+Кит подходит для любого языка, но скрипт статистики должен **прочитать результат тестов**: сколько их было, сколько упало. Он понимает два формата:
+
+- итоговую строку Python `unittest`;
+- **JUnit XML** — общий формат отчётов о тестах. Его читают почти все системы сборки, поэтому инструменты для разных языков умеют его выдавать.
+
+Если результат прочитать нельзя, упавшие тесты всё равно засчитываются как упавшие, но зелёные получают статус «неизвестно», а мозг считает прогон проблемой настройки. Поэтому команду тестов в секцию `Project stack` файла `AGENTS.md` нужно записать вместе с флагами отчёта.
+
+| Язык | Что поставить один раз | Команда тестов для `Project stack` |
+| --- | --- | --- |
+| Python (unittest) | ничего | `py kit/task_metrics.py test --task <ID> -- py -m unittest discover -s tests -v` |
+| Python (pytest) | `pip install pytest` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- py -m pytest --junitxml=.metrics/<ID>/run-NN.xml` |
+| Java, Kotlin (Maven) | ничего | `py kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test` |
+| Java, Kotlin (Gradle) | ничего | `py kit/task_metrics.py test --task <ID> --junit-dir build/test-results/test -- gradlew test` (на macOS и Linux — `./gradlew test`) |
+| C# (.NET) | `dotnet add <ТестовыйПроект> package JunitXml.TestLogger` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- dotnet test --results-directory .metrics/<ID> --logger "junit;LogFileName=run-NN.xml"` |
+| JS, TS, React, Vue (Vitest) | ничего | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx vitest run --reporter=junit --outputFile=.metrics/<ID>/run-NN.xml` |
+| JS, TS, React (Jest) | `npm i -D jest-junit cross-env` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx cross-env JEST_JUNIT_OUTPUT_FILE=.metrics/<ID>/run-NN.xml jest --ci --reporters=default --reporters=jest-junit` |
+| Go | `go install gotest.tools/gotestsum@latest` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- gotestsum --junitfile .metrics/<ID>/run-NN.xml` |
+| Rust | `cargo install cargo-nextest` и профиль с `junit` в `.config/nextest.toml` | `py kit/task_metrics.py test --task <ID> --junit-dir target/nextest -- cargo nextest run` |
+| PHP (PHPUnit) | ничего | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- vendor/bin/phpunit --log-junit .metrics/<ID>/run-NN.xml` |
+
+Правила, которые важно не нарушить:
+
+1. **`--junit <файл>`** — для инструментов, которые пишут один файл. Файла не должно быть до запуска, поэтому мозг нумерует прогоны: `run-01.xml`, `run-02.xml` и так далее. В `AGENTS.md` пишется `run-NN`, а номер подставляет мозг.
+2. **`--junit-dir <папка>`** — для инструментов, которые пишут файл на каждый класс или проект: Maven, Gradle, несколько тестовых проектов .NET (для них в логгере используйте `LogFilePath=<папка>/{assembly}.xml`). Скрипт читает только файлы этого прогона.
+3. **Без режима наблюдения.** Jest и Vitest по умолчанию ждут изменений файлов и не завершаются. Нужны `vitest run` и `jest --ci`, иначе прогон закончится по времени.
+4. **Windows и `.cmd`.** `npx`, `npm`, `mvn`, `gradlew` скрипт находит сам, дописывать `.cmd` не нужно.
+
+После записи команды проверь её один раз:
+
+```bash
+py kit/task_metrics.py check <те же флаги отчёта> -- <та же команда тестов>
+```
+
+`CHECK OK` — можно работать. `CHECK FAILED` — под строкой будут подсказки. Подробно — в `METRICS.ru.md`, раздел 3.
