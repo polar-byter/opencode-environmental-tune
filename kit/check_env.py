@@ -92,13 +92,13 @@ def http_get_json(url: str):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def http_post_json(url: str, payload: dict):
+def http_post_json(url: str, payload: dict, timeout: float = 180):
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=body, method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=180) as resp:
+    with urllib.request.urlopen(req, timeout = timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 

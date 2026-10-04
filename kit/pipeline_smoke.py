@@ -2,7 +2,7 @@
 """
 pipeline_smoke.py — optional offline smoke test of the brain → executor → review flow.
 
-It does NOT use OpenCode. It talks to LM Studio directly, so you can check that the
+It doesn't use Open Code to talks to LM Studio directly, so you can check that the
 local executor model can implement a spec-commented skeleton.
 
 Flow:
@@ -30,12 +30,11 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
-import urllib.request
 from pathlib import Path
 
 # Reuse the JSONC and HTTP helpers from check_env.py (shipped together).
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-from check_env import http_get_json, strip_jsonc  # noqa: E402
+from check_env import CONFIG_PATH, LMSTUDIO_BASE, http_get_json, http_post_json, strip_jsonc  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -43,9 +42,6 @@ try:
 except Exception:
     pass
 
-LMSTUDIO_BASE = "http://127.0.0.1:1234/v1"
-# opencode.jsonc lives in the project root, one level above kit/.
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "opencode.jsonc"
 REQUEST_TIMEOUT = 300
 
 
@@ -214,13 +210,7 @@ def executor_implement(skeleton: str, model: str, base_url: str = LMSTUDIO_BASE)
         "temperature": 0.0,
         "messages": [{"role": "user", "content": prompt}],
     }
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-        data = json.loads(response.read().decode("utf-8"))
+    data = http_post_json(f"{base_url}/chat/completions", payload, timeout=REQUEST_TIMEOUT)
     return data["choices"][0]["message"]["content"]
 
 
