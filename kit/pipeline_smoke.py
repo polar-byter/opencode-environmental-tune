@@ -248,6 +248,42 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep", action="store_true", help="keep the temp dir and print its path")
     return parser
 
+def run_smoke(workdir: Path, model: str) -> int:
+    app_dir = workdir / "app"
+    tests_dir = workdir / "tests"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    tests_dir.mkdir(parents=True, exist_ok=True)
+
+    skeleton = brain_skeleton_app()
+    (app_dir / "calculator.py").write_text(skeleton, encoding="utf-8")
+    (tests_dir / "test_calculator.py").write_text(brain_skeleton_tests(), encoding="utf-8")
+    print(f"Workdir: {workdir}")
+
+    ok_before, _ = run_tests(workdir)
+    print(f"Tests before implementation: {'green (unexpected)' if ok_before else 'red (expected)'}")
+
+    print("Asking the executor...")
+    try:
+        raw = executor_implement(skeleton, model)
+    except urllib.error.HTTPError as error:
+        print(f"HTTP {error.code}: {error.read().decode('utf-8', 'replace')[:300]}")
+        return 1
+    except Exception as error:  # noqa: BLE001
+        print(f"ERROR: {error}")
+        return 1
+
+    (app_dir / "calculator.py").write_text(strip_markdown(raw), encoding="utf-8")
+    ok_after, output = run_tests(workdir)
+    print("-" * 60)
+    print(output.strip() or "(no output)")
+    print("-" * 60)
+
+    if ok_after:
+        print("RESULT: green — the local executor implemented the spec correctly.")
+        return 0
+    print("RESULT: red — the executor needs a retry or the spec needs to be sharper.")
+    return 1
+
 
 def main(argv=None) -> int:
     """CLI entry point. Returns 0 when tests are green, 1 otherwise."""
@@ -265,53 +301,14 @@ def main(argv=None) -> int:
         return 1
     print(f"Model: {model}")
 
-    workdir = Path(tempfile.mkdtemp(prefix="pipeline_smoke_")) if args.keep else None
-    temp_ctx = None
-    if workdir is None:
-        temp_ctx = tempfile.TemporaryDirectory(prefix="pipeline_smoke_")
-        workdir = Path(temp_ctx.name)
-
-    try:
-        app_dir = workdir / "app"
-        tests_dir = workdir / "tests"
-        app_dir.mkdir(parents=True, exist_ok=True)
-        tests_dir.mkdir(parents=True, exist_ok=True)
-
-        skeleton = brain_skeleton_app()
-        (app_dir / "calculator.py").write_text(skeleton, encoding="utf-8")
-        (tests_dir / "test_calculator.py").write_text(brain_skeleton_tests(), encoding="utf-8")
-        print(f"Workdir: {workdir}")
-
-        ok_before, _ = run_tests(workdir)
-        print(f"Tests before implementation: {'green (unexpected)' if ok_before else 'red (expected)'}")
-
-        print("Asking the executor...")
-        try:
-            raw = executor_implement(skeleton, model)
-        except urllib.error.HTTPError as error:
-            print(f"HTTP {error.code}: {error.read().decode('utf-8', 'replace')[:300]}")
-            return 1
-        except Exception as error:  # noqa: BLE001
-            print(f"ERROR: {error}")
-            return 1
-
-        (app_dir / "calculator.py").write_text(strip_markdown(raw), encoding="utf-8")
-        ok_after, output = run_tests(workdir)
-        print("-" * 60)
-        print(output.strip() or "(no output)")
-        print("-" * 60)
-
-        if ok_after:
-            print("RESULT: green — the local executor implemented the spec correctly.")
-            return 0
-        print("RESULT: red — the executor needs a retry or the spec needs to be sharper.")
-        return 1
-    finally:
-        if temp_ctx is not None:
-            temp_ctx.cleanup()
-        else:
+    with tempfile.TemporaryDirectory(
+        prefix="pipeline_smoke_",
+        delete=not args.keep,
+    ) as name:
+        workdir = Path(name)
+        if args.keep:
             print(f"Kept workdir: {workdir}")
-
+        return run_smoke(workdir, model)
 
 if __name__ == "__main__":
     sys.exit(main())
