@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
+from html import parser
 import json
 import math
 import os
@@ -18,6 +19,8 @@ import xml.etree.ElementTree as ET
 
 TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
 EVENT_KINDS = {'start', 'review', 'test', 'halt', 'resume', 'finish'}
+WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
+                              *(f'COM{n}' for n in range(1, 10)), *(f'LPT{n}' for n in range(1, 10))})
 
 # Loop guards. Any of them stops the task until the user decides how to continue.
 DEFAULT_LIMITS = dict(
@@ -145,6 +148,19 @@ def resolve_command(command: list[str], windows: bool = os.name == 'nt') -> list
     return [found, *command[1:]] if found else list(command)
 
 
+def resolve_opencode(executable: str) -> str:
+    """Find the desktop or PATH OpenCode CLI when the default name is requested."""
+    if executable != 'opencode':
+        return executable
+    desktop_cli = Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs/@opencodedesktop/resources/opencode-cli.exe'
+    try:
+        if desktop_cli.is_file():
+            return str(desktop_cli)
+    except OSError:
+        pass
+    return shutil.which('opencode') or executable
+
+
 def local_tag(element) -> str:
     """Tag name without an XML namespace: '{ns}testcase' -> 'testcase'."""
     return element.tag.rsplit('}', 1)[-1]
@@ -172,6 +188,97 @@ def parse_junit_files(paths: list[Path]) -> dict:
             for tag, key in [('failure', 'failures'), ('error', 'errors'), ('skipped', 'skipped')]:
                 result[key] += int(tag in tags)
     return result
+
+
+def parse_unittest(output: str) -> dict:
+    """Reads the final 'Ran N tests ... OK/FAILED (...)' summary of Python unittest."""
+    matches = list(re.finditer(r'^Ran (\d+) tests? in [^\r\n]+\r?\n', output, re.M))
+    # Multiple summaries could conceal earlier failures; require one run per command.
+    if len(matches) != 1:
+        return {}
+    summary = output[matches[0].end():].strip()
+    end = re.fullmatch(r'(OK|FAILED)(?: \(([^\r\n]*)\))?', summary)
+    if not end:
+        return {}
+    result = dict(tests=int(matches[0][1]), failures=0, errors=0, skipped=0)
+    for key, value in re.findall(r'([a-z ]+)=(\d+)', end[2] or ''):
+        key = key.strip()
+        if key in result:
+            result[key] = int(value)
+        elif key in {'expected failures', 'unexpected successes'}:
+            result['skipped'] += int(value)
+        else:
+            result['diagnostic'] = 'Unrecognized unittest outcome'
+    if end[1] == 'FAILED' and not result['failures'] and not result['errors']:
+        result['errors'] = 1
+    return result
+
+
+def final_status(result: dict, returncode: int) -> str:
+    """Final status of one test run. The order of checks matters: the first match wins."""
+    if returncode != 0:
+        return 'failed'
+    if result.get('diagnostic') or result['tests'] is None:
+        return 'unknown'
+    if result['failures'] or result['errors']:
+        return 'failed'
+    if result['tests'] == 0:
+        return 'empty'
+    if result['skipped']:
+        return 'skipped'
+    return 'passed'
+
+
+def descendants(sessions: dict, root: str) -> set[str]:
+    """Returns root and every session below it (children, grandchildren, ...)."""
+    allowed = {root}
+    while True:
+        more = {sid for sid, items in sessions.items() if items[0]['info'].get('parentID') in allowed}
+        if more <= allowed:
+            return allowed
+        allowed |= more
+
+
+def text_or_unknown(value) -> str:
+    """Returns a non-empty string as is, anything else as 'unknown'."""
+    return value if isinstance(value, str) and value else 'unknown'
+
+
+def message_model(info: dict) -> tuple[str, str]:
+    """Provider and model of one assistant message, in the legacy or the V2 format."""
+    model_ref = info.get('model') if isinstance(info.get('model'), dict) else {}
+    provider = info.get('providerID', model_ref.get('providerID'))
+    model = info.get('modelID', model_ref.get('id'))
+    return text_or_unknown(provider), text_or_unknown(model)
+
+
+def new_usage_row(provider: str, model: str) -> dict:
+    """An empty report row for one provider/model pair."""
+    if provider == 'lmstudio':
+        group = 'local'
+    elif provider == 'unknown':
+        group = 'unknown'
+    else:
+        group = 'paid'
+    return dict(provider=provider, model=model, group=group, messages=0, missing_usage=0,
+                **dict.fromkeys(TOKEN_FIELDS, 0))
+
+
+def message_tokens(info: dict) -> dict:
+    """Five token counters of one message; a missing or invalid counter becomes None."""
+    tokens = info.get('tokens') if isinstance(info.get('tokens'), dict) else {}
+    cache = tokens.get('cache') if isinstance(tokens.get('cache'), dict) else {}
+    values = dict(input=tokens.get('input'), output=tokens.get('output'), reasoning=tokens.get('reasoning'),
+                  cache_read=cache.get('read'), cache_write=cache.get('write'))
+    return {k: v if type(v) is int and v >= 0 else None for k, v in values.items()}
+
+
+def add_usage(row: dict, values: dict) -> None:
+    """Adds one message to a row. One unknown value makes that column's sum unknown for good."""
+    row['messages'] += 1
+    row['missing_usage'] += int(values['input'] is None or values['output'] is None)
+    for field, value in values.items():
+        row[field] = None if value is None or row[field] is None else row[field] + value
 
 
 def fresh_xml_files(folder: Path, since: float) -> list[Path]:
@@ -298,6 +405,34 @@ def diagnose(output: str, returncode: int, parsed: dict, category: str, junit_gi
                      'so the runner can read a JUnit XML report.')
     return hints or ['Read the test log to find the cause.']
 
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--root', type=Path, default=Path.cwd())
+    sub = parser.add_subparsers(dest='action', required=True)
+    start = sub.add_parser('start')
+    start.add_argument('--session')
+    start.add_argument('--title')
+    for name in DEFAULT_LIMITS:
+        start.add_argument('--' + name.replace('_', '-'), type=int, dest=name,
+                            help=f'loop guard, default {DEFAULT_LIMITS[name]}')
+    review = sub.add_parser('review')
+    review.add_argument('--piece', required=True)
+    review.add_argument('--result', choices=['accepted', 'rework'], required=True)
+    resume = sub.add_parser('resume')
+    resume.add_argument('--reason', required=True)
+    test = sub.add_parser('test')
+    check = sub.add_parser('check')
+    for command in (test, check):
+        command.add_argument('--timeout', type=float, default=300)
+        command.add_argument('--junit')
+        command.add_argument('--junit-dir')
+        command.add_argument('command', nargs=argparse.REMAINDER)
+    finish = sub.add_parser('finish')
+    finish.add_argument('--export', action='append', dest='exports')
+    finish.add_argument('--opencode', default='opencode')
+    for command in (start, review, resume, test, finish):
+        command.add_argument('--task', required=True)
+    return parser
 
 
 class TaskMetrics:
@@ -318,11 +453,7 @@ class TaskMetrics:
 
     # get the directory for a specific task, validating the task name and ensuring no symlinks
     def task_dir(self, task: str) -> Path:
-        # unpacks COM1..COM9 and LPT1..LPT9 into the set of reserved names
-        reserved = {'CON', 'PRN', 'AUX', 'NUL', *('COM'+str(n) for n in range(1, 10)),
-                    *('LPT'+str(n) for n in range(1, 10))}
-
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,79}', task) or task.upper() in reserved:
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,79}', task) or task.upper() in WINDOWS_RESERVED:
             raise ValueError('Task ID: 1-80 ASCII letters/digits/_/-, not a reserved Windows name')
 
         base = self.root / '.metrics'
@@ -429,40 +560,13 @@ class TaskMetrics:
 
     # parse the output of a test run, optionally using JUnit XML reports to extract test results
     def parse_tests(self, output: str, returncode: int, junit: Path | list[Path] | None = None) -> dict:
-        result = dict(status='unknown', tests=None, failures=None, errors=None, skipped=None)
         if junit is not None:
-            result.update(parse_junit_files([junit] if isinstance(junit, Path) else list(junit)))
+            counts = parse_junit_files([junit] if isinstance(junit, Path) else list(junit))
         else:
-            matches = list(re.finditer(r'^Ran (\d+) tests? in [^\r\n]+\r?\n', output, re.M))
-            # Multiple summaries could conceal earlier failures; require one run per command.
-            if len(matches) == 1:
-                summary = output[matches[0].end():].strip()
-                end = re.fullmatch(r'(OK|FAILED)(?: \(([^\r\n]*)\))?', summary)
-                if end:
-                    result.update(tests=int(matches[0][1]), failures=0, errors=0, skipped=0)
-                    counts = dict(re.findall(r'([a-z ]+)=(\d+)', end[2] or ''))
-                    for key, value in counts.items():
-                        key = key.strip()
-                        if key in result:
-                            result[key] = int(value)
-                        elif key in {'expected failures', 'unexpected successes'}:
-                            result['skipped'] += int(value)
-                        else:
-                            result['diagnostic'] = 'Unrecognized unittest outcome'
-                    if end[1] == 'FAILED' and not result['failures'] and not result['errors']:
-                        result['errors'] = 1
-        if returncode != 0:
-            result['status'] = 'failed'
-        elif result.get('diagnostic') or result['tests'] is None:
-            result['status'] = 'unknown'
-        elif result['failures'] or result['errors']:
-            result['status'] = 'failed'
-        elif result['tests'] == 0:
-            result['status'] = 'empty'
-        elif result['skipped']:
-            result['status'] = 'skipped'
-        else:
-            result['status'] = 'passed'
+            counts = parse_unittest(output)
+        result = dict(tests=None, failures=None, errors=None, skipped=None)
+        result.update(counts)
+        result['status'] = final_status(result, returncode)
         return result
 
     def report_source(self, junit: str | None, junit_dir: str | None):
@@ -543,13 +647,7 @@ class TaskMetrics:
 
         if session not in sessions:
             raise ValueError('Root session export is missing')
-        allowed = {session}
-
-        while True:
-            more = {sid for sid, items in sessions.items() if items[0]['info'].get('parentID') in allowed}
-            if more <= allowed:
-                break
-            allowed |= more
+        allowed = descendants(sessions, session)
 
         warnings_list = []
         for sid in sessions.keys() - allowed:
@@ -581,23 +679,9 @@ class TaskMetrics:
                             raise ValueError(f'Conflicting duplicate message: {sid}/{mid}')
                         continue
                     seen[key] = info
-                    model_ref = info.get('model') if isinstance(info.get('model'), dict) else {}
-                    provider = info.get('providerID', model_ref.get('providerID'))
-                    model = info.get('modelID', model_ref.get('id'))
-                    provider = provider if isinstance(provider, str) and provider else 'unknown'
-                    model = model if isinstance(model, str) and model else 'unknown'
-                    group = 'local' if provider == 'lmstudio' else ('unknown' if provider == 'unknown' else 'paid')
-                    row = rows.setdefault((provider, model), dict(provider=provider, model=model, group=group,
-                                          messages=0, missing_usage=0, **dict.fromkeys(TOKEN_FIELDS, 0)))
-                    tokens = info.get('tokens') if isinstance(info.get('tokens'), dict) else {}
-                    cache = tokens.get('cache') if isinstance(tokens.get('cache'), dict) else {}
-                    values = dict(input=tokens.get('input'), output=tokens.get('output'), reasoning=tokens.get('reasoning'),
-                                  cache_read=cache.get('read'), cache_write=cache.get('write'))
-                    values = {k: v if type(v) is int and v >= 0 else None for k, v in values.items()}
-                    row['messages'] += 1
-                    row['missing_usage'] += int(values['input'] is None or values['output'] is None)
-                    for field, value in values.items():
-                        row[field] = None if value is None or row[field] is None else row[field]+value
+                    provider, model = message_model(info)
+                    row = rows.setdefault((provider, model), new_usage_row(provider, model))
+                    add_usage(row, message_tokens(info))
         warnings_list.append('Учтены сообщения в интервале задачи; служебные вызовы вне экспорта могут отсутствовать.')
         if any(r['missing_usage'] for r in rows.values()):
             warnings_list.append('В части сообщений нет корректного расхода токенов; соответствующие суммы неизвестны.')
@@ -618,16 +702,44 @@ class TaskMetrics:
         except ValueError as error:
             raise ValueError('OpenCode returned non-JSON output; check CLI version/server') from error
 
+    def export_session(self, executable: str, sid: str) -> dict:
+        """Export one session, trying the newer CLI command before the legacy one."""
+        try:
+            export = self.cli_json(executable, ['session', 'export', sid])
+        except ValueError:
+            export = self.cli_json(executable, ['export', sid])
+        if not isinstance(export, dict) or export.get('info', {}).get('id') != sid:
+            raise ValueError('Export session ID mismatch')
+        if not isinstance(export.get('messages'), list):
+            raise ValueError('Export messages missing')
+        return export
+
+    def api_children(self, executable: str, sid: str) -> set[str]:
+        """Read direct child sessions from the paginated session.list API."""
+        children, cursor, cursors = set(), None, set()
+        for _ in range(100):
+            args = ['api', 'session.list', '--param', f'parentID={sid}', '--param', 'limit=100']
+            if cursor:
+                args += ['--param', f'cursor={cursor}']
+            page = self.cli_json(executable, args)
+            if not isinstance(page, dict) or not isinstance(page.get('data'), list):
+                raise ValueError('Unsupported session.list response')
+            for item in page['data']:
+                if not isinstance(item, dict) or item.get('parentID') != sid:
+                    raise ValueError('Child session parent mismatch')
+                children.add(session_id(item.get('id')))
+            cursor = page.get('cursor', {}).get('next')
+            if not cursor:
+                return children
+            if cursor in cursors:
+                raise ValueError('Repeated pagination cursor')
+            cursors.add(cursor)
+        raise ValueError('Too many session pages')
+
     # collect OpenCode exports for a session and its children, using the CLI to fetch data and handling pagination and errors
     def collect_exports(self, session: str, executable: str = 'opencode') -> list[dict]:
         session_id(session)
-        if executable == 'opencode':
-            desktop_cli = Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs/@opencodedesktop/resources/opencode-cli.exe'
-            try:
-                native_available = desktop_cli.is_file()
-            except OSError:
-                native_available = False
-            executable = str(desktop_cli) if native_available else (shutil.which('opencode') or executable)
+        executable = resolve_opencode(executable)
         queue, seen, exports = [session], set(), []
         while queue:
             sid = session_id(queue.pop(0))
@@ -637,36 +749,10 @@ class TaskMetrics:
                 raise ValueError('More than 100 sessions; narrow task scope')
             seen.add(sid)
             try:
-                try:
-                    export = self.cli_json(executable, ['session', 'export', sid])
-                except ValueError:
-                    export = self.cli_json(executable, ['export', sid])
-                if not isinstance(export, dict) or export.get('info', {}).get('id') != sid:
-                    raise ValueError('Export session ID mismatch')
-                if not isinstance(export.get('messages'), list):
-                    raise ValueError('Export messages missing')
+                export = self.export_session(executable, sid)
                 children = brain_tool_child_references(export)
                 try:
-                    cursor, cursors = None, set()
-                    for _ in range(100):
-                        args = ['api', 'session.list', '--param', f'parentID={sid}', '--param', 'limit=100']
-                        if cursor:
-                            args += ['--param', f'cursor={cursor}']
-                        page = self.cli_json(executable, args)
-                        if not isinstance(page, dict) or not isinstance(page.get('data'), list):
-                            raise ValueError('Unsupported session.list response')
-                        for item in page['data']:
-                            if not isinstance(item, dict) or item.get('parentID') != sid:
-                                raise ValueError('Child session parent mismatch')
-                            children.add(session_id(item.get('id')))
-                        cursor = page.get('cursor', {}).get('next')
-                        if not cursor:
-                            break
-                        if cursor in cursors:
-                            raise ValueError('Repeated pagination cursor')
-                        cursors.add(cursor)
-                    else:
-                        raise ValueError('Too many session pages')
+                    children |= self.api_children(executable, sid)
                 except (ValueError, OSError, subprocess.TimeoutExpired) as error:
                     export['_metrics_warnings'] = [f'Поиск дочерних сессий неполон: {error}']
                 queue.extend(sorted(children - seen))
@@ -759,84 +845,57 @@ class TaskMetrics:
             tmp.replace(folder/'report.md')
             return report
 
-    @staticmethod
-    def main(argv=None) -> int:
-        """
-        Command line. Exit codes tell the brain what to do next:
-        0 passed or done; 1 tests ran and failed; 4 no readable test result (setup or build);
-        3 STOP: a loop guard is reached, ask the user; 2 wrong usage or a broken journal.
-        """
-        for stream in (sys.stdout, sys.stderr):
-            if hasattr(stream, 'reconfigure'):
-                stream.reconfigure(encoding='utf-8', errors='replace')
-        parser = argparse.ArgumentParser(description=__doc__)
-        parser.add_argument('--root', type=Path, default=Path.cwd())
-        sub = parser.add_subparsers(dest='action', required=True)
-        start = sub.add_parser('start')
-        start.add_argument('--session')
-        start.add_argument('--title')
-        for name in DEFAULT_LIMITS:
-            start.add_argument('--' + name.replace('_', '-'), type=int, dest=name,
-                               help=f'loop guard, default {DEFAULT_LIMITS[name]}')
-        review = sub.add_parser('review')
-        review.add_argument('--piece', required=True)
-        review.add_argument('--result', choices=['accepted', 'rework'], required=True)
-        resume = sub.add_parser('resume')
-        resume.add_argument('--reason', required=True)
-        test = sub.add_parser('test')
-        check = sub.add_parser('check')
-        for command in (test, check):
-            command.add_argument('--timeout', type=float, default=300)
-            command.add_argument('--junit')
-            command.add_argument('--junit-dir')
-            command.add_argument('command', nargs=argparse.REMAINDER)
-        finish = sub.add_parser('finish')
-        finish.add_argument('--export', action='append', dest='exports')
-        finish.add_argument('--opencode', default='opencode')
-        for command in (start, review, resume, test, finish):
-            command.add_argument('--task', required=True)
-        args = parser.parse_args(argv)
-        metrics = TaskMetrics(args.root)
-        try:
-            if args.action == 'start':
-                limits = {name: getattr(args, name) for name in DEFAULT_LIMITS}
-                event = metrics.start(args.task, args.session, args.title, limits)
-            elif args.action == 'review':
-                event = metrics.review(args.task, args.piece, args.result)
-            elif args.action == 'resume':
-                event = metrics.resume(args.task, args.reason)
-            elif args.action == 'finish':
-                print(metrics.finish(args.task, args.exports, args.opencode))
-                return EXIT_OK
-            elif args.action == 'check':
-                command = args.command[1:] if args.command[:1] == ['--'] else args.command
-                result = metrics.check(command, args.timeout, args.junit, args.junit_dir)
-                print(result.pop('output'))
-                print(json.dumps(result, ensure_ascii=False))
-                if result['readable']:
-                    print(f'CHECK OK: the runner reads results ({result["tests"]} tests).', file=sys.stderr)
-                    return EXIT_OK
-                print('CHECK FAILED: the runner cannot read test results.', file=sys.stderr)
-                for hint in result['hints']:
-                    print('- ' + hint, file=sys.stderr)
-                return EXIT_NO_RESULT
-            else:
-                command = args.command[1:] if args.command[:1] == ['--'] else args.command
-                event = metrics.test(args.task, command, args.timeout, args.junit, args.junit_dir)
-                print((metrics.task_dir(args.task)/event['log']).read_text(encoding='utf-8'))
-                print(json.dumps(event, ensure_ascii=False))
-                return report_test(event, args.task)
-            print(json.dumps(event, ensure_ascii=False))
-            if event.get('halt'):
-                print_stop(event['halt'], args.task)
-                return EXIT_STOP
+def main(argv=None) -> int:
+    """
+    Command line. Exit codes tell the brain what to do next:
+    0 passed or done; 1 tests ran and failed; 4 no readable test result (setup or build);
+    3 STOP: a loop guard is reached, ask the user; 2 wrong usage or a broken journal.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='replace')
+    args = build_parser().parse_args(argv)
+    metrics = TaskMetrics(args.root)
+    try:
+        if args.action == 'start':
+            limits = {name: getattr(args, name) for name in DEFAULT_LIMITS}
+            event = metrics.start(args.task, args.session, args.title, limits)
+        elif args.action == 'review':
+            event = metrics.review(args.task, args.piece, args.result)
+        elif args.action == 'resume':
+            event = metrics.resume(args.task, args.reason)
+        elif args.action == 'finish':
+            print(metrics.finish(args.task, args.exports, args.opencode))
             return EXIT_OK
-        except TaskHalted as halt:
-            print_stop(str(halt), args.task)
+        elif args.action == 'check':
+            command = args.command[1:] if args.command[:1] == ['--'] else args.command
+            result = metrics.check(command, args.timeout, args.junit, args.junit_dir)
+            print(result.pop('output'))
+            print(json.dumps(result, ensure_ascii=False))
+            if result['readable']:
+                print(f'CHECK OK: the runner reads results ({result["tests"]} tests).', file=sys.stderr)
+                return EXIT_OK
+            print('CHECK FAILED: the runner cannot read test results.', file=sys.stderr)
+            for hint in result['hints']:
+                print('- ' + hint, file=sys.stderr)
+            return EXIT_NO_RESULT
+        else:
+            command = args.command[1:] if args.command[:1] == ['--'] else args.command
+            event = metrics.test(args.task, command, args.timeout, args.junit, args.junit_dir)
+            print((metrics.task_dir(args.task)/event['log']).read_text(encoding='utf-8'))
+            print(json.dumps(event, ensure_ascii=False))
+            return report_test(event, args.task)
+        print(json.dumps(event, ensure_ascii=False))
+        if event.get('halt'):
+            print_stop(event['halt'], args.task)
             return EXIT_STOP
-        except (OSError, ValueError, subprocess.TimeoutExpired) as error:
-            print(f'Metrics error: {error}', file=sys.stderr)
-            return EXIT_USAGE
+        return EXIT_OK
+    except TaskHalted as halt:
+        print_stop(str(halt), args.task)
+        return EXIT_STOP
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        print(f'Metrics error: {error}', file=sys.stderr)
+        return EXIT_USAGE
 
 
 def report_test(event: dict, task: str) -> int:
@@ -868,4 +927,4 @@ def print_stop(reason: str, task: str) -> None:
 
 
 if __name__ == '__main__':
-    sys.exit(TaskMetrics.main())
+    sys.exit(main())

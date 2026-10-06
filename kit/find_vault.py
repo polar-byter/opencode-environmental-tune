@@ -38,6 +38,21 @@ SKIP_DIRS = {
     "__pycache__", "site-packages",
 }
 
+def path_key_normc_case(path: Path) -> str:
+    """Return a normalized comparison key for a path."""
+    return os.path.normcase(str(path))
+
+
+def unique_paths(paths) -> list[Path]:
+    visited: set[str] = set()
+    result: list[Path] = []
+    for path in paths:
+        key = path_key_normc_case(path)
+        if key not in visited:
+            visited.add(key)
+            result.append(path)
+    return result
+
 
 def obsidian_config_path() -> Path:
     """
@@ -96,24 +111,16 @@ def vaults_from_config(config: dict) -> list[Path]:
     - skips entries without a path and folders that do not exist.
     - Returns [X] or [].
     """
-    result: list[Path] = []
-    visited: set[str] = set()
     vaults = config.get("vaults", {}) if isinstance(config, dict) else {}
     if not isinstance(vaults, dict):
-        return result
-    for entry in vaults.values():
-        if not isinstance(entry, dict):
-            continue
-        raw = entry.get("path")
-        if not raw:
-            continue
-        path = Path(raw)
-        keyFromPathString = os.path.normcase(str(path))
-        if keyFromPathString in visited or not path.is_dir():
-            continue
-        visited.add(keyFromPathString)
-        result.append(path)
-    return result
+        return []
+
+    paths = [
+        Path(entry["path"])
+        for entry in vaults.values()
+        if isinstance(entry, dict) and entry.get("path")
+    ]
+    return unique_paths(path for path in paths if path.is_dir())
 
 
 def default_scan_roots() -> list[Path]:
@@ -162,7 +169,6 @@ def scan_for_vaults(roots=None, max_depth: int = 3) -> list[Path]:
     if roots is None:
         roots = default_scan_roots()
     found: list[Path] = []
-    seen: set[str] = set()
 
     for root in roots:
         root = Path(root)
@@ -173,11 +179,7 @@ def scan_for_vaults(roots=None, max_depth: int = 3) -> list[Path]:
                 depth = len(Path(current).relative_to(root).parts)
 
                 if VAULT_MARKER in dirs:
-                    vault = Path(current)
-                    key = os.path.normcase(str(vault))
-                    if key not in seen:
-                        seen.add(key)
-                        found.append(vault)
+                    found.append(Path(current))
                     dirs.remove(VAULT_MARKER)
 
                 if depth >= max_depth:
@@ -191,7 +193,8 @@ def scan_for_vaults(roots=None, max_depth: int = 3) -> list[Path]:
         except OSError:
             continue
 
-    return sorted(found)
+    return sorted(unique_paths(found))
+
 
 def list_vaults(config_path: Path | None = None, do_scan: bool = True) -> list[Path]:
     """
@@ -203,14 +206,9 @@ def list_vaults(config_path: Path | None = None, do_scan: bool = True) -> list[P
     - Registry vaults first, then scan-only vaults. with no duplicates.
     """
     vaults = vaults_from_config(read_obsidian_config(config_path))
-    seen = {os.path.normcase(str(vault)) for vault in vaults}
     if do_scan:
-        for vault in scan_for_vaults():
-            key = os.path.normcase(str(vault))
-            if key not in seen:
-                seen.add(key)
-                vaults.append(vault)
-    return vaults
+        vaults += scan_for_vaults()
+    return unique_paths(vaults)
 
 
 def filter_vaults(vaults: list[Path], name: str | None) -> list[Path]:
@@ -267,6 +265,15 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def print_paths(paths: list[Path], as_json: bool) -> None:
+    """Print paths as JSON or one path per line."""
+    if as_json:
+        print(json.dumps([str(path) for path in paths], ensure_ascii=False, indent=2))
+    else:
+        for path in paths:
+            print(path)
+
+
 def main(argv=None) -> int:
     """
     CLI entry point.
@@ -281,24 +288,15 @@ def main(argv=None) -> int:
     vaults = filter_vaults(list_vaults(do_scan=not args.no_scan), args.vault)
 
     if args.note:
-        matches = find_note(args.note, vaults)
-        if args.json:
-            print(json.dumps([str(path) for path in matches], ensure_ascii=False, indent=2))
-        else:
-            for path in matches:
-                print(path)
-        if not matches:
-            print(f"Not found: {args.note}", file=sys.stderr)
-            return 1
-        return 0
-
-    if args.json:
-        print(json.dumps([str(vault) for vault in vaults], ensure_ascii=False, indent=2))
+        paths = find_note(args.note, vaults)
+        empty_message = f"Not found: {args.note}"
     else:
-        for vault in vaults:
-            print(vault)
-    if not vaults:
-        print("No Obsidian vaults found.", file=sys.stderr)
+        paths = vaults
+        empty_message = "No Obsidian vaults found."
+
+    print_paths(paths, args.json)
+    if not paths:
+        print(empty_message, file=sys.stderr)
         return 1
     return 0
 
