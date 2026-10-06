@@ -12,8 +12,8 @@ Flow:
 
 The executor model is resolved from opencode.jsonc:
   agents.executor.model = "lmstudio/<alias>"  →  providers.lmstudio.models[<alias>].modelID
-Override it with --model <lmstudio-model-id>. If it cannot be resolved, the first
-non-embedding model from /v1/models is used.
+This preference is used only if that model is already loaded. Otherwise a sole
+loaded language model is used. Choose --model <loaded-instance-id> when ambiguous.
 
 Usage:
   py pipeline_smoke.py
@@ -34,7 +34,8 @@ from pathlib import Path
 
 # Reuse the JSONC and HTTP helpers from check_env.py (shipped together).
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-from check_env import CONFIG_PATH, LMSTUDIO_BASE, http_get_json, http_post_json, strip_jsonc  # noqa: E402
+from check_env import CONFIG_PATH, LMSTUDIO_BASE, http_post_json, strip_jsonc  # noqa: E402
+from lmstudio_models import base_url, configured_model, loaded_models, select_model
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -91,23 +92,6 @@ def resolve_executor_model(config: dict, override: str | None = None) -> str | N
     if isinstance(entry, dict) and entry.get("modelID"):
         return entry["modelID"]
     return alias
-
-
-def first_lmstudio_model(base_url: str = LMSTUDIO_BASE) -> str | None:
-    """
-    Returns the first non-embedding model id from LM Studio's /v1/models, or None.
-
-    Never raises: connection and parsing errors return None.
-    """
-    try:
-        data = http_get_json(f"{base_url}/models")
-    except Exception:
-        return None
-    for model in data.get("data", []):
-        model_id = model.get("id", "")
-        if model_id and "embed" not in model_id.lower():
-            return model_id
-    return None
 
 
 # ── the demo fixture (brain side) ───────────────────────────────────
@@ -244,11 +228,11 @@ def build_parser() -> argparse.ArgumentParser:
         prog="pipeline_smoke.py",
         description="Offline smoke test of the brain -> executor flow via LM Studio.",
     )
-    parser.add_argument("--model", help="LM Studio model id (overrides opencode.jsonc)")
+    parser.add_argument("--model", help="already loaded LM Studio instance ID")
     parser.add_argument("--keep", action="store_true", help="keep the temp dir and print its path")
     return parser
 
-def run_smoke(workdir: Path, model: str) -> int:
+def run_smoke(workdir: Path, model: str, base: str = LMSTUDIO_BASE) -> int:
     app_dir = workdir / "app"
     tests_dir = workdir / "tests"
     app_dir.mkdir(parents=True, exist_ok=True)
@@ -264,7 +248,7 @@ def run_smoke(workdir: Path, model: str) -> int:
 
     print("Asking the executor...")
     try:
-        raw = executor_implement(skeleton, model)
+        raw = executor_implement(skeleton, model, base)
     except urllib.error.HTTPError as error:
         print(f"HTTP {error.code}: {error.read().decode('utf-8', 'replace')[:300]}")
         return 1
@@ -292,22 +276,21 @@ def main(argv=None) -> int:
     print("=" * 60)
 
     config = load_config()
-    model = resolve_executor_model(config, args.model)
-    if not model:
-        print("Executor model not resolved from opencode.jsonc; querying LM Studio...")
-        model = first_lmstudio_model()
-    if not model:
-        print("ERROR: no LM Studio model available. Is the server running and a model loaded?")
+    base = base_url(config)
+    try:
+        model = select_model(loaded_models(base), configured_model(config), args.model).id
+    except (ValueError, OSError) as error:
+        print(f"ERROR: {error}")
         return 1
     print(f"Model: {model}")
 
     if args.keep:
         workdir = Path(tempfile.mkdtemp(prefix="pipeline_smoke_"))
         print(f"Kept workdir: {workdir}")
-        return run_smoke(workdir, model)
+        return run_smoke(workdir, model, base)
 
     with tempfile.TemporaryDirectory(prefix="pipeline_smoke_") as name:
-        return run_smoke(Path(name), model)
+        return run_smoke(Path(name), model, base)
 
 if __name__ == "__main__":
     sys.exit(main())

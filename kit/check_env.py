@@ -5,13 +5,14 @@ check_env.py — agentic environment checker.
 Checks:
   1. Syntax of the opencode.jsonc config (JSON with comments).
   2. LM Studio API (http://127.0.0.1:1234/v1) online.
-  3. List of local models visible to LM Studio.
-  4. Test scenario for requesting the first generative model found.
+  3. Language model instances already loaded in LM Studio.
+  4. A trial request to one unambiguously selected loaded instance.
 
 Usage:
   python check_env.py
 """
 import json
+import argparse
 #regex we need for stripping comments and trailing commas from JSONC
 import re 
 # sys is used to reconfigure the console output encoding on Windows.
@@ -19,6 +20,11 @@ import sys
 import urllib.request
 import urllib.error
 from pathlib import Path
+
+try:
+    from .lmstudio_models import base_url, configured_model, loaded_models, select_model
+except ImportError:
+    from lmstudio_models import base_url, configured_model, loaded_models, select_model
 
 # Windows-console often works with cp1251 or cp866, which breaks UTF-8 output.
 try:
@@ -32,9 +38,6 @@ LMSTUDIO_BASE = "http://127.0.0.1:1234/v1"
 # opencode.jsonc lives in the project root, one level above kit/.
 # we store this script in kit/ so that it can be run from any working directory.
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "opencode.jsonc"
-
-# embedding models are for vectorization / rag, not for generation, so we skip them in the live test.
-EMBED_ONLY_SUBSTRINGS = ("embed", "embedding")
 
 # Matches either a JSON string (kept) or a comment (removed).
 # The string alternative comes first, so "//" inside a string is never a comment.
@@ -102,9 +105,9 @@ def http_post_json(url: str, payload: dict, timeout: float = 180):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def check_lmstudio() -> list:
-    """Step 2: To check if LM Studio server is online and list models.
-    Returns a list of model IDs visible to LM Studio
+def check_lmstudio(base: str = LMSTUDIO_BASE) -> list:
+    """Step 2: List already loaded language model instances.
+    Returns loaded instances from the native API
     or an empty list if the server is offline.
     """
 
@@ -113,11 +116,10 @@ def check_lmstudio() -> list:
     print("[2] LM Studio API")
     print("=" * 60)
     try:
-        data = http_get_json(f"{LMSTUDIO_BASE}/models")
-        models = [m["id"] for m in data.get("data", [])]
-        print(f" Server responds ({len(models)} models):")
+        models = loaded_models(base)
+        print(f" Server responds ({len(models)} loaded language model instances):")
         for m in models:
-            print(f"    - {m}")
+            print(f"    - {m.id}")
         return models
     except urllib.error.URLError as e:
         print(f"  No connection: {e}")
@@ -128,21 +130,19 @@ def check_lmstudio() -> list:
         return []
 
 
-#Main test: send a simple prompt to the first generative model found.
+# Main test: use an already loaded instance, never a downloaded-model fallback.
 #Returns True only when the model really answered.
-def live_test(models: list) -> bool:
+def live_test(models: list, preferred: str | None = None, explicit: str | None = None,
+              base: str = LMSTUDIO_BASE) -> bool:
     print()
     print("=" * 60)
     print("[3] Live generation test (chat/completions)")
     print("=" * 60)
-    # keep only models that are not embeddings
-    candidates = [m for m in models if not any(s in m.lower() for s in EMBED_ONLY_SUBSTRINGS)]
-
-    if not candidates:
-        print("  No generative models found — live test skipped.")
+    try:
+        target = select_model(models, preferred, explicit).id
+    except ValueError as error:
+        print(f"  {error}")
         return False
-    
-    target = candidates[0]
     print(f"  Model: {target}")
     payload = {
         "model": target,
@@ -152,7 +152,7 @@ def live_test(models: list) -> bool:
         "temperature": 0.0,
     }
     try:
-        resp = http_post_json(f"{LMSTUDIO_BASE}/chat/completions", payload)
+        resp = http_post_json(f"{base}/chat/completions", payload)
         content = resp["choices"][0]["message"]["content"].strip()
         finish = resp["choices"][0].get("finish_reason", "?")
         print(f"  Model answer: «{content}» (finish_reason={finish})")
@@ -166,12 +166,19 @@ def live_test(models: list) -> bool:
     return False
 
 
-def main():
+def main(argv=None):
     #Runs all checks in order and returns an exit code: 0 = ok, 1 = problems.
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--model', help='already loaded LM Studio instance ID')
+    args = parser.parse_args(argv)
     print("🧪 Checking agentic environment\n")
     ok_config = check_config()
-    models = check_lmstudio()
-    live_ok = live_test(models)
+    if not ok_config:
+        return 1
+    config = json.loads(strip_jsonc(CONFIG_PATH.read_text(encoding='utf-8')))
+    base = base_url(config)
+    models = check_lmstudio(base)
+    live_ok = live_test(models, configured_model(config), args.model, base)
     print()
     print("=" * 60)
     is_ready_to_use = ok_config and bool(models) and live_ok

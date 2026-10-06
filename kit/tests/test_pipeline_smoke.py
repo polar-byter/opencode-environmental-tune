@@ -15,6 +15,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pipeline_smoke
+from lmstudio_models import LoadedModel
 
 
 SAMPLE_CONFIG = {
@@ -98,11 +99,12 @@ class TestStripMarkdown(unittest.TestCase):
 class TestMainWorkdir(TempCase):
     def test_default_removes_workdir_even_on_error(self):
         created = []
-        def run(workdir, model):
+        def run(workdir, model, base):
             self.assertTrue(workdir.is_dir())
             created.append(workdir)
             raise RuntimeError('smoke failed')
         with patch.object(pipeline_smoke, 'load_config', return_value=SAMPLE_CONFIG), \
+             patch.object(pipeline_smoke, 'loaded_models', return_value=[LoadedModel('qwen3.8-27b-real-name', 'qwen3.8-27b-real-name', 'Qwen')]), \
              patch.object(pipeline_smoke, 'run_smoke', side_effect=run):
             with self.assertRaises(RuntimeError):
                 pipeline_smoke.main([])
@@ -112,10 +114,11 @@ class TestMainWorkdir(TempCase):
         workdir = self.root / 'kept'
         workdir.mkdir()
         with patch.object(pipeline_smoke, 'load_config', return_value=SAMPLE_CONFIG), \
+             patch.object(pipeline_smoke, 'loaded_models', return_value=[LoadedModel('qwen3.8-27b-real-name', 'qwen3.8-27b-real-name', 'Qwen')]), \
              patch.object(pipeline_smoke.tempfile, 'mkdtemp', return_value=str(workdir)), \
              patch.object(pipeline_smoke, 'run_smoke', return_value=1) as run:
             self.assertEqual(pipeline_smoke.main(['--keep']), 1)
-        run.assert_called_once_with(workdir, 'qwen3.8-27b-real-name')
+        run.assert_called_once_with(workdir, 'qwen3.8-27b-real-name', pipeline_smoke.LMSTUDIO_BASE)
         self.assertTrue(workdir.is_dir())
 
 

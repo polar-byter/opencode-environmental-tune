@@ -153,7 +153,13 @@ Other languages need their own command — see the table "Подключение
 
 ## 7. Step 5. Start OpenCode
 
-Open OpenCode **in the `task-api` folder** (where `opencode.jsonc` lives).
+Load the model in LM Studio with your preferred settings and start its server. In a terminal in the **`task-api` folder** (where `opencode.jsonc` lives), run:
+
+```powershell
+py kit/run_opencode.py
+```
+
+The launcher connects both executors to the already loaded instance and opens OpenCode. If several models are loaded, it uses the configured executor when unambiguous or asks for an instance ID. For an open desktop session, the brain can prepare the selection and reload the background service with `--prepare-only --reload`. Details: [loaded-model selection](LOCAL_MODELS.ru.md).
 
 Make sure everything is visible:
 - type `/` — you should see `/plan-project` and `/module`;

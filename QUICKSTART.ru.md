@@ -153,7 +153,13 @@ py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
 
 ## 7. Шаг 5. Запустить OpenCode
 
-Открой OpenCode **в папке `task-api`** (там, где лежит `opencode.jsonc`).
+Загрузи нужную модель в LM Studio с удобными тебе настройками и включи сервер. Затем в терминале **папки `task-api`** (там, где лежит `opencode.jsonc`) выполни:
+
+```powershell
+py kit/run_opencode.py
+```
+
+Скрипт подключит обоих исполнителей к уже загруженной модели и откроет OpenCode. При нескольких моделях он выберет загруженную модель из настройки `executor` или покажет, какой ID указать. Если OpenCode уже открыт, мозг может подготовить выбор и обновить настройки через `--prepare-only --reload`. Подробнее: [загруженная модель](LOCAL_MODELS.ru.md).
 
 Проверь, что всё видно:
 - набери `/` — должны быть команды `/plan-project` и `/module`;

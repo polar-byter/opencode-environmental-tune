@@ -58,6 +58,8 @@ Loop guards (defaults; set others at `start` with `--max-reworks`, `--max-no-res
 - Code, comments, and identifiers: English. Human-facing docs: Russian is fine.
 
 ## Kit utilities (independent of the project's language)
+Before using a local executor, select an already loaded LM Studio instance. Start OpenCode through `py kit/run_opencode.py`; for an existing desktop/background-service session run `py kit/run_opencode.py --prepare-only --reload` before the first executor call. A standalone session must have been started through the launcher; reloading the background service does not reload its private server. See LOCAL_MODELS.ru.md. Never load/unload a model or change its load settings automatically. If selection is ambiguous, show the loaded instance IDs and ask the user to choose; if none is loaded, ask them to load one. Both executor roles use the selected instance. Rerun preparation before a new task after the user changes the loaded model.
+
 These tools live in `kit/`. They belong to the kit, not to the project. They are written in
 Python, so they need Python on the machine whatever language the project uses.
 Run them from the project root with the Python launcher: `py` on Windows, `python3` on macOS and Linux.
