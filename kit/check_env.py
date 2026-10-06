@@ -54,34 +54,36 @@ def strip_jsonc(text: str) -> str:
 
 
 def check_config() -> bool:
-    """Step 1: is opencode.jsonc valid?"""
+    """Step 1: To see if is opencode.jsonc valid?"""
     print("=" * 60)
     print("[1] Checking opencode.jsonc")
     print("=" * 60)
     try:
-        raw = open(CONFIG_PATH, encoding="utf-8").read()
+        raw = CONFIG_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
         print(f"  File not found: {CONFIG_PATH}")
         return False
     try:
-        json.loads(strip_jsonc(raw))
-        print(f"  JSON is valid ({len(raw)} chars)")
-        data = json.loads(strip_jsonc(raw))
-        print(f"     model (brain):       {data.get('model', '—')}")
-        print(f"     default_agent:       {data.get('default_agent', '—')}")
-        lm = data.get("providers", {}).get("lmstudio", {})
-        print(f"     lmstudio.baseURL:    {lm.get('settings', {}).get('baseURL', 'default')}")
-        models = lm.get("models", {})
-        print(f"     local aliases:       {', '.join(models.keys()) if models else '— (dynamic discovery)'}")
-        agents = data.get("agents", {})
-        for name, cfg in agents.items():
-            model = cfg.get("model", "inherits session")
-            mode = cfg.get("mode", "primary")
-            print(f"     agent {name:14s}: mode={mode:<9s} model={model}")
-        return True
+        strip_json_data = strip_jsonc(raw)
+        result_config_data = json.loads(strip_json_data)
     except json.JSONDecodeError as e:
         print(f"  JSON error: {e}")
         return False
+    
+    print(f"     json data is valid; \r\n size: ({len(raw)} chars)")
+    print(f"     model (brain):       {result_config_data.get('model', '—')}")
+    print(f"     default_agent:       {result_config_data.get('default_agent', '—')}")
+    lm = result_config_data.get("providers", {}).get("lmstudio", {})
+    print(f"     lmstudio.baseURL:    {lm.get('settings', {}).get('baseURL', 'default')}")
+    models = lm.get("models", {})
+    print(f"     local aliases:       {', '.join(models.keys()) if models else '— (dynamic discovery)'}")
+    agents = result_config_data.get("agents", {})
+    for name, cfg in agents.items():
+        model = cfg.get("model", "inherits session")
+        mode = cfg.get("mode", "primary")
+        print(f"     agent {name:14s}: mode={mode:<9s} model={model}")
+    return True
+
 
 
 def http_get_json(url: str):
@@ -90,20 +92,22 @@ def http_get_json(url: str):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def http_post_json(url: str, payload: dict):
+def http_post_json(url: str, payload: dict, timeout: float = 180):
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=body, method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=180) as resp:
+    with urllib.request.urlopen(req, timeout = timeout) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
-"""
-    Returns a list of model IDs visible to LM Studio
-    or an empty list if the server is not reachable.
-"""   
+
 def check_lmstudio() -> list:
+    """Step 2: To check if LM Studio server is online and list models.
+    Returns a list of model IDs visible to LM Studio
+    or an empty list if the server is offline.
+    """
+
     print()
     print("=" * 60)
     print("[2] LM Studio API")
@@ -170,9 +174,10 @@ def main():
     live_ok = live_test(models)
     print()
     print("=" * 60)
-    summary = "ready for use" if (ok_config and models and live_ok) else "test failed"
+    is_ready_to_use = ok_config and bool(models) and live_ok
+    summary = "ready for use" if (is_ready_to_use) else "test failed"
     print(f"Result: {summary}")
-    return 0 if (ok_config and models and live_ok) else 1
+    return 0 if (is_ready_to_use) else 1
 
 if __name__ == "__main__":
     sys.exit(main())

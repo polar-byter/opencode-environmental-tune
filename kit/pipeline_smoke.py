@@ -2,7 +2,7 @@
 """
 pipeline_smoke.py — optional offline smoke test of the brain → executor → review flow.
 
-It does NOT use OpenCode. It talks to LM Studio directly, so you can check that the
+It doesn't use Open Code to talks to LM Studio directly, so you can check that the
 local executor model can implement a spec-commented skeleton.
 
 Flow:
@@ -30,12 +30,11 @@ import subprocess
 import sys
 import tempfile
 import urllib.error
-import urllib.request
 from pathlib import Path
 
 # Reuse the JSONC and HTTP helpers from check_env.py (shipped together).
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-from check_env import http_get_json, strip_jsonc  # noqa: E402
+from check_env import CONFIG_PATH, LMSTUDIO_BASE, http_get_json, http_post_json, strip_jsonc  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -43,9 +42,6 @@ try:
 except Exception:
     pass
 
-LMSTUDIO_BASE = "http://127.0.0.1:1234/v1"
-# opencode.jsonc lives in the project root, one level above kit/.
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "opencode.jsonc"
 REQUEST_TIMEOUT = 300
 
 
@@ -214,13 +210,7 @@ def executor_implement(skeleton: str, model: str, base_url: str = LMSTUDIO_BASE)
         "temperature": 0.0,
         "messages": [{"role": "user", "content": prompt}],
     }
-    request = urllib.request.Request(
-        f"{base_url}/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-        data = json.loads(response.read().decode("utf-8"))
+    data = http_post_json(f"{base_url}/chat/completions", payload, timeout=REQUEST_TIMEOUT)
     return data["choices"][0]["message"]["content"]
 
 
@@ -258,6 +248,42 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep", action="store_true", help="keep the temp dir and print its path")
     return parser
 
+def run_smoke(workdir: Path, model: str) -> int:
+    app_dir = workdir / "app"
+    tests_dir = workdir / "tests"
+    app_dir.mkdir(parents=True, exist_ok=True)
+    tests_dir.mkdir(parents=True, exist_ok=True)
+
+    skeleton = brain_skeleton_app()
+    (app_dir / "calculator.py").write_text(skeleton, encoding="utf-8")
+    (tests_dir / "test_calculator.py").write_text(brain_skeleton_tests(), encoding="utf-8")
+    print(f"Workdir: {workdir}")
+
+    ok_before, _ = run_tests(workdir)
+    print(f"Tests before implementation: {'green (unexpected)' if ok_before else 'red (expected)'}")
+
+    print("Asking the executor...")
+    try:
+        raw = executor_implement(skeleton, model)
+    except urllib.error.HTTPError as error:
+        print(f"HTTP {error.code}: {error.read().decode('utf-8', 'replace')[:300]}")
+        return 1
+    except Exception as error:  # noqa: BLE001
+        print(f"ERROR: {error}")
+        return 1
+
+    (app_dir / "calculator.py").write_text(strip_markdown(raw), encoding="utf-8")
+    ok_after, output = run_tests(workdir)
+    print("-" * 60)
+    print(output.strip() or "(no output)")
+    print("-" * 60)
+
+    if ok_after:
+        print("RESULT: green — the local executor implemented the spec correctly.")
+        return 0
+    print("RESULT: red — the executor needs a retry or the spec needs to be sharper.")
+    return 1
+
 
 def main(argv=None) -> int:
     """CLI entry point. Returns 0 when tests are green, 1 otherwise."""
@@ -275,53 +301,14 @@ def main(argv=None) -> int:
         return 1
     print(f"Model: {model}")
 
-    workdir = Path(tempfile.mkdtemp(prefix="pipeline_smoke_")) if args.keep else None
-    temp_ctx = None
-    if workdir is None:
-        temp_ctx = tempfile.TemporaryDirectory(prefix="pipeline_smoke_")
-        workdir = Path(temp_ctx.name)
-
-    try:
-        app_dir = workdir / "app"
-        tests_dir = workdir / "tests"
-        app_dir.mkdir(parents=True, exist_ok=True)
-        tests_dir.mkdir(parents=True, exist_ok=True)
-
-        skeleton = brain_skeleton_app()
-        (app_dir / "calculator.py").write_text(skeleton, encoding="utf-8")
-        (tests_dir / "test_calculator.py").write_text(brain_skeleton_tests(), encoding="utf-8")
-        print(f"Workdir: {workdir}")
-
-        ok_before, _ = run_tests(workdir)
-        print(f"Tests before implementation: {'green (unexpected)' if ok_before else 'red (expected)'}")
-
-        print("Asking the executor...")
-        try:
-            raw = executor_implement(skeleton, model)
-        except urllib.error.HTTPError as error:
-            print(f"HTTP {error.code}: {error.read().decode('utf-8', 'replace')[:300]}")
-            return 1
-        except Exception as error:  # noqa: BLE001
-            print(f"ERROR: {error}")
-            return 1
-
-        (app_dir / "calculator.py").write_text(strip_markdown(raw), encoding="utf-8")
-        ok_after, output = run_tests(workdir)
-        print("-" * 60)
-        print(output.strip() or "(no output)")
-        print("-" * 60)
-
-        if ok_after:
-            print("RESULT: green — the local executor implemented the spec correctly.")
-            return 0
-        print("RESULT: red — the executor needs a retry or the spec needs to be sharper.")
-        return 1
-    finally:
-        if temp_ctx is not None:
-            temp_ctx.cleanup()
-        else:
+    with tempfile.TemporaryDirectory(
+        prefix="pipeline_smoke_",
+        delete=not args.keep,
+    ) as name:
+        workdir = Path(name)
+        if args.keep:
             print(f"Kept workdir: {workdir}")
-
+        return run_smoke(workdir, model)
 
 if __name__ == "__main__":
     sys.exit(main())
