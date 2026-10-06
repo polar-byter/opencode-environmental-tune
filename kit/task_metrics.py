@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 from contextlib import contextmanager
-from html import parser
 import json
 import math
 import os
@@ -714,9 +713,11 @@ class TaskMetrics:
             raise ValueError('Export messages missing')
         return export
 
-    def api_children(self, executable: str, sid: str) -> set[str]:
-        """Read direct child sessions from the paginated session.list API."""
-        children, cursor, cursors = set(), None, set()
+    def api_children(self, executable: str, sid: str, children: set[str] | None = None) -> set[str]:
+        """Read child sessions, preserving discovered IDs in the supplied set on failure."""
+        if children is None:
+            children = set()
+        cursor, cursors = None, set()
         for _ in range(100):
             args = ['api', 'session.list', '--param', f'parentID={sid}', '--param', 'limit=100']
             if cursor:
@@ -752,7 +753,7 @@ class TaskMetrics:
                 export = self.export_session(executable, sid)
                 children = brain_tool_child_references(export)
                 try:
-                    children |= self.api_children(executable, sid)
+                    self.api_children(executable, sid, children)
                 except (ValueError, OSError, subprocess.TimeoutExpired) as error:
                     export['_metrics_warnings'] = [f'Поиск дочерних сессий неполон: {error}']
                 queue.extend(sorted(children - seen))
