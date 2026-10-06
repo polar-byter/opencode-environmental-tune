@@ -251,3 +251,7 @@ The brain starts the application and sends the requests. It must identify any ch
 ---
 
 After the one-time setup, describe your task and approve the plan. The brain manages module order, executors, checks, and statistics.
+
+## Executor verification after the first real run
+
+The brain delegates a small complete class by default and registers its allowed file and requirements before the call. Acceptance requires a recorded check for every requirement, green scoped tests and unchanged file boundaries, including untracked files. Run piece/module tests during implementation and the unfiltered full suite at task completion. One initial red baseline is excluded from the per-scope failure streak; build failures still count. Start metrics before environment setup. Registered attempts missing a review are shown in the report; actions outside the protocol cannot be detected automatically. The user does not run these steps manually.

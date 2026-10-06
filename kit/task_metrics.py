@@ -15,9 +15,13 @@ import sys
 import time
 import uuid
 import xml.etree.ElementTree as ET
+if __package__:
+    from .delegation_guard import compare, read_requirements, review_checks, snapshot, source_path
+else:
+    from delegation_guard import compare, read_requirements, review_checks, snapshot, source_path
 
 TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
-EVENT_KINDS = {'start', 'review', 'test', 'halt', 'resume', 'finish'}
+EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish'}
 WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
                               *(f'COM{n}' for n in range(1, 10)), *(f'LPT{n}' for n in range(1, 10))})
 
@@ -362,9 +366,15 @@ def limit_breach(events: list[dict], limits: dict) -> str | None:
     if no_result >= limits['max_no_result']:
         return (f'{no_result} test runs in a row gave no readable result (limit {limits["max_no_result"]}). '
                 f'The project does not build or the test tool is not set up.')
-    failed = trailing(tests, {CATEGORY_FAILED, CATEGORY_INCOMPLETE, CATEGORY_NO_RESULT, CATEGORY_TIMEOUT})
-    if failed >= limits['max_failed_runs']:
-        return f'{failed} test runs in a row were not green (limit {limits["max_failed_runs"]}).'
+    # A module's red tests must not accumulate with unrelated modules or the initial baseline.
+    for scope in sorted({e.get('scope', 'full') for e in tests}):
+        scoped = [e for e in tests if e.get('phase') != 'baseline' and
+                  (e.get('scope', 'full') == scope or
+                   (e.get('scope', 'full') == 'full' and e['status'] == 'passed'))]
+        failed = trailing(scoped, {CATEGORY_FAILED, CATEGORY_INCOMPLETE, CATEGORY_NO_RESULT, CATEGORY_TIMEOUT})
+        if failed >= limits['max_failed_runs']:
+            return (f'{failed} test runs in a row were not green in {scope} '
+                    f'(limit {limits["max_failed_runs"]}).')
     if len(tests) >= limits['max_runs']:
         return f'{len(tests)} test runs in this task (limit {limits["max_runs"]}).'
     return None
@@ -411,15 +421,26 @@ def build_parser() -> argparse.ArgumentParser:
     start = sub.add_parser('start')
     start.add_argument('--session')
     start.add_argument('--title')
+    start.add_argument('--track-delegations', action='store_true', help='require registered executor attempts for reviews')
     for name in DEFAULT_LIMITS:
         start.add_argument('--' + name.replace('_', '-'), type=int, dest=name,
                             help=f'loop guard, default {DEFAULT_LIMITS[name]}')
     review = sub.add_parser('review')
     review.add_argument('--piece', required=True)
     review.add_argument('--result', choices=['accepted', 'rework'], required=True)
+    review.add_argument('--checks', type=Path, help='JSON requirement/code/test checklist for acceptance')
+    delegation = sub.add_parser('delegate')
+    delegation.add_argument('--piece', required=True)
+    delegation.add_argument('--files', nargs='+', required=True)
+    delegation.add_argument('--scope', help='test scope; defaults to the piece name')
+    delegation.add_argument('--requirements', type=Path, required=True, help='JSON list frozen before the executor call')
+    inspect = sub.add_parser('inspect')
+    inspect.add_argument('--piece', required=True)
     resume = sub.add_parser('resume')
     resume.add_argument('--reason', required=True)
     test = sub.add_parser('test')
+    test.add_argument('--scope', default='full', help='piece/module name or full for the complete suite')
+    test.add_argument('--phase', choices=['work', 'baseline'], default='work')
     check = sub.add_parser('check')
     for command in (test, check):
         command.add_argument('--timeout', type=float, default=300)
@@ -429,7 +450,7 @@ def build_parser() -> argparse.ArgumentParser:
     finish = sub.add_parser('finish')
     finish.add_argument('--export', action='append', dest='exports')
     finish.add_argument('--opencode', default='opencode')
-    for command in (start, review, resume, test, finish):
+    for command in (start, delegation, inspect, review, resume, test, finish):
         command.add_argument('--task', required=True)
     return parser
 
@@ -501,7 +522,7 @@ class TaskMetrics:
         return event
 
     def start(self, task: str, session: str | None = None, title: str | None = None,
-              limits: dict | None = None) -> dict:
+              limits: dict | None = None, track_delegations: bool = False) -> dict:
         if session is not None:
             session_id(session)
         limits = dict(DEFAULT_LIMITS, **{k: v for k, v in (limits or {}).items() if v is not None})
@@ -511,7 +532,8 @@ class TaskMetrics:
         with self.lock(task):
             # session=session puts the value into append's **data as the "session" key;
             # session_id(session) above has already validated it.
-            return self.append(task, 'start', session=session, title=title or task, limits=limits)
+            return self.append(task, 'start', session=session, title=title or task, limits=limits,
+                               track_delegations=track_delegations)
 
     # check if the task is active (not finished) and return its events
     def active(self, task):
@@ -533,14 +555,98 @@ class TaskMetrics:
         reason = limit_breach(events, task_limits(events))
         return self.append(task, 'halt', reason=reason) if reason else None
 
-    # record a review for a task, ensuring the piece and result are valid
-    def review(self, task: str, piece: str, result: str) -> dict:
+    def delegate(self, task: str, piece: str, files: list[str], scope: str | None = None,
+                 requirements: Path | None = None) -> dict:
+        """Record an executor attempt and capture content before invoking the model."""
+        if not piece.strip() or not files or not (scope or piece).strip():
+            raise ValueError('Delegation needs a piece, files and a non-empty test scope')
+        allowed = sorted({source_path(self.root, name) for name in files})
+        if len(allowed) != 1:
+            raise ValueError('Delegate exactly one source file per executor attempt')
+        frozen = read_requirements(self.root / requirements) if requirements else []
+        with self.lock(task):
+            events = self.running(task)
+            if events[0].get('track_delegations') and not frozen:
+                raise ValueError('Tracked delegation requires a requirements file')
+            closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
+            if any(e['kind'] == 'delegation' and e['event_id'] not in closed for e in events):
+                raise ValueError('Review the pending delegation before starting another')
+            before = snapshot(self.root)
+            filename = 'before-' + uuid.uuid4().hex + '.json'
+            (self.task_dir(task) / filename).write_text(json.dumps(before), encoding='utf-8')
+            return self.append(task, 'delegation', piece=piece.strip(), files=allowed,
+                               scope=(scope or piece).strip(), snapshot=filename, requirements=frozen)
+
+    def inspect(self, task: str, piece: str) -> dict:
+        """Freeze executor edits immediately on return, before the brain adds tests or updates the plan."""
+        with self.lock(task):
+            events = self.running(task)
+            closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
+            attempts = [e for e in events if e['kind'] == 'delegation' and e['event_id'] not in closed]
+            if not attempts or attempts[-1]['piece'] != piece:
+                raise ValueError('Inspect must match the pending delegated piece')
+            attempt = attempts[-1]
+            if any(e['kind'] == 'inspection' and e['delegation_id'] == attempt['event_id'] for e in events):
+                raise ValueError('Executor edits already inspected; do not overwrite the evidence')
+            before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
+            after = snapshot(self.root)
+            changes = compare(before, after, attempt['files'])
+            filename = 'after-' + uuid.uuid4().hex + '.json'
+            (self.task_dir(task) / filename).write_text(json.dumps(after), encoding='utf-8')
+            return self.append(task, 'inspection', delegation_id=attempt['event_id'], piece=piece,
+                               snapshot=filename, **changes)
+
+    def review(self, task: str, piece: str, result: str, checks: Path | None = None) -> dict:
         piece = piece.strip()
         if not piece or result not in {'accepted', 'rework'}:
             raise ValueError('Review requires a piece and accepted/rework result')
         with self.lock(task):
             events = self.running(task)
-            event = self.append(task, 'review', piece=piece, result=result)
+            closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
+            pending = [e for e in events if e['kind'] == 'delegation' and e['event_id'] not in closed]
+            evidence = {}
+            if events[0].get('track_delegations') and not pending:
+                raise ValueError('Register the executor attempt with delegate before reviewing')
+            if pending:
+                attempt = pending[-1]
+                if attempt['piece'] != piece:
+                    raise ValueError('Review must match the pending delegated piece')
+                before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
+                after = snapshot(self.root)
+                inspections = [e for e in events if e['kind'] == 'inspection' and
+                               e['delegation_id'] == attempt['event_id']]
+                changes = compare(before, after, attempt['files'])
+                if inspections:
+                    inspected = inspections[-1]
+                    changes = {k: inspected[k] for k in ('changed', 'unexpected')}
+                    frozen = json.loads((self.task_dir(task) / inspected['snapshot']).read_text(encoding='utf-8'))
+                    subsequent = compare(frozen, after, [])['changed']
+                    changes['reviewer_changes'] = subsequent
+                    if result == 'accepted' and any(p in attempt['files'] for p in subsequent):
+                        raise ValueError('Delegated source changed after inspection; register a fresh attempt')
+                elif result == 'accepted' and events[0].get('track_delegations'):
+                    raise ValueError('Run inspect immediately after the executor returns, before reviewer edits')
+                evidence = dict(delegation_id=attempt['event_id'], **changes)
+                if result == 'accepted':
+                    if changes['unexpected']:
+                        raise ValueError('Executor changed unexpected files: ' + ', '.join(changes['unexpected']))
+                    if checks is None:
+                        raise ValueError('Acceptance needs --checks with requirement/code/test evidence')
+                    evidence['checks'] = review_checks(self.root / checks)
+                    if attempt.get('requirements') and (
+                            len(evidence['checks']) != len(attempt['requirements']) or
+                            {c['requirement'] for c in evidence['checks']} != set(attempt['requirements'])):
+                        raise ValueError('Review checks must cover every frozen requirement exactly once')
+                    anchor = inspections[-1] if inspections else attempt
+                    runs = [e for e in events[events.index(anchor) + 1:] if e['kind'] == 'test'
+                            and e.get('phase') != 'baseline'
+                            and e.get('scope', 'full') in {attempt['scope'], 'full'}]
+                    if not runs or runs[-1]['status'] != 'passed':
+                        raise ValueError('Acceptance needs a green test run for this scope after delegation')
+                    tested = json.loads((self.task_dir(task) / runs[-1]['snapshot']).read_text(encoding='utf-8'))
+                    if compare(tested, after, [])['changed']:
+                        raise ValueError('Project files changed since the green test; rerun tests before acceptance')
+            event = self.append(task, 'review', piece=piece, result=result, **evidence)
             halt = self.guard(task, events + [event])
             return dict(event, halt=halt['reason']) if halt else event
 
@@ -603,18 +709,31 @@ class TaskMetrics:
 
     # run a test command for a task, capturing its output and return code, and optionally parsing JUnit XML reports
     def test(self, task: str, command: list[str], timeout: float = 300, junit: str | None = None,
-             junit_dir: str | None = None) -> dict:
+             junit_dir: str | None = None, scope: str = 'full', phase: str = 'work') -> dict:
+        if not scope.strip() or phase not in {'work', 'baseline'}:
+            raise ValueError('Provide a non-empty scope and work/baseline phase')
+        scope = scope.strip()
         xml, folder = self.report_source(junit, junit_dir)
         with self.lock(task):
             events = self.running(task)
+            if phase == 'baseline' and any(
+                    (e['kind'] == 'delegation' and e.get('scope') == scope) or
+                    (e['kind'] == 'test' and e.get('scope', 'full') == scope) for e in events):
+                raise ValueError('Baseline is allowed only once per scope, before its delegations and tests')
+            evidence = {}
+            closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
+            if any(e['kind'] == 'delegation' and e['event_id'] not in closed for e in events):
+                filename = 'tested-' + uuid.uuid4().hex + '.json'
+                (self.task_dir(task) / filename).write_text(json.dumps(snapshot(self.root)), encoding='utf-8')
+                evidence['snapshot'] = filename
             started = time.monotonic()
             output, code, parsed, category = self.execute(command, timeout, xml, folder)
             log = 'test-' + uuid.uuid4().hex + '.log'
             (self.task_dir(task) / log).write_text(output, encoding='utf-8')
             hints = diagnose(output, code, parsed, category, bool(xml or folder))
-            event = self.append(task, 'test', command=command, returncode=code, log=log,
+            event = self.append(task, 'test', command=command, returncode=code, log=log, scope=scope, phase=phase,
                                 duration_seconds=time.monotonic()-started, category=category,
-                                **({'hints': hints} if hints else {}), **parsed)
+                                 **({'hints': hints} if hints else {}), **evidence, **parsed)
             halt = self.guard(task, events + [event])
             return dict(event, halt=halt['reason']) if halt else event
 
@@ -789,9 +908,26 @@ class TaskMetrics:
                 lines.append('| ' + label(row['provider']+'/'+row['model']) + ' | ' +
                              ' | '.join(count(row[f]) for f in TOKEN_FIELDS) + ' |')
             lines.append('')
+        work_tests = [e for e in tests if e.get('phase') != 'baseline']
         lines += [f'🔁 Возвраты на переделку: **{sum(e["result"] == "rework" for e in reviews)}** '
                   f'· Всего ревью: **{len(reviews)}**', '',
-                  f'🧪 Полностью успешные прогоны: **{sum(e["status"] == "passed" for e in tests)} из {len(tests)}**', '']
+                  f'🧪 Полностью успешные прогоны: **{sum(e["status"] == "passed" for e in work_tests)} из {len(work_tests)}**', '']
+        if len(work_tests) != len(tests):
+            lines += [f'Начальные проверки до реализации (baseline): **{len(tests) - len(work_tests)}**; '
+                      'в рабочие успешные прогоны не входят.', '']
+        full = [e for e in tests if e.get('scope', 'full') == 'full' and e.get('phase') != 'baseline']
+        lines += [f'Полный набор тестов: **{sum(e["status"] == "passed" for e in full)} из {len(full)}**. '
+                  'Остальные прогоны могут проверять отдельный класс или модуль.', '']
+        attempts = [e for e in events if e['kind'] == 'delegation']
+        if attempts or events[0].get('track_delegations'):
+            closed = {e.get('delegation_id') for e in reviews}
+            pending = [e['piece'] for e in attempts if e['event_id'] not in closed]
+            lines += [f'Заданий исполнителю зарегистрировано: **{len(attempts)}** · без записанного ревью: '
+                      f'**{len(pending)}**.', '']
+            if pending:
+                lines += ['⚠️ Не завершено ревью: ' + ', '.join(label(p) for p in pending) + '.', '']
+        if not full or full[-1]['status'] != 'passed':
+            lines += ['⚠️ Последний полный прогон не зелёный или отсутствует; готовность всей задачи не подтверждена.', '']
         no_result = [e for e in tests if e.get('category') in {CATEGORY_NO_RESULT, CATEGORY_TIMEOUT}]
         if no_result:
             lines += [f'⚙️ Прогоны без результата (сборка, окружение или зависание): **{len(no_result)}**. '
@@ -811,7 +947,9 @@ class TaskMetrics:
                       f'пропусков: {count(last["skipped"])}.', '']
         else:
             lines += ['Тесты через утилиту не запускались; успешность не подтверждена.', '']
-        lines += ['Все `lmstudio` — локальные без платы за API; остальные провайдеры считаются платными по умолчанию.',
+        lines += ['Время измеряется от `start` до `finish`; работа до старта не учтена.',
+                  'Ревью и задания учитываются по журналу; незарегистрированные действия обнаружить нельзя.',
+                  'Все `lmstudio` — локальные без платы за API; остальные провайдеры считаются платными по умолчанию.',
                   'Токены рассуждений и кэша показаны отдельно, без сложения пересекающихся счётчиков.',
                   'Срез сделан перед итоговым ответом: его токены не включены. Стоимость и экономия не оценивались.', '']
         if usage['warnings']:
@@ -860,9 +998,13 @@ def main(argv=None) -> int:
     try:
         if args.action == 'start':
             limits = {name: getattr(args, name) for name in DEFAULT_LIMITS}
-            event = metrics.start(args.task, args.session, args.title, limits)
+            event = metrics.start(args.task, args.session, args.title, limits, args.track_delegations)
         elif args.action == 'review':
-            event = metrics.review(args.task, args.piece, args.result)
+            event = metrics.review(args.task, args.piece, args.result, args.checks)
+        elif args.action == 'delegate':
+            event = metrics.delegate(args.task, args.piece, args.files, args.scope, args.requirements)
+        elif args.action == 'inspect':
+            event = metrics.inspect(args.task, args.piece)
         elif args.action == 'resume':
             event = metrics.resume(args.task, args.reason)
         elif args.action == 'finish':
@@ -882,11 +1024,15 @@ def main(argv=None) -> int:
             return EXIT_NO_RESULT
         else:
             command = args.command[1:] if args.command[:1] == ['--'] else args.command
-            event = metrics.test(args.task, command, args.timeout, args.junit, args.junit_dir)
+            event = metrics.test(args.task, command, args.timeout, args.junit, args.junit_dir, args.scope, args.phase)
             print((metrics.task_dir(args.task)/event['log']).read_text(encoding='utf-8'))
             print(json.dumps(event, ensure_ascii=False))
             return report_test(event, args.task)
         print(json.dumps(event, ensure_ascii=False))
+        if args.action == 'inspect' and event['unexpected']:
+            print('UNEXPECTED EDITS: record rework and inspect these files: ' +
+                  ', '.join(event['unexpected']), file=sys.stderr)
+            return EXIT_TESTS_FAILED
         if event.get('halt'):
             print_stop(event['halt'], args.task)
             return EXIT_STOP
