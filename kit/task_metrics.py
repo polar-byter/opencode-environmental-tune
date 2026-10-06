@@ -557,17 +557,21 @@ class TaskMetrics:
 
     def delegate(self, task: str, piece: str, files: list[str], scope: str | None = None,
                  requirements: Path | None = None) -> dict:
-        """We need to log each executor attempt: piece, allowed file, requirements and test scope.
+
+        """Log one executor attempt and save pre-execution file hashes.
+
+        piece names the task; files must identify one unique allowed file.
+        scope names the test scope and defaults to piece.
         Each retry after review is a new attempt.
-        piece means the executor's task, files are the source files the executor may change, scope is the test scope
         """
-        # because files is a list of allowed source files, it must not be empty; scope defaults to piece if not given
+        # Require a piece name, file list and non-blank effective test scope.
         if not piece.strip() or not files or not (scope or piece).strip():
             raise ValueError('Delegation needs a piece, files and a non-empty test scope')
 
-        # Validate that each file is a source file under the project root, and that exactly one source file is delegated.
+        # Validate paths and remove duplicate file names.
         allowed = sorted({source_path(self.root, name) for name in files})
-       
+
+        # Allow exactly one unique file per attempt.
         if len(allowed) != 1:
             raise ValueError('Delegate exactly one source file per executor attempt')
         frozen = read_requirements(self.root / requirements) if requirements else []
@@ -575,8 +579,7 @@ class TaskMetrics:
             events = self.running(task)
             if events[0].get('track_delegations') and not frozen:
                 raise ValueError('Tracked delegation requires a requirements file')
-            # gather all closed delegations (those that have a review) and check if there are any open delegations
-            # we need ids of closed delegations to check if any open delegation exists
+            # Both accepted and rework reviews close an attempt.
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             if any(e['kind'] == 'delegation' and e['event_id'] not in closed for e in events):
                 raise ValueError('Review the pending delegation before starting another')
@@ -587,7 +590,10 @@ class TaskMetrics:
                                scope=(scope or piece).strip(), snapshot=filename, requirements=frozen)
 
     def inspect(self, task: str, piece: str) -> dict:
-        """Freeze executor edits immediately on return, before the brain adds tests or updates the plan."""
+        """Save file changes for the pending attempt; refuse a second inspection.
+
+        The brain must call this after the executor returns, before its own edits.
+        """
         with self.lock(task):
             events = self.running(task)
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
@@ -606,11 +612,12 @@ class TaskMetrics:
                                snapshot=filename, **changes)
 
     def review(self, task: str, piece: str, result: str, checks: Path | None = None) -> dict:
-        """it calls the brain's review function to accept or send back a piece to the executor. 
-        It checks that the review matches the last pending delegation and that the project files 
-        have not changed unexpectedly since the executor returned. 
-        If accepted, it also checks that all requirements are covered by the provided checks and that a green test
-        run has occurred after delegation."""
+        """Record the brain's accepted/rework decision and check acceptance evidence.
+
+        Acceptance requires allowed edits, matching requirement checks and a green
+        scoped/full run on unchanged files. This method does not call the brain,
+        review source code or run tests. Legacy tasks may have no delegation.
+        """
 
         piece = piece.strip()
         if not piece or result not in {'accepted', 'rework'}:

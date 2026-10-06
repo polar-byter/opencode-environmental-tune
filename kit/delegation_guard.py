@@ -22,7 +22,10 @@ def source_path(root: Path, name: str) -> str:
 
 
 def snapshot(root: Path) -> dict[str, str]:
-    """Hash all non-generated files, regardless of Git tracking or ignore rules. We need to detect any user changes, even if they are in Git-ignored files, so we can prevent accidental overwrites."""
+    """Hash files outside excluded directories, regardless of Git ignore rules.
+
+    These hashes allow later comparison; they do not prevent or restore edits.
+    """
     files = {}
     for current, dirs, names in os.walk(root, followlinks=False):
         dirs[:] = sorted(d for d in dirs if d not in GENERATED)
@@ -57,7 +60,7 @@ def review_checks(path: Path) -> list[dict]:
 
 
 def read_requirements(path: Path) -> list[str]:
-    """Freeze the requirements before delegation so review cannot silently omit one."""
+    """Read and validate unique, non-blank requirements; delegate saves them."""
     import json
     items = json.loads(path.read_text(encoding='utf-8'))
     if (not isinstance(items, list) or not items or
