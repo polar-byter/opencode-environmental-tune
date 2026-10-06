@@ -301,14 +301,13 @@ def main(argv=None) -> int:
         return 1
     print(f"Model: {model}")
 
-    with tempfile.TemporaryDirectory(
-        prefix="pipeline_smoke_",
-        delete=not args.keep,
-    ) as name:
-        workdir = Path(name)
-        if args.keep:
-            print(f"Kept workdir: {workdir}")
+    if args.keep:
+        workdir = Path(tempfile.mkdtemp(prefix="pipeline_smoke_"))
+        print(f"Kept workdir: {workdir}")
         return run_smoke(workdir, model)
+
+    with tempfile.TemporaryDirectory(prefix="pipeline_smoke_") as name:
+        return run_smoke(Path(name), model)
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -92,6 +93,30 @@ class TestStripMarkdown(unittest.TestCase):
     def test_removes_bare_fence(self):
         raw = "```\ncode\n```"
         self.assertEqual(pipeline_smoke.strip_markdown(raw), "code")
+
+
+class TestMainWorkdir(TempCase):
+    def test_default_removes_workdir_even_on_error(self):
+        created = []
+        def run(workdir, model):
+            self.assertTrue(workdir.is_dir())
+            created.append(workdir)
+            raise RuntimeError('smoke failed')
+        with patch.object(pipeline_smoke, 'load_config', return_value=SAMPLE_CONFIG), \
+             patch.object(pipeline_smoke, 'run_smoke', side_effect=run):
+            with self.assertRaises(RuntimeError):
+                pipeline_smoke.main([])
+        self.assertFalse(created[0].exists())
+
+    def test_keep_preserves_workdir(self):
+        workdir = self.root / 'kept'
+        workdir.mkdir()
+        with patch.object(pipeline_smoke, 'load_config', return_value=SAMPLE_CONFIG), \
+             patch.object(pipeline_smoke.tempfile, 'mkdtemp', return_value=str(workdir)), \
+             patch.object(pipeline_smoke, 'run_smoke', return_value=1) as run:
+            self.assertEqual(pipeline_smoke.main(['--keep']), 1)
+        run.assert_called_once_with(workdir, 'qwen3.8-27b-real-name')
+        self.assertTrue(workdir.is_dir())
 
 
 class TestSkeletons(unittest.TestCase):

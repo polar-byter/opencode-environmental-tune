@@ -1,5 +1,6 @@
 """Behavior tests for task metrics. All usage exports are synthetic fixtures."""
 import json
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -203,6 +204,25 @@ class MetricsCase(unittest.TestCase):
         with patch.object(self.metrics, 'cli_json', side_effect=fetch):
             result = self.metrics.collect_exports('s1', 'fake-cli')
         self.assertEqual({e['info']['id'] for e in result}, {'s1','s2','s3'})
+
+    def test_collect_keeps_children_when_later_page_fails(self):
+        for error in (ValueError('bad page'), OSError('offline'), subprocess.TimeoutExpired('cli', 30)):
+            with self.subTest(error=type(error).__name__):
+                def fetch(executable, args):
+                    if args[:2] == ['session', 'export']:
+                        sid = args[-1]
+                        return export(sid, 's1' if sid != 's1' else None)
+                    if 'parentID=s2' in args:
+                        return {'data': [], 'cursor': {'next': None}}
+                    if 'cursor=next-page' in args:
+                        raise error
+                    return {'data': [{'id': 's2', 'parentID': 's1'}], 'cursor': {'next': 'next-page'}}
+                with patch.object(self.metrics, 'cli_json', side_effect=fetch):
+                    result = self.metrics.collect_exports('s1', 'fake-cli')
+                self.assertEqual({item['info']['id'] for item in result}, {'s1', 's2'})
+                self.assertIn(str(error), result[0]['_metrics_warnings'][0])
+                usage = self.metrics.parse_exports(result, 's1', 1, 3)
+                self.assertEqual(usage['models'][0]['input'], 20)
 
     def test_multiple_test_summaries_not_accepted(self):
         output = 'Ran 1 test in 0.1s\nFAILED (errors=1)\nRan 1 test in 0.1s\nOK\n'
