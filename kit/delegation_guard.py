@@ -22,7 +22,7 @@ def source_path(root: Path, name: str) -> str:
 
 
 def snapshot(root: Path) -> dict[str, str]:
-    """Hash all non-generated files, regardless of Git tracking or ignore rules."""
+    """Hash all non-generated files, regardless of Git tracking or ignore rules. We need to detect any user changes, even if they are in Git-ignored files, so we can prevent accidental overwrites."""
     files = {}
     for current, dirs, names in os.walk(root, followlinks=False):
         dirs[:] = sorted(d for d in dirs if d not in GENERATED)

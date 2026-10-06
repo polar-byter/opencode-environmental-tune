@@ -557,10 +557,17 @@ class TaskMetrics:
 
     def delegate(self, task: str, piece: str, files: list[str], scope: str | None = None,
                  requirements: Path | None = None) -> dict:
-        """Record an executor attempt and capture content before invoking the model."""
+        """We need to log each executor attempt: piece, allowed file, requirements and test scope.
+        Each retry after review is a new attempt.
+        piece means the executor's task, files are the source files the executor may change, scope is the test scope
+        """
+        # because files is a list of allowed source files, it must not be empty; scope defaults to piece if not given
         if not piece.strip() or not files or not (scope or piece).strip():
             raise ValueError('Delegation needs a piece, files and a non-empty test scope')
+
+        # Validate that each file is a source file under the project root, and that exactly one source file is delegated.
         allowed = sorted({source_path(self.root, name) for name in files})
+       
         if len(allowed) != 1:
             raise ValueError('Delegate exactly one source file per executor attempt')
         frozen = read_requirements(self.root / requirements) if requirements else []
@@ -568,6 +575,8 @@ class TaskMetrics:
             events = self.running(task)
             if events[0].get('track_delegations') and not frozen:
                 raise ValueError('Tracked delegation requires a requirements file')
+            # gather all closed delegations (those that have a review) and check if there are any open delegations
+            # we need ids of closed delegations to check if any open delegation exists
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             if any(e['kind'] == 'delegation' and e['event_id'] not in closed for e in events):
                 raise ValueError('Review the pending delegation before starting another')
@@ -597,25 +606,38 @@ class TaskMetrics:
                                snapshot=filename, **changes)
 
     def review(self, task: str, piece: str, result: str, checks: Path | None = None) -> dict:
+        """it calls the brain's review function to accept or send back a piece to the executor. 
+        It checks that the review matches the last pending delegation and that the project files 
+        have not changed unexpectedly since the executor returned. 
+        If accepted, it also checks that all requirements are covered by the provided checks and that a green test
+        run has occurred after delegation."""
+
         piece = piece.strip()
         if not piece or result not in {'accepted', 'rework'}:
             raise ValueError('Review requires a piece and accepted/rework result')
+        
         with self.lock(task):
             events = self.running(task)
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
+            # pending delegations are those that have not been reviewed yet; we need to find the last one for this piece
             pending = [e for e in events if e['kind'] == 'delegation' and e['event_id'] not in closed]
             evidence = {}
+            # if the task is tracking delegations, we must have a pending delegation to review; otherwise, raise an error
             if events[0].get('track_delegations') and not pending:
                 raise ValueError('Register the executor attempt with delegate before reviewing')
+            
             if pending:
                 attempt = pending[-1]
                 if attempt['piece'] != piece:
                     raise ValueError('Review must match the pending delegated piece')
+                
                 before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
                 after = snapshot(self.root)
                 inspections = [e for e in events if e['kind'] == 'inspection' and
                                e['delegation_id'] == attempt['event_id']]
+                # compare function may create unexpected changes if the executor changed files that were not allowed; we need to check for that
                 changes = compare(before, after, attempt['files'])
+
                 if inspections:
                     inspected = inspections[-1]
                     changes = {k: inspected[k] for k in ('changed', 'unexpected')}
@@ -624,28 +646,38 @@ class TaskMetrics:
                     changes['reviewer_changes'] = subsequent
                     if result == 'accepted' and any(p in attempt['files'] for p in subsequent):
                         raise ValueError('Delegated source changed after inspection; register a fresh attempt')
+                    
                 elif result == 'accepted' and events[0].get('track_delegations'):
                     raise ValueError('Run inspect immediately after the executor returns, before reviewer edits')
+                
                 evidence = dict(delegation_id=attempt['event_id'], **changes)
+
                 if result == 'accepted':
                     if changes['unexpected']:
                         raise ValueError('Executor changed unexpected files: ' + ', '.join(changes['unexpected']))
+                    # check that the review checks cover every frozen requirement exactly once
                     if checks is None:
                         raise ValueError('Acceptance needs --checks with requirement/code/test evidence')
                     evidence['checks'] = review_checks(self.root / checks)
+                    # validate that the review checks cover every frozen requirement exactly once
                     if attempt.get('requirements') and (
                             len(evidence['checks']) != len(attempt['requirements']) or
                             {c['requirement'] for c in evidence['checks']} != set(attempt['requirements'])):
                         raise ValueError('Review checks must cover every frozen requirement exactly once')
                     anchor = inspections[-1] if inspections else attempt
+
+                    # find all test runs after the delegation (or inspection) for this scope, ignoring baseline runs
                     runs = [e for e in events[events.index(anchor) + 1:] if e['kind'] == 'test'
                             and e.get('phase') != 'baseline'
                             and e.get('scope', 'full') in {attempt['scope'], 'full'}]
+                    # check that the last test run after delegation was green; if not, the tests must be rerun before acceptance
                     if not runs or runs[-1]['status'] != 'passed':
                         raise ValueError('Acceptance needs a green test run for this scope after delegation')
+                    # check that the project files have not changed since the last green test run; if they have, the tests must be rerun before acceptance
                     tested = json.loads((self.task_dir(task) / runs[-1]['snapshot']).read_text(encoding='utf-8'))
                     if compare(tested, after, [])['changed']:
                         raise ValueError('Project files changed since the green test; rerun tests before acceptance')
+                    
             event = self.append(task, 'review', piece=piece, result=result, **evidence)
             halt = self.guard(task, events + [event])
             return dict(event, halt=halt['reason']) if halt else event
