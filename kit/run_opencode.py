@@ -87,8 +87,13 @@ def main(argv=None) -> int:
         arguments = args.arguments[1:] if args.arguments[:1] == ['--'] else args.arguments
         if arguments[:1] == ['run'] and not any(a == '--standalone' or a == '--server' or a.startswith('--server=') for a in arguments):
             arguments = ['run', '--standalone', *arguments[1:]]
+        # Expose launch facts to the agent so a private session does not reload another server.
+        environment = os.environ.copy()
+        environment['OPENCODE_KIT_ROOT'] = str(root.resolve())
+        environment['OPENCODE_KIT_INSTANCE'] = model.id
+        environment['OPENCODE_KIT_SERVER_MODE'] = 'standalone' if '--standalone' in arguments else 'shared'
         # Pass an argument list directly to the native CLI, without a shell.
-        return subprocess.call([executable, *arguments], cwd=root)
+        return subprocess.call([executable, *arguments], cwd=root, env=environment)
     except (ValueError, OSError) as error:
         print(f'ERROR: {error}', file=sys.stderr)
         return 1

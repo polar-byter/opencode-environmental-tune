@@ -139,7 +139,13 @@ class Launch(unittest.TestCase):
              patch.object(launcher, 'loaded_models', return_value=[A]), \
              patch.object(launcher.subprocess, 'call', return_value=7) as run:
             self.assertEqual(launcher.main(['--', *args]), 7)
-        run.assert_called_once_with(['opencode.exe', *args], cwd=self.root)
+        self.assertEqual(run.call_args.args, (['opencode.exe', *args],))
+        self.assertEqual(run.call_args.kwargs['cwd'], self.root)
+        environment = run.call_args.kwargs['env']
+        self.assertEqual(environment['OPENCODE_KIT_ROOT'], str(self.root.resolve()))
+        self.assertEqual(environment['OPENCODE_KIT_INSTANCE'], A.id)
+        self.assertEqual(environment['OPENCODE_KIT_SERVER_MODE'], 'standalone')
+        self.assertNotIn('shell', run.call_args.kwargs)
 
     def test_run_uses_fresh_private_server_by_default(self):
         with patch.object(launcher.Path, 'cwd', return_value=self.root), \
@@ -147,7 +153,20 @@ class Launch(unittest.TestCase):
              patch.object(launcher, 'loaded_models', return_value=[A]), \
              patch.object(launcher.subprocess, 'call', return_value=0) as run:
             self.assertEqual(launcher.main(['--', 'run', 'hello']), 0)
-        run.assert_called_once_with(['opencode.exe', 'run', '--standalone', 'hello'], cwd=self.root)
+        self.assertEqual(run.call_args.args, (['opencode.exe', 'run', '--standalone', 'hello'],))
+        self.assertEqual(run.call_args.kwargs['env']['OPENCODE_KIT_SERVER_MODE'], 'standalone')
+
+    def test_explicit_server_is_not_claimed_as_a_prepared_private_server(self):
+        with patch.object(launcher.Path, 'cwd', return_value=self.root), \
+             patch.object(launcher, 'find_opencode', return_value='opencode.exe'), \
+             patch.object(launcher, 'loaded_models', return_value=[A]), \
+             patch.dict(launcher.os.environ, {'OPENCODE_KIT_SERVER_MODE': 'standalone', 'TASK_TEST_ENV': 'preserved'}), \
+             patch.object(launcher.subprocess, 'call', return_value=0) as run:
+            self.assertEqual(launcher.main(['--', 'run', '--server', 'http://localhost:9999', 'hello']), 0)
+        self.assertEqual(run.call_args.args, (['opencode.exe', 'run', '--server', 'http://localhost:9999', 'hello'],))
+        environment = run.call_args.kwargs['env']
+        self.assertEqual(environment['OPENCODE_KIT_SERVER_MODE'], 'shared')
+        self.assertEqual(environment['TASK_TEST_ENV'], 'preserved')
 
     def test_desktop_reload_updates_config_without_running_a_task(self):
         with patch.object(launcher.Path, 'cwd', return_value=self.root), \

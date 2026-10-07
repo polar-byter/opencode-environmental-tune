@@ -7,6 +7,13 @@
 ## Build pipeline (mandatory)
 The brain writes the blueprint; the executor only pours concrete.
 
+### Task intake
+- Read `TASK.md` in the project root if it exists. It describes the requested product and acceptance criteria, not the implementation plan. The user's current request takes precedence.
+- Create the architecture and dependency plan yourself. Do not require the user to name files, modules or executor calls.
+- If the user authorizes the whole task and autonomous implementation, write the plan and proceed within that scope. Ask for plan approval only when it is still required by the user's request or a material unresolved decision.
+- Keep temporary scripts, logs and review evidence in `.metrics/`; keep application source and tests in the project directories.
+- Local implementation requires the selected LM Studio executor. If it is unavailable, report the blocker and leave the task unfinished. Do not implement bodies in the brain or substitute a paid executor.
+
 ### Brain (primary agent)
 1. Skeleton first: create the module with classes, functions, signatures, and every import the bodies will need (the executor may not add imports).
 2. Spec comments: inside every function write a detailed spec — what it does, what it returns, edge cases.
@@ -43,7 +50,7 @@ Loop guards (defaults; set others at `start` with `--max-reworks`, `--max-no-res
 - No shell. Report briefly: what changed, what is left.
 
 ## Complex projects (many modules)
-1. Plan first: split the task into modules and write the checklist to the work plan resolved below. No code before the plan is approved.
+1. Plan first: split the task into modules and write the checklist to the work plan resolved below. Resolve approval as described in Task intake before writing code.
 2. Interfaces first: for each module list its public functions/classes and its dependencies. Modules must fit together.
 3. One module at a time: skeleton → requirement and edge-case tests → baseline → delegate small complete classes → evidence-based review → green module tests → mark done. Do not write all future modules' tests up front and run them after every trivial edit.
 4. Track progress in that work plan (`- [ ]` / `- [x]`). Read it at session start, update it after each module.
@@ -58,7 +65,7 @@ Loop guards (defaults; set others at `start` with `--max-reworks`, `--max-no-res
 - Code, comments, and identifiers: English. Human-facing docs: Russian is fine.
 
 ## Kit utilities (independent of the project's language)
-Before using a local executor, select an already loaded LM Studio instance. Start OpenCode through `py kit/run_opencode.py`; for an existing desktop/background-service session run `py kit/run_opencode.py --prepare-only --reload` before the first executor call. A standalone session must have been started through the launcher; reloading the background service does not reload its private server. See LOCAL_MODELS.ru.md. Never load/unload a model or change its load settings automatically. If selection is ambiguous, show the loaded instance IDs and ask the user to choose; if none is loaded, ask them to load one. Both executor roles use the selected instance. Rerun preparation before a new task after the user changes the loaded model.
+Before using a local executor, select an already loaded LM Studio instance. Start OpenCode through `py kit/run_opencode.py`. At task startup inspect the launcher environment: `OPENCODE_KIT_ROOT`, `OPENCODE_KIT_INSTANCE`, and `OPENCODE_KIT_SERVER_MODE`. If the root matches this project and the mode is `standalone`, the launcher selected the instance and wrote the overlay before this private server started. Verify the loaded instance and connection with `check_env.py`; do not run `--reload` or restart that session. Reloading the background service does not reload a private server. For an existing desktop/background-service session without these launch facts, run `py kit/run_opencode.py --prepare-only --reload` before the first executor call. See LOCAL_MODELS.ru.md. Never load/unload a model or change its load settings automatically. If selection is ambiguous, show the loaded instance IDs and ask the user to choose; if none is loaded, ask them to load one. Both executor roles use the selected instance. Rerun preparation before a new task after the user changes the loaded model.
 
 These tools live in `kit/`. They belong to the kit, not to the project. They are written in
 Python, so they need Python on the machine whatever language the project uses.
