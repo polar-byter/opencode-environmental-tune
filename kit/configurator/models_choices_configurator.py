@@ -1,7 +1,6 @@
-"""Build, validate, read and write the choice file .opencode/kit-models.json.
+"""This part of the module Build, validate, read and write the file .opencode/kit-models.json.
 
 The file format is a contract with kit/run_opencode.py (see load_choices there):
-
     {
       "brain":     {"source": "opencode", "model": "provider/model"}
                    or {"source": "api", "baseURL": ..., "model": ..., "keyEnv": ...},
@@ -9,53 +8,51 @@ The file format is a contract with kit/run_opencode.py (see load_choices there):
                    or {"source": "api", "baseURL": ..., "model": ..., "keyEnv": ...}
     }
 
-A missing section means "use the default". A missing file means "use the defaults".
+- A missing section means "use the default". 
+- A missing file means "use the defaults".
 
 Status: SKELETON. Every function raises NotImplementedError until it is implemented.
 Lines marked "ПОДСКАЗКА" are learning hints; delete them once the function is done.
 """
 from __future__ import annotations
-
-import json
+import json 
 from pathlib import Path
 import re
 
-# Where the choice file lives, relative to the project root.
+
+# location where the choice file is put, relative to the project root.
 CHOICES_PATH = Path('.opencode') / 'kit-models.json'
 
 # A valid environment variable name: a letter or "_", then letters, digits or "_".
 ENV_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
+MODEL_REF_PATTERN_FOR_CHECK_ = re.compile(r'^[^/]+(/[^/]+)+$')
 
-
-# --- Step 1. Small dictionaries ------------------------------------------------
+# Step 1. Dictionaries.
 
 def brain_from_opencode(model: str) -> dict:
     """Choice "the brain uses a model that OpenCode already knows".
-
     Args:
         model: reference like "openai/gpt-6.1-sol" or "opencode-go/deepseek-v4.1-flash".
-
     Returns:
         {"source": "opencode", "model": <model without surrounding spaces>}
-
     Raises:
         ValueError: the model is empty or has no "/" (a provider name is required).
     """
-    # ПОДСКАЗКА: это аналог маленького фабричного метода в Java, только вместо
-    #   объекта возвращаем словарь. Словарь пишется так: {"key": value, ...}.
-    # ПОДСКАЗКА: пробелы по краям убирает метод строки .strip().
-    # ПОДСКАЗКА: проверка "есть ли подстрока" — оператор in: "/" in text.
-    # ПОДСКАЗКА: ошибка выбрасывается как в Java, только слово другое: raise ValueError("...").
-    raise NotImplementedError('step 1.1: brain_from_opencode')
-
+    model = model.strip()
+    if not model:
+        raise ValueError('the model is empty')
+    
+    if not MODEL_REF_PATTERN_FOR_CHECK_.fullmatch(model):
+        raise ValueError('the model is not in the format "provider/model"')
+    result_dict = {"source": "opencode", "model": model}
+    return result_dict
 
 def api_choice(base_url: str, model: str, key_env: str) -> dict:
     """Choice "use an own OpenAI-compatible API".
-
     Args:
         base_url: endpoint like "https://api.example.com/v1".
         model: model name at that service.
-        key_env: NAME of the environment variable with the key, not the key itself.
+        key_env: name of the environment variable with the key, not the key itself.
 
     Returns:
         {"source": "api", "baseURL": <url without trailing "/">,
@@ -65,13 +62,19 @@ def api_choice(base_url: str, model: str, key_env: str) -> dict:
         ValueError: an empty value; the URL does not start with http:// or https://;
                     key_env is not a valid variable name (see ENV_NAME).
     """
-    # ПОДСКАЗКА: сначала почисти все три строки через .strip(), потом проверяй.
-    # ПОДСКАЗКА: "начинается с" — метод .startswith(...). Ему можно передать кортеж
-    #   из двух вариантов сразу: text.startswith(('http://', 'https://')).
-    # ПОДСКАЗКА: хвостовой "/" убирает .rstrip('/').
-    # ПОДСКАЗКА: строка целиком подходит под шаблон, если ENV_NAME.fullmatch(text) не None.
-    # ПОДСКАЗКА: пустая строка в Python ложна: if not text: ...
-    raise NotImplementedError('step 1.2: api_choice')
+    base_url, model, key_env = base_url.strip(), model.strip(), key_env.strip()
+    if not all((base_url, model, key_env)):
+        raise ValueError('one of the values is empty')
+ 
+    base_url = base_url.rstrip('/')
+    
+    if not base_url.startswith(('http://', 'https://')):
+        raise ValueError('the base URL must start with http:// or https://')
+    
+    if ENV_NAME.fullmatch(key_env) is None:
+        raise ValueError('the key environment variable name is not valid')
+    
+    return {"source": "api", "baseURL": base_url, "model": model, "keyEnv": key_env}
 
 
 def lmstudio_choice(instance: str | None = None) -> dict:
@@ -104,7 +107,8 @@ def build_choices(brain: dict | None, executors: dict | None) -> dict:
     raise NotImplementedError('step 1.4: build_choices')
 
 
-# --- Step 2. The file on disk --------------------------------------------------
+
+# Step 2. The file on a disk.
 
 def load_choices(root: Path) -> dict:
     """Read the choice file of the project.

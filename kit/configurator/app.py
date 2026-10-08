@@ -30,7 +30,7 @@ try:
 except ImportError:  # Python built without Tk: the pure functions below still work and are tested
     tk = ttk = None
 
-from . import choices, keys, sources
+from . import keys, models_choices_configurator, sources
 
 # Values of the radio buttons. They are also the keys of the form dictionary.
 BRAIN_DEFAULT, BRAIN_OPENCODE, BRAIN_API = 'default', 'opencode', 'api'
