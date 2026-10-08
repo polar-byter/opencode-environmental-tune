@@ -20,3 +20,5 @@ currentsteps.md
 # Generated selection for the model already loaded on this computer
 .opencode/opencode.jsonc
 .opencode/opencode.jsonc.tmp
+# Model choice saved by the model configurator on this computer
+.opencode/kit-models.json
