@@ -30,7 +30,7 @@ MODEL_REF_PATTERN_FOR_CHECK_ = re.compile(r'^[^/]+(/[^/]+)+$')
 # Step 1. Dictionaries.
 
 def brain_from_opencode(model: str) -> dict:
-    """Choice "the brain uses a model that OpenCode already knows".
+    """the brain uses a model that OpenCode already knows.
     Args:
         model: reference like "openai/gpt-6.1-sol" or "opencode-go/deepseek-v4.1-flash".
     Returns:
@@ -48,7 +48,7 @@ def brain_from_opencode(model: str) -> dict:
     return result_dict
 
 def api_choice(base_url: str, model: str, key_env: str) -> dict:
-    """Choice "use an own OpenAI-compatible API".
+    """use an own OpenAI-compatible API.
     Args:
         base_url: endpoint like "https://api.example.com/v1".
         model: model name at that service.
@@ -78,35 +78,34 @@ def api_choice(base_url: str, model: str, key_env: str) -> dict:
 
 
 def lmstudio_choice(instance: str | None = None) -> dict:
-    """Choice "executors use the model already loaded in LM Studio".
-
+    """executors use the model already loaded in LM Studio.
     Args:
         instance: ID of a loaded instance, or None to let the launcher pick
                   the only loaded model. An empty or blank string counts as None.
-
     Returns:
         {"source": "lmstudio"} when there is no instance,
         {"source": "lmstudio", "instance": <instance>} otherwise.
     """
-    # ПОДСКАЗКА: None в Python — это null в Java. Проверка: if instance is None.
-    # ПОДСКАЗКА: и None, и пустая строка ложны, поэтому хватит одного if not ...
-    #   Но " " (пробел) истинен — сначала .strip(), только не у None!
-    raise NotImplementedError('step 1.3: lmstudio_choice')
+    instance = instance.strip() if instance is not None else None
+  
+    if not instance:
+        return {"source": "lmstudio"}
+    return {"source": "lmstudio", "instance": instance}
 
 
 def build_choices(brain: dict | None, executors: dict | None) -> dict:
-    """Combine both sections into the content of the choice file.
-
-    A section that is None is left out: the launcher will use its default.
+    """Complex part of the both sections that combines them into the content of the choice file.
+    A section that is None is left out: the launcher, we created before, will consider it as a default.
 
     Returns:
         dict with keys "brain" and/or "executors"; {} when both are None.
     """
-    # ПОДСКАЗКА: начни с пустого словаря result = {} и добавляй ключи по условию:
-    #   result["brain"] = brain
-    raise NotImplementedError('step 1.4: build_choices')
-
-
+    result = {}
+    if brain is not None:
+        result["brain"] = brain
+    if executors is not None:
+        result["executors"] = executors
+    return result
 
 # Step 2. The file on a disk.
 
