@@ -42,7 +42,15 @@ ENV_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 
 
 def find_opencode(command: str) -> str:
-    """Use the native CLI so Windows batch quoting cannot alter forwarded arguments."""
+    """Use the native CLI so Windows batch quoting cannot alter forwarded arguments.
+        which() finds the first executable on PATH, or None if not found. On Windows it also
+        finds .cmd/.bat wrappers, but we want the native .exe. If the user passes a path to
+        a .cmd/.bat wrapper, we also reject it. If the user passes a path
+        to the native .exe, we accept it. If the user passes a path to a non-existent file,
+        we reject it. If the user passes a path to a .cmd/.bat wrapper, we reject it.
+    Args:
+        command: the command or path to the OpenCode executable.
+    """
     executable = shutil.which(command)
     if command == 'opencode' and (not executable or Path(executable).suffix.lower() in ('.cmd', '.bat')):
         installed = Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs/@opencodedesktop/resources/opencode-cli.exe'

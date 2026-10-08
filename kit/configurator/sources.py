@@ -7,92 +7,115 @@ Three sources:
 - LM Studio: instances that are already loaded (kit/lmstudio_models.py does the work).
 
 The parse_* functions are pure: text or a dict in, a list out. They are tested without
-network. The other functions only fetch data and hand it to a parse_* function.
+network. The other functions only fetch data and hand it to a parse_xxx function.
 
-Status: SKELETON. Every function raises NotImplementedError until it is implemented.
-Lines marked "ПОДСКАЗКА" are learning hints; delete them once the function is done.
 """
 from __future__ import annotations
 
 import json
 import subprocess
 import urllib.request
-
+import re
+import urllib.error
 from .. import lmstudio_models
 from ..run_opencode import find_opencode
 
-TIMEOUT = 30  # seconds for any outside call
+# this regex can be explained as: 
+# "a string that starts with a non-slash character, 
+# followed by one or more groups of a slash 
+# and a non-slash character".
+PARSE_LINE_PATTERN = re.compile(r'^[^/\s]+(/[^/\s]+)+')
+TIMEOUT = 30  
+# seconds for any outside call, before it is considered a failure. The user can change it with --timeout.
 
-
-# --- Step 3. Pure parsing ------------------------------------------------------
-
+# Step 3. Pure parsing
 def parse_opencode_models(text: str) -> list[str]:
-    """Turn the output of "opencode models" into a list of model references.
+    """Convert the output of opencode models into a list of model references.
 
-    Every useful line starts with a reference like "openai/gpt-6.1-sol"; anything
-    after the first space on that line is ignored. Lines without "/" (headers, empty
-    lines, messages) are skipped.
-
+    Every useful line starts with a reference like "openai/gpt-6.1-sol"; 
+    anything after the first space on that line is ignored. 
+    Lines without "/" (headers, empty lines, messages) are skipped.
     Returns:
         Unique references, sorted alphabetically.
     """
-    # ПОДСКАЗКА: строки текста — text.splitlines(); слова строки — line.split().
-    #   У пустой строки split() вернёт пустой список — его первый элемент брать нельзя.
-    # ПОДСКАЗКА: уникальность — множество set(), как HashSet в Java.
-    # ПОДСКАЗКА: sorted(коллекция) вернёт новый отсортированный список.
-    raise NotImplementedError('step 3.1: parse_opencode_models')
-
+    input_lines = text.splitlines()
+    model_refs_list = []
+    model_refs_list = {line.split()[0] for line in input_lines if PARSE_LINE_PATTERN.match(line)}
+    return sorted(model_refs_list)
 
 def parse_api_models(data: dict) -> list[str]:
     """Take model names from an OpenAI-style answer of GET /models.
-
     Expected shape: {"data": [{"id": "model-a", ...}, {"id": "model-b", ...}]}.
-
     Returns:
         Sorted unique ids. Entries without a string "id" are skipped.
-
     Raises:
         ValueError: there is no "data" list (the address is probably wrong).
     """
-    # ПОДСКАЗКА: data.get("data") вернёт None вместо исключения, если ключа нет.
-    # ПОДСКАЗКА: isinstance(x, list), isinstance(x, dict), isinstance(x, str).
-    # ПОДСКАЗКА: можно в одну строку через генератор списка (list comprehension):
-    #   [item["id"] for item in items if <условие>] — см. учебник, глава 03.
-    raise NotImplementedError('step 3.2: parse_api_models')
-
+    data_list = data.get("data")
+    if not isinstance(data_list, list):
+        raise ValueError('the "data" key is missing or is not a list')
+    model_ids = [
+        item["id"] for item in data_list if isinstance(item, dict) and isinstance(item.get("id"), str)
+    ]
+    unique_model_ids = set(model_ids)
+    sorted_model_ids = sorted(unique_model_ids)
+    return sorted_model_ids
 
 # --- Step 4. Fetching ----------------------------------------------------------
 
 def opencode_models(command: str = 'opencode') -> list[str]:
     """Ask OpenCode which models it can use.
-
     Runs "<opencode> models" without a shell, waits at most TIMEOUT seconds and parses
     the output with parse_opencode_models.
-
     Raises:
         ValueError: OpenCode is not found (find_opencode raises it) or exits with an error;
                     the message includes the error text of OpenCode.
     """
-    # ПОДСКАЗКА: путь к исполняемому файлу — find_opencode(command), она уже есть.
-    # ПОДСКАЗКА: запуск: subprocess.run([exe, 'models'], capture_output=True, text=True,
-    #   timeout=TIMEOUT). Результат: .returncode, .stdout, .stderr.
-    # ПОДСКАЗКА: в глава 09 учебника есть пример subprocess.
-    raise NotImplementedError('step 4.1: opencode_models')
+    exe_opencode_util = find_opencode(command)
+    try:
+        process_result = subprocess.run(
+            [exe_opencode_util, 'models'],
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT,
+            encoding='utf-8'
+        )
+    except subprocess.TimeoutExpired as error:
+        raise ValueError(f'"opencode models" did not answer within {TIMEOUT} seconds') from error
+    except OSError as error:
+        raise ValueError(f'could not start OpenCode ({exe_opencode_util}): {error}') from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise ValueError(f'failed to fetch models from OpenCode: {error}') from error
 
+    if process_result.returncode != 0:
+        details = process_result.stderr.strip() or process_result.stdout.strip() or 'no error text'
+        raise ValueError(f'"opencode models" failed with exit code {process_result.returncode}: {details}')
+
+    output_text = process_result.stdout
+    
+    return parse_opencode_models(output_text)
 
 def api_models(base_url: str, api_key: str) -> list[str]:
     """Ask an own API for its models: GET <base_url>/models with "Authorization: Bearer <key>".
-
     Returns:
         parse_api_models of the JSON answer.
-
     The key is used only for this request and is never printed.
     """
-    # ПОДСКАЗКА: адрес: base_url.rstrip('/') + '/models'.
-    # ПОДСКАЗКА: запрос с заголовками — urllib.request.Request(url, headers={...});
-    #   отправка — with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-    #   JSON из ответа — json.load(response). Похожий код есть в kit/lmstudio_models.py.
-    raise NotImplementedError('step 4.2: api_models')
+    url = base_url.rstrip('/') + '/models'
+    headers = {'Authorization': f'Bearer {api_key}'}
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            data = json.load(response)
+    except urllib.error.URLError as error:
+        raise ValueError(f'failed to fetch models from {url}: {error}') from error
+    except json.JSONDecodeError as error:
+        raise ValueError(f'failed to parse JSON from {url}: {error}') from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise ValueError(f'failed to fetch models from {url}: {error}') from error
+    
+    return parse_api_models(data)
+
 
 
 def lmstudio_instances(base: str = lmstudio_models.DEFAULT_BASE) -> list[tuple[str, str]]:
