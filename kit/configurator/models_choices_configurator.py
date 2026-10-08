@@ -11,8 +11,6 @@ The file format is a contract with kit/run_opencode.py (see load_choices there):
 - A missing section means "use the default". 
 - A missing file means "use the defaults".
 
-Status: SKELETON. Every function raises NotImplementedError until it is implemented.
-Lines marked "ПОДСКАЗКА" are learning hints; delete them once the function is done.
 """
 from __future__ import annotations
 import json 
@@ -108,25 +106,31 @@ def build_choices(brain: dict | None, executors: dict | None) -> dict:
     return result
 
 # Step 2. The file on a disk.
-
 def load_choices(root: Path) -> dict:
     """Read the choice file of the project.
-
     Args:
         root: project root folder.
-
     Returns:
         The dictionary from the file, or {} when the file does not exist.
 
     Raises:
         ValueError: the file is not valid JSON or does not contain a JSON object.
     """
-    # ПОДСКАЗКА: полный путь = root / CHOICES_PATH (оператор / склеивает пути у Path).
-    # ПОДСКАЗКА: существует ли файл — path.exists(); текст — path.read_text(encoding='utf-8').
-    # ПОДСКАЗКА: текст в словарь — json.loads(text). Битый JSON бросает json.JSONDecodeError;
-    #   поймай её и брось ValueError с понятным текстом (try / except ... as error).
-    # ПОДСКАЗКА: "это словарь?" — isinstance(data, dict).
-    raise NotImplementedError('step 2.1: load_choices')
+    root = Path(root)
+    path = root / CHOICES_PATH
+    if not path.exists():
+        return {}
+
+    try:
+        text = path.read_text(encoding='utf-8')
+        data = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"the file {path} is not valid JSON: {error}") from error
+
+    if not isinstance(data, dict):
+        raise ValueError(f"the file {path} does not contain a JSON object")
+
+    return data
 
 
 def save_choices(root: Path, choices: dict) -> Path:
@@ -137,13 +141,15 @@ def save_choices(root: Path, choices: dict) -> Path:
     Creates the .opencode folder when it is missing. JSON is indented by 2 spaces,
     UTF-8, non-ASCII characters are kept as is, and the file ends with a newline.
     """
-    # ПОДСКАЗКА: папка — path.parent; создать вместе с родителями без ошибки, если есть:
-    #   folder.mkdir(parents=True, exist_ok=True).
-    # ПОДСКАЗКА: временный файл рядом: path.with_name(path.name + '.tmp').
-    # ПОДСКАЗКА: словарь в текст — json.dumps(choices, ensure_ascii=False, indent=2).
-    # ПОДСКАЗКА: замена одним шагом — temporary.replace(path). Этот же приём есть
-    #   в kit/run_opencode.py, функция prepare — подсмотри.
-    raise NotImplementedError('step 2.2: save_choices')
+    root = Path(root)
+    path = root / CHOICES_PATH
+    folder = path.parent
+    folder.mkdir(parents=True, exist_ok=True)
+    temporary_to_protect_target = path.with_name(path.name + '.tmp')
+    temporary_to_protect_target.write_text(json.dumps(choices, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    temporary_to_protect_target.replace(path)
+      
+    return path
 
 
 def reset_choices(root: Path) -> bool:
@@ -152,5 +158,9 @@ def reset_choices(root: Path) -> bool:
     Returns:
         True when the file existed and was deleted, False when there was nothing to delete.
     """
-    # ПОДСКАЗКА: удалить файл — path.unlink().
-    raise NotImplementedError('step 2.3: reset_choices')
+    root = Path(root)
+    path = root / CHOICES_PATH
+    if path.exists():
+        path.unlink()
+        return True
+    return False
