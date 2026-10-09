@@ -43,7 +43,7 @@ class FakeWinreg:
 
 class Step5Pure(unittest.TestCase):
     def test_valid_names(self):
-        for name in ('OCK_BRAIN_API_KEY', '_x', 'a1'):
+        for name in ('OCK_MASTER_CHIEF_API_KEY', '_x', 'a1'):
             with self.subTest(name=name):
                 self.assertIs(keys.is_valid_env_name(name), True)
 

@@ -19,14 +19,14 @@ class Step7FormToChoices(unittest.TestCase):
     def test_defaults_give_lmstudio_only(self):
         self.assertEqual(app.form_to_choices(form()), {'executors': {'source': 'lmstudio'}})
 
-    def test_brain_from_opencode(self):
-        result = app.form_to_choices(form(brain_source=app.BRAIN_OPENCODE, brain_model='openai/gpt-6.1-sol'))
-        self.assertEqual(result['brain'], {'source': 'opencode', 'model': 'openai/gpt-6.1-sol'})
+    def test_master_chief_from_opencode(self):
+        result = app.form_to_choices(form(master_chief_source=app.MASTER_CHIEF_OPENCODE, master_chief_model='openai/gpt-6.1-sol'))
+        self.assertEqual(result['masterChief'], {'source': 'opencode', 'model': 'openai/gpt-6.1-sol'})
 
-    def test_brain_api(self):
-        result = app.form_to_choices(form(brain_source=app.BRAIN_API, brain_model='big',
-                                          brain_url='https://api.example.com/v1', brain_key_env='MY_KEY'))
-        self.assertEqual(result['brain'], {'source': 'api', 'baseURL': 'https://api.example.com/v1',
+    def test_master_chief_api(self):
+        result = app.form_to_choices(form(master_chief_source=app.MASTER_CHIEF_API, master_chief_model='big',
+                                          master_chief_url='https://api.example.com/v1', master_chief_key_env='MY_KEY'))
+        self.assertEqual(result['masterChief'], {'source': 'api', 'baseURL': 'https://api.example.com/v1',
                                            'model': 'big', 'keyEnv': 'MY_KEY'})
 
     def test_executors_with_instance(self):
@@ -41,10 +41,10 @@ class Step7FormToChoices(unittest.TestCase):
 
     def test_errors_from_choices_reach_the_caller(self):
         with self.assertRaises(ValueError):
-            app.form_to_choices(form(brain_source=app.BRAIN_OPENCODE, brain_model='no-provider'))
+            app.form_to_choices(form(master_chief_source=app.MASTER_CHIEF_OPENCODE, master_chief_model='no-provider'))
 
     def test_unknown_source_is_an_error(self):
-        for changes in ({'brain_source': 'magic'}, {'exec_source': 'cloud'}):
+        for changes in ({'master_chief_source': 'magic'}, {'exec_source': 'cloud'}):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 app.form_to_choices(form(**changes))
 
@@ -55,13 +55,13 @@ class Step7ChoicesToForm(unittest.TestCase):
 
     def test_empty_form_is_not_modified(self):
         before = dict(app.EMPTY_FORM)
-        app.choices_to_form({'brain': {'source': 'opencode', 'model': 'a/b'}})
+        app.choices_to_form({'masterChief': {'source': 'opencode', 'model': 'a/b'}})
         self.assertEqual(app.EMPTY_FORM, before)
 
     def test_round_trip(self):
         cases = [
-            form(brain_source=app.BRAIN_OPENCODE, brain_model='openai/gpt-6.1-sol'),
-            form(brain_source=app.BRAIN_API, brain_model='big', brain_url='https://x/v1', brain_key_env='K1',
+            form(master_chief_source=app.MASTER_CHIEF_OPENCODE, master_chief_model='openai/gpt-6.1-sol'),
+            form(master_chief_source=app.MASTER_CHIEF_API, master_chief_model='big', master_chief_url='https://x/v1', master_chief_key_env='K1',
                  exec_source=app.EXEC_API, exec_model='small', exec_url='https://y/v1', exec_key_env='K2'),
             form(exec_instance='qwen-1'),
         ]
@@ -72,11 +72,11 @@ class Step7ChoicesToForm(unittest.TestCase):
 
 class Step7Apply(unittest.TestCase):
     def test_runs_launcher_prepare_only_in_project_root(self):
-        done = subprocess.CompletedProcess([], 0, stdout='Brain: model from opencode.jsonc\n', stderr='')
+        done = subprocess.CompletedProcess([], 0, stdout='Master Chief: model from opencode.jsonc\n', stderr='')
         with patch.object(app.subprocess, 'run', return_value=done) as run:
             code, text = app.apply_choices(Path('D:/project'))
         self.assertEqual(code, 0)
-        self.assertIn('Brain', text)
+        self.assertIn('Master Chief', text)
         command = run.call_args.args[0]
         self.assertEqual(command[0], sys.executable)
         self.assertEqual(Path(command[1]).as_posix(), 'kit/run_opencode.py')

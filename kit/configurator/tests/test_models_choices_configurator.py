@@ -13,23 +13,23 @@ from kit import run_opencode
 from kit.configurator import models_choices_configurator
 
 
-class Step1BrainFromOpencode(unittest.TestCase):
+class Step1MasterChiefFromOpencode(unittest.TestCase):
     def test_returns_source_and_model(self):
-        self.assertEqual(models_choices_configurator.brain_from_opencode('openai/gpt-6.1-sol'),
+        self.assertEqual(models_choices_configurator.master_chief_from_opencode('openai/gpt-6.1-sol'),
                          {'source': 'opencode', 'model': 'openai/gpt-6.1-sol'})
 
     def test_strips_spaces(self):
-        self.assertEqual(models_choices_configurator.brain_from_opencode('  opencode-go/deepseek-v4.1-flash \n')['model'],
+        self.assertEqual(models_choices_configurator.master_chief_from_opencode('  opencode-go/deepseek-v4.1-flash \n')['model'],
                          'opencode-go/deepseek-v4.1-flash')
 
     def test_model_without_provider_is_rejected(self):
         with self.assertRaises(ValueError):
-            models_choices_configurator.brain_from_opencode('deepseek')
+            models_choices_configurator.master_chief_from_opencode('deepseek')
 
     def test_empty_model_is_rejected(self):
         for value in ('', '   '):
             with self.subTest(value=value), self.assertRaises(ValueError):
-                models_choices_configurator.brain_from_opencode(value)
+                models_choices_configurator.master_chief_from_opencode(value)
 
 
 class Step1ApiChoice(unittest.TestCase):
@@ -76,11 +76,11 @@ class Step1BuildChoices(unittest.TestCase):
         self.assertEqual(models_choices_configurator.build_choices(None, None), {})
 
     def test_only_given_sections(self):
-        brain = {'source': 'opencode', 'model': 'a/b'}
+        master_chief = {'source': 'opencode', 'model': 'a/b'}
         executors = {'source': 'lmstudio'}
-        self.assertEqual(models_choices_configurator.build_choices(brain, None), {'brain': brain})
+        self.assertEqual(models_choices_configurator.build_choices(master_chief, None), {'masterChief': master_chief})
         self.assertEqual(models_choices_configurator.build_choices(None, executors), {'executors': executors})
-        self.assertEqual(models_choices_configurator.build_choices(brain, executors), {'brain': brain, 'executors': executors})
+        self.assertEqual(models_choices_configurator.build_choices(master_chief, executors), {'masterChief': master_chief, 'executors': executors})
 
 
 class Step2File(unittest.TestCase):
@@ -94,21 +94,21 @@ class Step2File(unittest.TestCase):
         self.assertEqual(models_choices_configurator.load_choices(self.root), {})
 
     def test_save_creates_folder_and_returns_path(self):
-        data = {'brain': {'source': 'opencode', 'model': 'a/b'}}
+        data = {'masterChief': {'source': 'opencode', 'model': 'a/b'}}
         self.assertEqual(models_choices_configurator.save_choices(self.root, data), self.path)
         self.assertTrue(self.path.is_file())
 
     def test_save_then_load_round_trip(self):
-        data = {'brain': {'source': 'api', 'baseURL': 'https://x/v1', 'model': 'модель', 'keyEnv': 'K'},
+        data = {'masterChief': {'source': 'api', 'baseURL': 'https://x/v1', 'model': 'модель', 'keyEnv': 'K'},
                 'executors': {'source': 'lmstudio', 'instance': 'qwen'}}
         models_choices_configurator.save_choices(self.root, data)
         self.assertEqual(models_choices_configurator.load_choices(self.root), data)
 
     def test_saved_text_is_readable(self):
-        models_choices_configurator.save_choices(self.root, {'brain': {'source': 'opencode', 'model': 'a/модель'}})
+        models_choices_configurator.save_choices(self.root, {'masterChief': {'source': 'opencode', 'model': 'a/модель'}})
         text = self.path.read_text(encoding='utf-8')
         self.assertIn('модель', text)          # ensure_ascii=False
-        self.assertIn('\n  "brain"', text)     # indent=2
+        self.assertIn('\n  "masterChief"', text)     # indent=2
         self.assertTrue(text.endswith('\n'))
 
     def test_no_temporary_file_is_left(self):
@@ -116,7 +116,7 @@ class Step2File(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()), [self.path.name])
 
     def test_save_overwrites_previous(self):
-        models_choices_configurator.save_choices(self.root, {'brain': {'source': 'opencode', 'model': 'a/b'}})
+        models_choices_configurator.save_choices(self.root, {'masterChief': {'source': 'opencode', 'model': 'a/b'}})
         models_choices_configurator.save_choices(self.root, {})
         self.assertEqual(models_choices_configurator.load_choices(self.root), {})
 
@@ -146,7 +146,7 @@ class Contract(unittest.TestCase):
                 models_choices_configurator.lmstudio_choice('qwen-1'))
             models_choices_configurator.save_choices(root, data)
             loaded = run_opencode.load_choices(root)
-        self.assertEqual(loaded['brain']['model'], 'big')
+        self.assertEqual(loaded['masterChief']['model'], 'big')
         self.assertEqual(loaded['executors'], {'source': 'lmstudio', 'instance': 'qwen-1'})
 
     def test_same_file_location(self):

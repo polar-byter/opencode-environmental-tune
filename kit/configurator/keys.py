@@ -23,14 +23,14 @@ try:
 except ImportError:  # tests on other systems replace it with a fake
     winreg = None
 
-BRAIN_KEY_ENV = 'OCK_BRAIN_API_KEY'
+MASTER_CHIEF_KEY_ENV = 'OCK_MASTER_CHIEF_API_KEY'
 EXECUTOR_KEY_ENV = 'OCK_EXECUTOR_API_KEY'
 ENVIRONMENT_KEY = 'Environment'  # registry path under HKEY_CURRENT_USER
 
 ENV_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 
 
-# --- Step 5. Pure helpers ------------------------------------------------------
+# Step 5. helpers
 
 def is_valid_env_name(name: str) -> bool:
     """returns True if the name can be an environment variable name (see ENV_NAME condition)."""
@@ -51,7 +51,7 @@ def mask(value: str) -> str:
     return result_string
 
 
-# --- Step 6. The registry ------------------------------------------------------
+# Step 6. The registry of the OS
 
 def read_user_variable(key_name: str) -> str | None:
     """Value of a user environment variable from the registry, or None if it is absent.
@@ -70,7 +70,7 @@ def read_user_variable(key_name: str) -> str | None:
 def save_user_variable(name: str, value: str) -> None:
     """Save a user environment variable, like "setx NAME VALUE".
     And puts the value into os.environ so this program and the programs it starts
-    (for example kit/run_opencode.py) see it at once. Then calls notify_windows().
+    can see it. Then calls notify_windows().
 
     Raises:
         ValueError: name is not a valid variable name, or value is empty.
@@ -93,14 +93,15 @@ def key_is_set(name: str) -> bool:
     return bool(os.environ.get(name))  or bool(read_user_variable(name))
 
 
-# --- Ready helper ---------------------------------------------------------------
+# helper
 
 def notify_windows() -> None:
-    """Tell running Windows programs that the environment changed (what setx does).
+    """Notify running Windows programs that the environment changed.
 
     Ready code, not a learning step: it calls the Windows API through ctypes.
     Programs that listen (Explorer, new terminals started from it) pick up the change.
-    Already open terminals and VS Code still need a restart.
+    Raises:
+        ImportError: if the platform is not Windows.
     """
     if sys.platform != 'win32':
         return

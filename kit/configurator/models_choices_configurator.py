@@ -2,7 +2,7 @@
 
 The file format is a contract with kit/run_opencode.py (see load_choices there):
     {
-      "brain":     {"source": "opencode", "model": "provider/model"}
+      "masterChief":     {"source": "opencode", "model": "provider/model"}
                    or {"source": "api", "baseURL": ..., "model": ..., "keyEnv": ...},
       "executors": {"source": "lmstudio"} or {"source": "lmstudio", "instance": ...}
                    or {"source": "api", "baseURL": ..., "model": ..., "keyEnv": ...}
@@ -27,8 +27,8 @@ MODEL_REF_PATTERN_FOR_CHECK_ = re.compile(r'^[^/]+(/[^/]+)+$')
 
 # Step 1. Dictionaries.
 
-def brain_from_opencode(model: str) -> dict:
-    """the brain uses a model that OpenCode already knows.
+def master_chief_from_opencode(model: str) -> dict:
+    """the Master Chief uses a model that OpenCode already knows.
     Args:
         model: reference like "openai/gpt-6.1-sol" or "opencode-go/deepseek-v4.1-flash".
     Returns:
@@ -91,16 +91,16 @@ def lmstudio_choice(instance: str | None = None) -> dict:
     return {"source": "lmstudio", "instance": instance}
 
 
-def build_choices(brain: dict | None, executors: dict | None) -> dict:
+def build_choices(master_chief: dict | None, executors: dict | None) -> dict:
     """Complex part of the both sections that combines them into the content of the choice file.
     A section that is None is left out: the launcher, we created before, will consider it as a default.
 
     Returns:
-        dict with keys "brain" and/or "executors"; {} when both are None.
+        dict with keys "masterChief" and/or "executors"; {} when both are None.
     """
     result = {}
-    if brain is not None:
-        result["brain"] = brain
+    if master_chief is not None:
+        result["masterChief"] = master_chief
     if executors is not None:
         result["executors"] = executors
     return result
