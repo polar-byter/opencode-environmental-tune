@@ -107,8 +107,6 @@ def api_models(base_url: str, api_key: str) -> list[str]:
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             data = json.load(response)
-    except urllib.error.URLError as error:
-        raise ValueError(f'failed to fetch models from {url}: {error}') from error
     except json.JSONDecodeError as error:
         raise ValueError(f'failed to parse JSON from {url}: {error}') from error
     except (urllib.error.URLError, TimeoutError) as error:
@@ -116,12 +114,15 @@ def api_models(base_url: str, api_key: str) -> list[str]:
     
     return parse_api_models(data)
 
-
-
 def lmstudio_instances(base: str = lmstudio_models.DEFAULT_BASE) -> list[tuple[str, str]]:
     """Loaded LM Studio instances as (instance id, display name) pairs, sorted by name."""
-    # ПОДСКАЗКА: всё уже умеет lmstudio_models.loaded_models(base). Она возвращает
-    #   объекты LoadedModel с полями .id и .name. Осталось превратить их в пары.
-    # ПОДСКАЗКА: пара (кортеж) пишется в круглых скобках: (model.id, model.name).
-    # ПОДСКАЗКА: сортировка по второму элементу: sorted(pairs, key=lambda pair: pair[1]).
-    raise NotImplementedError('step 4.3: lmstudio_instances')
+    try:
+        list_of_models = lmstudio_models.loaded_models(base)
+    except Exception as error:
+        raise ValueError(f'failed to load LM Studio instances: {error}') from error
+    
+    model_tuple_list = [(model.id, model.name) for model in list_of_models]
+    
+    sorted_model_tuple_list = sorted(model_tuple_list, key=lambda pair: pair[1])
+    return sorted_model_tuple_list
+
