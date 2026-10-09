@@ -95,15 +95,35 @@ def form_to_choices(form: dict) -> dict:
 
 def choices_to_form(data: dict) -> dict:
     """The reverse: fill the form from a saved choice file, to show it when the window opens.
-
     Starts from a copy of EMPTY_FORM and overwrites the fields present in data.
     "masterChief" missing -> master_chief_source MASTER_CHIEF_DEFAULT; "executors" missing -> EXEC_LMSTUDIO.
     "instance" missing -> exec_instance "".
     """
-    # ПОДСКАЗКА: копия словаря — dict(EMPTY_FORM) или EMPTY_FORM.copy().
-    #   Без копии ты испортишь общий EMPTY_FORM (как общий static-объект в Java).
-    # ПОДСКАЗКА: master_chief = data.get('masterChief'); if master_chief: ...; источник — master_chief['source'].
-    raise NotImplementedError('step 7.2: choices_to_form')
+    #result_form = {k: v for k, v in EMPTY_FORM.items()}
+    result_form = dict(EMPTY_FORM)  # copy
+    master_chief = data.get('masterChief')    
+    if master_chief is not None:
+        if master_chief['source'] == MASTER_CHIEF_OPENCODE:
+            result_form['master_chief_source'] = MASTER_CHIEF_OPENCODE
+            result_form['master_chief_model'] = master_chief['model']
+        elif master_chief['source'] == MASTER_CHIEF_API:
+            result_form['master_chief_source'] = MASTER_CHIEF_API
+            result_form['master_chief_model'] = master_chief['model']
+            result_form['master_chief_url'] = master_chief['baseURL']
+            result_form['master_chief_key_env'] = master_chief['keyEnv']
+    executors = data.get('executors')
+    if executors is not None:
+        if executors['source'] == EXEC_LMSTUDIO:
+            result_form['exec_source'] = EXEC_LMSTUDIO
+            result_form['exec_instance'] = executors.get('instance', '')
+        elif executors['source'] == EXEC_API:
+            result_form['exec_source'] = EXEC_API
+            result_form['exec_model'] = executors['model']
+            result_form['exec_url'] = executors['baseURL']
+            result_form['exec_key_env'] = executors['keyEnv']
+       
+    return result_form
+    
 
 
 def apply_choices(root: Path = PROJECT_ROOT) -> tuple[int, str]:
