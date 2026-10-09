@@ -133,10 +133,16 @@ def apply_choices(root: Path = PROJECT_ROOT) -> tuple[int, str]:
     Returns:
         (exit code, combined stdout and stderr text) — the window shows the text.
     """
-    # ПОДСКАЗКА: текущий интерпретатор Python — sys.executable (тот же, что запустил окно).
-    # ПОДСКАЗКА: subprocess.run([...], cwd=root, capture_output=True, text=True, timeout=sources.TIMEOUT)
-    # ПОДСКАЗКА: вернуть кортеж: return result.returncode, result.stdout + result.stderr
-    raise NotImplementedError('step 7.3: apply_choices')
+    root = Path(root)
+    subprocess_args = [sys.executable, str( Path('kit') / "run_opencode.py"), '--prepare-only']
+    subprocess_kwargs = {
+        'cwd': root,
+        'capture_output': True,
+        'text': True,
+        'timeout': sources.TIMEOUT
+    }
+    subprocess_result = subprocess.run(subprocess_args, **subprocess_kwargs)
+    return subprocess_result.returncode, subprocess_result.stdout + subprocess_result.stderr
 
 
 # Step 8. The window by itself, without the launcher (tkinter)
