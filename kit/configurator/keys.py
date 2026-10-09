@@ -33,21 +33,22 @@ ENV_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')
 # --- Step 5. Pure helpers ------------------------------------------------------
 
 def is_valid_env_name(name: str) -> bool:
-    """True when name can be an environment variable name (see ENV_NAME)."""
-    # ПОДСКАЗКА: одна строка. fullmatch вернёт объект или None; превратить в
-    #   True/False можно через bool(...) или сравнение "is not None".
-    raise NotImplementedError('step 5.1: is_valid_env_name')
-
+    """returns True if the name can be an environment variable name (see ENV_NAME condition)."""
+    return bool(ENV_NAME.fullmatch(name))
 
 def mask(value: str) -> str:
     """Show a key safely: first 4 and last 4 characters, the rest hidden.
-
-    "sk-abcdefgh12345678" -> "sk-a…5678". Keys of 8 characters or shorter -> "••••".
+    "sk-abcdefgh12345678" -> "sk-a....5678". Keys of 8 characters or shorter -> "••••".
     An empty key -> "".
     """
-    # ПОДСКАЗКА: срезы строк: value[:4] — первые 4 символа, value[-4:] — последние 4.
-    # ПОДСКАЗКА: длина — len(value). Символ многоточия: '…'.
-    raise NotImplementedError('step 5.2: mask')
+    result_string = ''
+    if not value:
+        return result_string
+    if len(value) <= 8:
+        result_string = 4 * '\u2022' 
+    else:
+        result_string = value[:4] + '\u2026' + value[-4:]
+    return result_string
 
 
 # --- Step 6. The registry ------------------------------------------------------
