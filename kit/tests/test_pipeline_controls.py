@@ -10,7 +10,30 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from task_metrics import TaskMetrics, main
-from delegation_guard import snapshot
+from delegation_guard import read_requirements, review_checks, snapshot
+
+
+class EvidenceFilesWithBom(unittest.TestCase):
+    """PowerShell writes UTF-8 with a BOM by default; both evidence readers accept it."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+    def write_bom(self, name, data):
+        path = self.root / name
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8-sig')
+        self.assertTrue(path.read_bytes().startswith(b'\xef\xbb\xbf'))
+        return path
+
+    def test_requirements_with_bom(self):
+        path = self.write_bom('req.json', ['Ход в занятую клетку отклоняется'])
+        self.assertEqual(read_requirements(path), ['Ход в занятую клетку отклоняется'])
+
+    def test_checks_with_bom(self):
+        check = {'requirement': 'r', 'code': 'c', 'test': 't', 'verified': True}
+        self.assertEqual(review_checks(self.write_bom('checks.json', [check])), [check])
 
 
 class PipelineControls(unittest.TestCase):

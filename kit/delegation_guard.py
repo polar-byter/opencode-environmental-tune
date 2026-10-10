@@ -48,7 +48,8 @@ def compare(before: dict[str, str], after: dict[str, str], allowed: list[str]) -
 def review_checks(path: Path) -> list[dict]:
     """Require explicit requirement/code/test evidence; correctness remains reviewer judgement."""
     import json
-    checks = json.loads(path.read_text(encoding='utf-8'))
+    # utf-8-sig also accepts a BOM: PowerShell writes UTF-8 files with one by default.
+    checks = json.loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(checks, list) or not checks:
         raise ValueError('Review checks must be a non-empty JSON list')
     for item in checks:
@@ -62,7 +63,7 @@ def review_checks(path: Path) -> list[dict]:
 def read_requirements(path: Path) -> list[str]:
     """Read and validate unique, non-blank requirements; delegate saves them."""
     import json
-    items = json.loads(path.read_text(encoding='utf-8'))
+    items = json.loads(path.read_text(encoding='utf-8-sig'))  # BOM-tolerant, see review_checks
     if (not isinstance(items, list) or not items or
             any(not isinstance(item, str) or not item.strip() for item in items) or
             len(set(items)) != len(items)):
