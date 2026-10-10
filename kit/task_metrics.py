@@ -17,8 +17,10 @@ import uuid
 import xml.etree.ElementTree as ET
 if __package__:
     from .delegation_guard import compare, read_requirements, review_checks, snapshot, source_path
+    from .opencode_cli import locate_opencode
 else:
     from delegation_guard import compare, read_requirements, review_checks, snapshot, source_path
+    from opencode_cli import locate_opencode
 
 TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
 EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish'}
@@ -152,16 +154,12 @@ def resolve_command(command: list[str], windows: bool = os.name == 'nt') -> list
 
 
 def resolve_opencode(executable: str) -> str:
-    """Find the desktop or PATH OpenCode CLI when the default name is requested."""
-    if executable != 'opencode':
-        return executable
-    desktop_cli = Path(os.environ.get('LOCALAPPDATA', '')) / 'Programs/@opencodedesktop/resources/opencode-cli.exe'
-    try:
-        if desktop_cli.is_file():
-            return str(desktop_cli)
-    except OSError:
-        pass
-    return shutil.which('opencode') or executable
+    """Find the OpenCode CLI (order in kit/opencode_cli.py).
+
+    Reading exports only needs plain arguments, so a .cmd wrapper on PATH is still accepted
+    as the last resort. Unknown names are returned as is.
+    """
+    return locate_opencode(executable) or shutil.which(executable) or executable
 
 
 def local_tag(element) -> str:
