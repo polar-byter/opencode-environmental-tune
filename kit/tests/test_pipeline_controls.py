@@ -9,7 +9,8 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from task_metrics import TaskMetrics, main
+import time
+from task_metrics import TaskHalted, TaskMetrics, main
 from delegation_guard import read_requirements, review_checks, snapshot
 
 
@@ -53,6 +54,31 @@ class PipelineControls(unittest.TestCase):
 
     def begin(self):
         return self.metrics.delegate('task', 'App', ['app.py'])
+
+    def test_failed_attempt_without_changes_is_not_a_rework(self):
+        self.begin()
+        self.metrics.inspect('task', 'App')
+        event = self.metrics.review('task', 'App', 'failed')
+        self.assertEqual((event['result'], event['changed']), ('failed', []))
+        report = self.metrics.render('task', self.metrics.read('task'), {'models': [], 'warnings': []}, time.time())
+        self.assertIn('Возвраты на переделку: **0**', report)
+        self.assertIn('Сбои исполнителя без результата', report)
+
+    def test_failed_is_refused_when_the_executor_changed_files(self):
+        self.begin()
+        (self.root / 'app.py').write_text('value = 2\n')
+        self.metrics.inspect('task', 'App')
+        with self.assertRaisesRegex(ValueError, 'not failed: app.py'):
+            self.metrics.review('task', 'App', 'failed')
+        self.metrics.review('task', 'App', 'rework')
+
+    def test_repeated_executor_failures_stop_the_task(self):
+        for attempt in range(3):
+            self.begin()
+            event = self.metrics.review('task', 'App', 'failed')
+        self.assertIn('executor failed 3 times on App', event['halt'])
+        with self.assertRaises(TaskHalted):
+            self.begin()
 
     def test_new_file_outside_scope_is_detected_without_git(self):
         self.begin()

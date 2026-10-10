@@ -135,6 +135,12 @@ class Step1Pieces(unittest.TestCase):
         states = {r['piece']: r['state'] for r in journal.pieces(events)}
         self.assertEqual(states, {'a': journal.IN_REVIEW, 'b': journal.REWORK})
 
+    def test_failed_attempt_is_not_a_rework(self):
+        events = [start(), delegation('a', 110, 'd1'), inspection('a', 111, 'd1'), review('a', 112, 'd1', 'failed')]
+        row = journal.pieces(events)[0]
+        self.assertEqual((row['state'], row['reworks'], row['failures']), (journal.FAILED, 0, 1))
+        self.assertEqual((journal.summary(events)['reworks'], journal.summary(events)['failures']), (0, 1))
+
     def test_old_journal_without_delegation_id(self):
         old_review = ev('review', 130, piece='a', result='accepted')
         events = [start(), delegation('a', 110, 'd1'), old_review, ev('review', 131, piece='ghost', result='rework')]
@@ -181,6 +187,14 @@ class Step1Guards(unittest.TestCase):
         events.append(test_event(107, scope='a', **fail))
         self.assertEqual(self.values(events)['max_failed_runs'], (2, 2, 'a'))
         self.assertIsNotNone(limit_breach(events, {**DEFAULT_LIMITS, 'max_failed_runs': 2}))
+
+    def test_failures_use_the_rework_limit_separately(self):
+        events = [start(), review('a', 101, 'd1', 'rework'),
+                  review('b', 102, 'd2', 'failed'), review('b', 103, 'd3', 'failed')]
+        self.assertEqual(self.values(events)['max_reworks'], (2, 3, 'b'))
+        events.append(review('b', 104, 'd4', 'failed'))
+        self.assertEqual(self.values(events)['max_reworks'], (3, 3, 'b'))
+        self.assertIn('executor failed 3 times on b', limit_breach(events, DEFAULT_LIMITS))
 
     def test_green_full_run_and_resume_reset(self):
         fail = dict(status='failed', category='tests_failed')

@@ -24,6 +24,8 @@ else:
 
 TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
 EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish'}
+# failed: the executor returned no work (error, rate limit, unavailable model) and changed no files.
+REVIEW_RESULTS = {'accepted', 'rework', 'failed'}
 WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
                               *(f'COM{n}' for n in range(1, 10)), *(f'LPT{n}' for n in range(1, 10))})
 
@@ -355,14 +357,21 @@ def limit_breach(events: list[dict], limits: dict) -> str | None:
     """
     recent = since_last_resume(events)
     tests = [e for e in recent if e['kind'] == 'test']
-    reworks = {}
+    reworks, failures = {}, {}
     for event in recent:
         if event['kind'] == 'review' and event['result'] == 'rework':
             reworks[event['piece']] = reworks.get(event['piece'], 0) + 1
+        elif event['kind'] == 'review' and event['result'] == 'failed':
+            failures[event['piece']] = failures.get(event['piece'], 0) + 1
     for piece, count in reworks.items():
         if count >= limits['max_reworks']:
             return (f'{piece} was sent back {count} times (limit {limits["max_reworks"]}). '
                     f'The spec or the tests may be wrong.')
+    # A failed attempt is not a rework, but endless retries of a broken executor must stop too.
+    for piece, count in failures.items():
+        if count >= limits['max_reworks']:
+            return (f'The executor failed {count} times on {piece} without changing files '
+                    f'(limit {limits["max_reworks"]}). Check that the executor model is available.')
     no_result = trailing(tests, {CATEGORY_NO_RESULT, CATEGORY_TIMEOUT})
     if no_result >= limits['max_no_result']:
         return (f'{no_result} test runs in a row gave no readable result (limit {limits["max_no_result"]}). '
@@ -428,7 +437,8 @@ def build_parser() -> argparse.ArgumentParser:
                             help=f'loop guard, default {DEFAULT_LIMITS[name]}')
     review = sub.add_parser('review')
     review.add_argument('--piece', required=True)
-    review.add_argument('--result', choices=['accepted', 'rework'], required=True)
+    review.add_argument('--result', choices=sorted(REVIEW_RESULTS), required=True,
+                        help='failed = the executor returned no work and changed no files; not a rework')
     review.add_argument('--checks', type=Path, help='JSON requirement/code/test checklist for acceptance')
     delegation = sub.add_parser('delegate')
     delegation.add_argument('--piece', required=True)
@@ -580,7 +590,7 @@ class TaskMetrics:
             events = self.running(task)
             if events[0].get('track_delegations') and not frozen:
                 raise ValueError('Tracked delegation requires a requirements file')
-            # Both accepted and rework reviews close an attempt.
+            # Any review (accepted, rework or failed) closes an attempt.
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             if any(e['kind'] == 'delegation' and e['event_id'] not in closed for e in events):
                 raise ValueError('Review the pending delegation before starting another')
@@ -613,16 +623,18 @@ class TaskMetrics:
                                snapshot=filename, **changes)
 
     def review(self, task: str, piece: str, result: str, checks: Path | None = None) -> dict:
-        """Record the Master Chief's accepted/rework decision and check acceptance evidence.
+        """Record the Master Chief's accepted/rework/failed decision and check acceptance evidence.
 
         Acceptance requires allowed edits, matching requirement checks and a green
-        scoped/full run on unchanged files. This method does not call the Master Chief,
-        review source code or run tests. Legacy tasks may have no delegation.
+        scoped/full run on unchanged files. "failed" means the executor returned no work
+        (error, rate limit, unavailable model): it is allowed only when the attempt changed
+        no files and it is not counted as a rework. This method does not call the Master
+        Chief, review source code or run tests. Legacy tasks may have no delegation.
         """
 
         piece = piece.strip()
-        if not piece or result not in {'accepted', 'rework'}:
-            raise ValueError('Review requires a piece and accepted/rework result')
+        if not piece or result not in REVIEW_RESULTS:
+            raise ValueError('Review requires a piece and accepted/rework/failed result')
         
         with self.lock(task):
             events = self.running(task)
@@ -659,6 +671,10 @@ class TaskMetrics:
                     raise ValueError('Run inspect immediately after the executor returns, before reviewer edits')
                 
                 evidence = dict(delegation_id=attempt['event_id'], **changes)
+
+                if result == 'failed' and changes['changed']:
+                    raise ValueError('The executor changed files: review the attempt as accepted or rework, '
+                                     'not failed: ' + ', '.join(changes['changed']))
 
                 if result == 'accepted':
                     if changes['unexpected']:
@@ -951,8 +967,12 @@ class TaskMetrics:
             lines.append('')
         work_tests = [e for e in tests if e.get('phase') != 'baseline']
         lines += [f'🔁 Возвраты на переделку: **{sum(e["result"] == "rework" for e in reviews)}** '
-                  f'· Всего ревью: **{len(reviews)}**', '',
-                  f'🧪 Полностью успешные прогоны: **{sum(e["status"] == "passed" for e in work_tests)} из {len(work_tests)}**', '']
+                  f'· Всего ревью: **{len(reviews)}**', '']
+        failed_attempts = sum(e['result'] == 'failed' for e in reviews)
+        if failed_attempts:
+            lines += [f'⚠️ Сбои исполнителя без результата (ошибка, лимит, недоступная модель): **{failed_attempts}**. '
+                      'Это не переделки: исполнитель не изменил файлы.', '']
+        lines += [f'🧪 Полностью успешные прогоны: **{sum(e["status"] == "passed" for e in work_tests)} из {len(work_tests)}**', '']
         if len(work_tests) != len(tests):
             lines += [f'Начальные проверки до реализации (baseline): **{len(tests) - len(work_tests)}**; '
                       'в рабочие успешные прогоны не входят.', '']

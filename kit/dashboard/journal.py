@@ -25,6 +25,7 @@ AT_EXECUTOR = 'executor'   # delegated, the executor has not returned (no inspec
 IN_REVIEW = 'review'       # inspected, no review recorded yet
 ACCEPTED = 'accepted'      # the latest attempt was accepted
 REWORK = 'rework'          # the latest attempt was sent back and no new attempt started yet
+FAILED = 'failed'          # the executor returned no work and changed no files (error, rate limit)
 
 NOT_GREEN = {CATEGORY_FAILED, CATEGORY_INCOMPLETE, CATEGORY_NO_RESULT, CATEGORY_TIMEOUT}
 
@@ -90,9 +91,11 @@ def pieces(events: list[dict]) -> list[dict]:
         scope        scope of the latest delegation (piece name if missing)
         attempts     number of delegation events for this piece
         reworks      number of reviews with result "rework" for this piece
-        state        AT_EXECUTOR | IN_REVIEW | ACCEPTED | REWORK, from the latest attempt:
-                     no inspection -> AT_EXECUTOR; inspection but no review -> IN_REVIEW;
-                     review accepted -> ACCEPTED; review rework -> REWORK
+        failures     number of reviews with result "failed" (not reworks)
+        state        AT_EXECUTOR | IN_REVIEW | ACCEPTED | REWORK | FAILED, from the latest
+                     attempt: no inspection and no review -> AT_EXECUTOR; inspection but no
+                     review -> IN_REVIEW; review accepted -> ACCEPTED; rework -> REWORK;
+                     failed -> FAILED
         started_at   "at" of the first delegation
         accepted_at  "at" of the accepting review of the latest attempt, else None
         unexpected   sorted unique files listed in "unexpected" of its inspections and reviews
@@ -119,8 +122,10 @@ def guard_status(events: list[dict]) -> list[dict]:
 
     One row per name in DEFAULT_LIMITS order: {name, value, limit, detail}.
     Only events after the last resume count (since_last_resume).
-        max_reworks      largest number of rework reviews of one piece; detail = that piece
-                         (the first one in journal order on a tie), or None when 0
+        max_reworks      largest per-piece count of rework reviews or of failed reviews (each
+                         is checked against this limit separately, as in limit_breach);
+                         detail = that piece (the first one in journal order on a tie, reworks
+                         before failures), or None when 0
         max_no_result    trailing(tests, {no_result, timeout}); detail None
         max_failed_runs  largest trailing(scoped, NOT_GREEN) over scopes, where "scoped" is
                          built as in limit_breach (baseline excluded, green full runs reset
@@ -138,7 +143,7 @@ def summary(events: list[dict]) -> dict:
     Keys: title (start.title), session (start.session), status (task_status),
     started_at (start.at), ended_at (finish "ended" if finished, else None),
     last_event_at (at of the last event), pieces (len of pieces()), reworks (total
-    rework reviews), work_runs and green_work_runs (non-baseline tests; green = status
+    rework reviews), failures (total failed reviews), work_runs and green_work_runs (non-baseline tests; green = status
     "passed"), last_full (the last non-baseline test row with scope "full", or None),
     halt_reason (reason of the active halt, or None).
     """
