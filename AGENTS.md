@@ -88,7 +88,7 @@ Commands in this file are written with `py`; on macOS and Linux replace `py` wit
 - The runner recognizes unittest summaries and JUnit XML. `--junit <file>`: one report file; it must not exist before the run, so use a new name for every run (run-01.xml, run-02.xml, ...). `--junit-dir <folder>`: a folder where the tool writes one file per test class or project (Maven `target/surefire-reports`, Gradle `build/test-results/test`); only files written during the run are read. Unknown output, zero tests and skipped tests do not count as fully successful.
 - Do not claim completion with pending delegated attempts or a missing/failing full suite. Resolve the warning first.
 - At the end, after all executors have returned, run `py kit/task_metrics.py finish --task <ID>`. Insert its Markdown statistics in the final answer. If another agent writes the final answer, give it `.metrics/<ID>/report.md`; it must not invent or recompute counters.
-- All `lmstudio` providers are local/free of API fees; every other known provider is paid by default. Missing usage must remain unknown. Token counts are a snapshot before the final answer, not a billing statement.
+- All `lmstudio` providers are local/free of API fees; `openrouter` models ending in `:free` are free cloud models; every other known provider is paid by default. Missing usage must remain unknown. Token counts are a snapshot before the final answer, not a billing statement.
 - These commands are required for ordinary text requests too, not only `/module`. Logging is instruction-driven, not an automatic plugin. Planning-only tasks may have no tests; never describe that as a successful test run.
 
 ## Project stack  # EDIT: language, build tool, test command

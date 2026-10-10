@@ -114,6 +114,28 @@ class MetricsCase(unittest.TestCase):
         self.assertEqual(rows['local']['messages'], 1)
         self.assertNotIn('s3', usage['sessions'])
 
+    def test_openrouter_free_models_have_their_own_group(self):
+        free = export(provider='openrouter', model='poolside/laguna-s-2.1:free')
+        paid = export('s2', 's1', provider='openrouter', model='openai/gpt-6.1-sol', message='m2')
+        other = export('s3', 's1', provider='opencode', model='something:free', message='m3')
+        usage = self.metrics.parse_exports([free, paid, other], 's1', 1, 3)
+        groups = {row['provider'] + '/' + row['model']: row['group'] for row in usage['models']}
+        self.assertEqual(groups['openrouter/poolside/laguna-s-2.1:free'], 'free')
+        self.assertEqual(groups['openrouter/openai/gpt-6.1-sol'], 'paid')
+        # Only OpenRouter's naming is trusted; other providers stay paid by default.
+        self.assertEqual(groups['opencode/something:free'], 'paid')
+        self.metrics.start('task')
+        text = self.metrics.render('task', self.metrics.read('task'), usage, 4)
+        free_section = text.split('Бесплатные облачные')[1].split('###')[0]
+        self.assertIn('laguna-s-2.1:free', free_section)
+        self.assertNotIn('laguna-s-2.1:free', text.split('Бесплатные облачные')[0])
+
+    def test_free_section_hidden_without_free_models(self):
+        usage = self.metrics.parse_exports([export()], 's1', 1, 3)
+        self.metrics.start('task')
+        text = self.metrics.render('task', self.metrics.read('task'), usage, 4)
+        self.assertNotIn('Бесплатные облачные', text)
+
     def test_missing_usage_not_zero(self):
         usage = self.metrics.parse_exports([export(tokens={})], 's1', 1, 3)
         row = usage['models'][0]

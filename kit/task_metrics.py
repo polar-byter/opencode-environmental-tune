@@ -257,6 +257,9 @@ def new_usage_row(provider: str, model: str) -> dict:
     """An empty report row for one provider/model pair."""
     if provider == 'lmstudio':
         group = 'local'
+    elif provider == 'openrouter' and model.endswith(':free'):
+        # OpenRouter marks its zero-price variants with ":free" (rate limited, no API fee).
+        group = 'free'
     elif provider == 'unknown':
         group = 'unknown'
     else:
@@ -931,9 +934,10 @@ class TaskMetrics:
         lines = [f'## 📊 Итоги задачи · {label(events[0]["title"])}', '',
                  f'⏱ Время: **{duration//60} мин {duration%60} сек**', '']
         for group, heading in [('paid', 'Платные модели'), ('local', 'Бесплатные / локальные · LM Studio'),
+                               ('free', 'Бесплатные облачные · OpenRouter `:free`'),
                                ('unknown', 'Неизвестный провайдер')]:
             rows = [r for r in usage['models'] if r['group'] == group]
-            if group == 'unknown' and not rows:
+            if group in ('free', 'unknown') and not rows:
                 continue
             lines += [f'### {heading}', '']
             if not rows:
@@ -986,7 +990,8 @@ class TaskMetrics:
             lines += ['Тесты через утилиту не запускались; успешность не подтверждена.', '']
         lines += ['Время измеряется от `start` до `finish`; работа до старта не учтена.',
                   'Ревью и задания учитываются по журналу; незарегистрированные действия обнаружить нельзя.',
-                  'Все `lmstudio` — локальные без платы за API; остальные провайдеры считаются платными по умолчанию.',
+                  'Все `lmstudio` — локальные без платы за API; модели OpenRouter с окончанием `:free` — бесплатные облачные; '
+                  'остальные провайдеры считаются платными по умолчанию.',
                   'Токены рассуждений и кэша показаны отдельно, без сложения пересекающихся счётчиков.',
                   'Срез сделан перед итоговым ответом: его токены не включены. Стоимость и экономия не оценивались.', '']
         if usage['warnings']:
