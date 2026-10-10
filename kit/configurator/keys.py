@@ -7,10 +7,6 @@ does. New programs started after saving see the variable; already running ones
 
 Why the file is called keys.py and not secrets.py: Python already has a standard
 module "secrets", and a file with the same name can hide it.
-
-Status: SKELETON. Every function raises NotImplementedError until it is implemented,
-except notify_windows, which is ready (it calls the Windows API directly).
-Lines marked "ПОДСКАЗКА" are learning hints; delete them once the function is done.
 """
 from __future__ import annotations
 

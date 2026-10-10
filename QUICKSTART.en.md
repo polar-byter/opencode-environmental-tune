@@ -241,6 +241,7 @@ The Master Chief starts the application and sends the requests. It must identify
 | `Result: test failed` in `check_env` | LM Studio not running / model not loaded | Developer → Start Server; press Load on the model |
 | `/module` not visible | `.opencode/` not copied, or OpenCode opened outside the project root | Check the project folder |
 | `mvn` not found | Maven not installed / not on PATH | Install Maven, restart the terminal |
+| OpenCode rejects `providers`/`agents`, or agents keep their old models | An old CLI runs: the `opencode` on `PATH` is not the one inside Desktop | Compare versions (`opencode --version` and `%LOCALAPPDATA%\Programs\@opencodedesktop\resources\opencode-cli.exe --version`), then remove the old one or pass the right CLI with `--opencode`. Check with `opencode-cli.exe debug agents` after `py kit/run_opencode.py --prepare-only` |
 | Tests do not compile | An import is missing in the skeleton (the executor does not add imports) | Tell the Master Chief: "add the missing import to the skeleton" |
 | `CHECK FAILED` | The script cannot read test results | Read the hints below that line; check the test command in `AGENTS.md` |
 | The Master Chief writes `STOP` and waits | A loop guard fired: reworks or build | Read the reason, decide, and tell the Master Chief to continue |
