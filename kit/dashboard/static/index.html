@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kit Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- SKELETON: layout only. app.js fills every [data-view] element (steps 10.x). -->
+  <header class="topbar">
+    <h1>Kit Dashboard</h1>
+    <span class="live" data-view="live-indicator">offline</span>
+  </header>
+
+  <main class="layout">
+    <!-- Left: projects and their tasks (GET /api/projects) -->
+    <nav class="sidebar" data-view="projects" aria-label="Projects and tasks"></nav>
+
+    <section class="content">
+      <!-- Task header: status, models, counters (GET .../tasks/<task>) -->
+      <section class="card" data-view="task-summary"></section>
+
+      <!-- Loop guards as gauges: value / limit -->
+      <section class="card" data-view="guards"></section>
+
+      <!-- Orchestration timeline: one lane per piece, test runs as dots -->
+      <section class="card wide" data-view="timeline"></section>
+
+      <!-- Tokens by model group (GET .../sessions) -->
+      <section class="card" data-view="tokens"></section>
+
+      <!-- Live feed: what the Master Chief and executors do now -->
+      <section class="card wide" data-view="feed"></section>
+
+      <!-- report.md of a finished task -->
+      <section class="card wide" data-view="report"></section>
+    </section>
+
+    <!-- Right: model settings of the selected project (GET/POST .../settings) -->
+    <aside class="settings" data-view="settings" aria-label="Model settings"></aside>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
