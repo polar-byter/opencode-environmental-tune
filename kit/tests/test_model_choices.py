@@ -62,12 +62,14 @@ class Choices(unittest.TestCase):
         config = self.overlay()
         self.assertEqual(set(config['agents']), {'executor', 'executor-fast'})
         self.assertEqual(set(config['providers']), {'lmstudio'})
+        self.assertNotIn('model', config)
 
     def test_empty_object_is_the_default(self):
         self.write_choices({})
         model, _ = self.prepare()
         self.assertEqual(model, A)
         self.assertEqual(set(self.overlay()['agents']), {'executor', 'executor-fast'})
+        self.assertNotIn('model', self.overlay())
 
     # --- Master Chief ---------------------------------------------------------------
 
@@ -77,6 +79,8 @@ class Choices(unittest.TestCase):
         config = self.overlay()
         self.assertEqual(config['agents']['build'], {'model': 'openai/gpt-6.1-sol'})
         self.assertEqual(config['agents']['plan'], {'model': 'openai/gpt-6.1-sol'})
+        # The main session uses the top-level model, so the overlay sets it too.
+        self.assertEqual(config['model'], 'openai/gpt-6.1-sol')
         self.assertEqual(config['agents']['executor'], {'model': 'lmstudio/' + launcher.ALIAS})
         self.assertEqual(model, A)
         self.assertNotIn(launcher.MASTER_CHIEF_PROVIDER, config['providers'])
@@ -91,6 +95,7 @@ class Choices(unittest.TestCase):
         self.assertEqual(provider['env'], [KEY])
         self.assertEqual(list(provider['models']), ['remote-model'])
         self.assertEqual(config['agents']['build']['model'], launcher.MASTER_CHIEF_PROVIDER + '/remote-model')
+        self.assertEqual(config['model'], launcher.MASTER_CHIEF_PROVIDER + '/remote-model')
         text = (self.root / '.opencode/opencode.jsonc').read_text(encoding='utf-8')
         self.assertNotIn('secret-value', text)
 
@@ -112,6 +117,7 @@ class Choices(unittest.TestCase):
         self.assertEqual(config['agents']['executor-fast'], {'model': ref})
         self.assertNotIn('lmstudio', config['providers'])
         self.assertNotIn('build', config['agents'])
+        self.assertNotIn('model', config)
 
     def test_executors_api_does_not_require_lm_studio_agents_in_source(self):
         source = json.loads(self.original.split('\n', 1)[1])

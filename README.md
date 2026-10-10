@@ -73,7 +73,7 @@
 
 ## Версии и обновления
 
-Сбор данных проверен на **OpenCode CLI 2.0.21** и **Python 3.13** 3 октября 2026 года. CLI — OpenCode, который скрипт вызывает из терминала. Он должен видеть те же сессии, с которыми ты работаешь в Desktop. Выбор моделей через `.opencode/kit-models.json` (ключи `providers` и `agents` в надстройке, переопределение агента `plan`) проверен на **OpenCode 2.0.26** 10 октября 2026 года.
+Сбор данных проверен на **OpenCode CLI 2.0.21** и **Python 3.13** 3 октября 2026 года. CLI — OpenCode, который скрипт вызывает из терминала. Он должен видеть те же сессии, с которыми ты работаешь в Desktop. Выбор моделей через `.opencode/kit-models.json` проверен на **OpenCode 2.0.26** 10 октября 2026 года по экспорту настоящих сессий: Мастер Чиф — через верхний ключ `model` надстройки, исполнители — через `agents.executor` и `agents.executor-fast`.
 
 ### Какой OpenCode использует кит
 
@@ -98,14 +98,16 @@
 
 2. Если Desktop установлен, кит возьмёт его CLI, даже когда в `PATH` лежит другой `opencode`. Старую команду из `PATH` лучше обновить или удалить, чтобы не запускать её вручную по ошибке. Команды с другим именем (например `opencode2`) кит сам не вызывает.
 3. Чтобы использовать конкретный CLI, укажи путь явно: `py kit/run_opencode.py --opencode "C:\путь\opencode-cli.exe"`, а для статистики — `task_metrics.py finish --opencode ...`.
-4. После смены моделей проверь, что OpenCode их принял:
+4. После смены моделей проверь, что OpenCode их принял. `debug agents` для этого недостаточно: он показывает модели агентов, а основная сессия запускается на верхнем ключе `model` конфига. Надёжная проверка — короткая настоящая сессия и модель из её экспорта:
 
    ```powershell
-   py kit/run_opencode.py --prepare-only
-   & "$env:LOCALAPPDATA\Programs\@opencodedesktop\resources\opencode-cli.exe" debug agents
+   $cli = "$env:LOCALAPPDATA\Programs\@opencodedesktop\resources\opencode-cli.exe"
+   $out = py kit/run_opencode.py -- run --format json "Reply with the single word OK." | Out-String
+   $session = [regex]::Match($out, '"sessionID":"(ses_[A-Za-z0-9]+)"').Groups[1].Value
+   (& $cli session export $session | ConvertFrom-Json).messages.model | Select-Object -Unique providerID, id
    ```
 
-   У агентов `build`, `plan`, `executor` и `executor-fast` в поле `model` должны стоять выбранные модели. Если там прежние модели или команда пишет об ошибке конфига, значит CLI слишком старый.
+   Там должна стоять модель Мастер Чифа. Модель исполнителей видна в экспорте дочерней сессии после первого задания исполнителю. Если команда пишет об ошибке конфига, значит CLI слишком старый.
 
 После обновления попроси Мастер Чифа проверить совместимость:
 

@@ -197,6 +197,9 @@ def prepare(root: Path, explicit: str | None = None):
             master_chief_ref = master_chief['model']
         for name in MASTER_CHIEF_AGENTS:
             patch['agents'][name] = {'model': master_chief_ref}
+        # The main session ("opencode run", a new Desktop chat) starts on the top-level
+        # model, not on agents.build.model (checked on OpenCode 2.0.26), so set both.
+        patch['model'] = master_chief_ref
 
     directory.mkdir(exist_ok=True)
     temporary = directory / 'opencode.jsonc.tmp'
