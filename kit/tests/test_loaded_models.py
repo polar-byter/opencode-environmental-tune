@@ -76,7 +76,7 @@ class Launch(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.config = {
-            'model': 'paid/brain',
+            'model': 'paid/master-chief',
             'agents': {'executor': {'model': 'lmstudio/old', 'permissions': [{'action': 'shell', 'effect': 'deny'}]}, 'executor-fast': {'model': 'lmstudio/fast'}},
             'providers': {'lmstudio': {'models': {'old': {'modelID': 'unloaded'}}}},
         }
@@ -96,7 +96,7 @@ class Launch(unittest.TestCase):
         self.assertEqual(set(config['agents']), {'executor', 'executor-fast'})
         self.assertTrue(all(a == {'model': 'lmstudio/loaded-executor'} for a in config['agents'].values()))
         self.assertNotIn('settings', config['providers']['lmstudio'])
-        self.assertNotIn('model', config)  # cloud brain preserved by config merge
+        self.assertNotIn('model', config)  # cloud Master Chief preserved by config merge
 
     def test_next_launch_refreshes_our_selection(self):
         self.prepare()

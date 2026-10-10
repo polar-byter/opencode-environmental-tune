@@ -124,14 +124,14 @@ class TestMainWorkdir(TempCase):
 
 class TestSkeletons(unittest.TestCase):
     def test_skeleton_has_spec_and_placeholder(self):
-        skeleton = pipeline_smoke.brain_skeleton_app()
+        skeleton = pipeline_smoke.master_chief_skeleton_app()
         self.assertIn("Spec:", skeleton)
         self.assertIn("NotImplementedError", skeleton)
         self.assertIn("def percent", skeleton)
         self.assertIn("def discount", skeleton)
 
     def test_tests_skeleton_imports_both_functions(self):
-        tests = pipeline_smoke.brain_skeleton_tests()
+        tests = pipeline_smoke.master_chief_skeleton_tests()
         self.assertIn("from calculator import percent, discount", tests)
 
 

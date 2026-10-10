@@ -45,6 +45,19 @@ def master_chief_from_opencode(model: str) -> dict:
     result_dict = {"source": "opencode", "model": model}
     return result_dict
 
+def executors_from_opencode(model: str) -> dict:
+    """Choice "the executors use a model that OpenCode already knows", for example a free
+    OpenRouter model connected in OpenCode with /connect.
+
+    The rules are the same as for the Master Chief, so the check is shared.
+    Returns:
+        {"source": "opencode", "model": <model without surrounding spaces>}
+    Raises:
+        ValueError: the model is empty or has no "/".
+    """
+    return master_chief_from_opencode(model)
+
+
 def api_choice(base_url: str, model: str, key_env: str) -> dict:
     """use an own OpenAI-compatible API.
     Args:

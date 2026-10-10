@@ -21,9 +21,9 @@ class Choices(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         config = {
-            'model': 'paid/brain',
+            'model': 'paid/master-chief',
             'agents': {
-                'build': {'model': 'paid/brain', 'system': 'brain prompt'},
+                'build': {'model': 'paid/master-chief', 'system': 'Master Chief prompt'},
                 'executor': {'model': 'lmstudio/old', 'permissions': [{'action': 'shell', 'effect': 'deny'}]},
                 'executor-fast': {'model': 'lmstudio/fast'},
             },
@@ -69,33 +69,33 @@ class Choices(unittest.TestCase):
         self.assertEqual(model, A)
         self.assertEqual(set(self.overlay()['agents']), {'executor', 'executor-fast'})
 
-    # --- brain ---------------------------------------------------------------
+    # --- Master Chief ---------------------------------------------------------------
 
-    def test_brain_from_opencode_sets_build_and_plan_only(self):
-        self.write_choices({'brain': {'source': 'opencode', 'model': 'openai/gpt-6.1-sol'}})
+    def test_master_chief_from_opencode_sets_build_and_plan_only(self):
+        self.write_choices({'masterChief': {'source': 'opencode', 'model': 'openai/gpt-6.1-sol'}})
         model, _ = self.prepare()
         config = self.overlay()
         self.assertEqual(config['agents']['build'], {'model': 'openai/gpt-6.1-sol'})
         self.assertEqual(config['agents']['plan'], {'model': 'openai/gpt-6.1-sol'})
         self.assertEqual(config['agents']['executor'], {'model': 'lmstudio/' + launcher.ALIAS})
         self.assertEqual(model, A)
-        self.assertNotIn(launcher.BRAIN_PROVIDER, config['providers'])
+        self.assertNotIn(launcher.MASTER_CHIEF_PROVIDER, config['providers'])
 
-    def test_brain_api_adds_provider_with_key_name_not_key(self):
-        self.write_choices({'brain': self.api()})
+    def test_master_chief_api_adds_provider_with_key_name_not_key(self):
+        self.write_choices({'masterChief': self.api()})
         self.prepare()
         config = self.overlay()
-        provider = config['providers'][launcher.BRAIN_PROVIDER]
+        provider = config['providers'][launcher.MASTER_CHIEF_PROVIDER]
         self.assertEqual(provider['package'], launcher.OPENAI_COMPATIBLE)
         self.assertEqual(provider['settings'], {'baseURL': 'https://api.example.com/v1'})
         self.assertEqual(provider['env'], [KEY])
         self.assertEqual(list(provider['models']), ['remote-model'])
-        self.assertEqual(config['agents']['build']['model'], launcher.BRAIN_PROVIDER + '/remote-model')
+        self.assertEqual(config['agents']['build']['model'], launcher.MASTER_CHIEF_PROVIDER + '/remote-model')
         text = (self.root / '.opencode/opencode.jsonc').read_text(encoding='utf-8')
         self.assertNotIn('secret-value', text)
 
-    def test_brain_model_must_name_a_provider(self):
-        self.write_choices({'brain': {'source': 'opencode', 'model': 'deepseek'}})
+    def test_master_chief_model_must_name_a_provider(self):
+        self.write_choices({'masterChief': {'source': 'opencode', 'model': 'deepseek'}})
         with self.assertRaisesRegex(ValueError, 'provider/model'):
             self.prepare()
 
@@ -120,6 +120,21 @@ class Choices(unittest.TestCase):
         self.write_choices({'executors': self.api()})
         self.assertIsNone(self.prepare()[0])
 
+    def test_executors_from_opencode_skip_lm_studio(self):
+        self.write_choices({'executors': {'source': 'opencode', 'model': 'openrouter/qwen/qwen3-coder:free'}})
+        model, discovery = self.prepare(models=[])
+        self.assertIsNone(model)
+        discovery.assert_not_called()
+        config = self.overlay()
+        self.assertEqual(config['agents']['executor'], {'model': 'openrouter/qwen/qwen3-coder:free'})
+        self.assertEqual(config['agents']['executor-fast'], {'model': 'openrouter/qwen/qwen3-coder:free'})
+        self.assertEqual(config['providers'], {})
+
+    def test_command_line_model_conflicts_with_executors_from_opencode(self):
+        self.write_choices({'executors': {'source': 'opencode', 'model': 'a/b'}})
+        with self.assertRaisesRegex(ValueError, '--model'):
+            self.prepare(explicit=A.id)
+
     def test_saved_instance_selects_among_several_loaded(self):
         self.write_choices({'executors': {'source': 'lmstudio', 'instance': A.id}})
         self.assertEqual(self.prepare(models=[A, B])[0], A)
@@ -133,30 +148,30 @@ class Choices(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '--model'):
             self.prepare(explicit=A.id)
 
-    def test_both_brain_and_executors_on_api(self):
-        self.write_choices({'brain': self.api('big'), 'executors': self.api('small')})
+    def test_both_master_chief_and_executors_on_api(self):
+        self.write_choices({'masterChief': self.api('big'), 'executors': self.api('small')})
         self.assertIsNone(self.prepare()[0])
         config = self.overlay()
-        self.assertEqual(set(config['providers']), {launcher.BRAIN_PROVIDER, launcher.EXECUTOR_PROVIDER})
-        self.assertEqual(config['agents']['plan']['model'], launcher.BRAIN_PROVIDER + '/big')
+        self.assertEqual(set(config['providers']), {launcher.MASTER_CHIEF_PROVIDER, launcher.EXECUTOR_PROVIDER})
+        self.assertEqual(config['agents']['plan']['model'], launcher.MASTER_CHIEF_PROVIDER + '/big')
         self.assertEqual(config['agents']['executor']['model'], launcher.EXECUTOR_PROVIDER + '/small')
 
     # --- safety --------------------------------------------------------------
 
     def test_source_config_is_never_changed(self):
-        self.write_choices({'brain': self.api(), 'executors': self.api()})
+        self.write_choices({'masterChief': self.api(), 'executors': self.api()})
         self.prepare()
         self.assertEqual((self.root / 'opencode.jsonc').read_text(encoding='utf-8'), self.original)
 
     def test_choice_file_is_only_read(self):
-        data = {'brain': {'source': 'opencode', 'model': 'openai/gpt-6.1-sol'}}
+        data = {'masterChief': {'source': 'opencode', 'model': 'openai/gpt-6.1-sol'}}
         self.write_choices(data)
         before = (self.root / '.opencode' / launcher.CHOICES_FILE).read_bytes()
         self.prepare()
         self.assertEqual((self.root / '.opencode' / launcher.CHOICES_FILE).read_bytes(), before)
 
     def test_switching_back_to_default_removes_previous_choices(self):
-        self.write_choices({'brain': self.api(), 'executors': self.api()})
+        self.write_choices({'masterChief': self.api(), 'executors': self.api()})
         self.prepare()
         (self.root / '.opencode' / launcher.CHOICES_FILE).unlink()
         self.prepare()
@@ -167,7 +182,7 @@ class Choices(unittest.TestCase):
     def test_missing_key_variable_stops_before_writing(self):
         self.prepare()
         before = (self.root / '.opencode/opencode.jsonc').read_bytes()
-        self.write_choices({'brain': {**self.api(), 'keyEnv': 'KIT_TEST_MISSING_KEY'}})
+        self.write_choices({'masterChief': {**self.api(), 'keyEnv': 'KIT_TEST_MISSING_KEY'}})
         with patch.dict(launcher.os.environ, {}, clear=False):
             launcher.os.environ.pop('KIT_TEST_MISSING_KEY', None)
             with self.assertRaisesRegex(ValueError, 'KIT_TEST_MISSING_KEY'):
@@ -175,7 +190,7 @@ class Choices(unittest.TestCase):
         self.assertEqual((self.root / '.opencode/opencode.jsonc').read_bytes(), before)
 
     def test_key_itself_in_key_env_is_rejected(self):
-        self.write_choices({'brain': {**self.api(), 'keyEnv': 'sk-abc123-secret'}})
+        self.write_choices({'masterChief': {**self.api(), 'keyEnv': 'sk-abc123-secret'}})
         with self.assertRaisesRegex(ValueError, 'variable name'):
             self.prepare()
 
@@ -183,11 +198,12 @@ class Choices(unittest.TestCase):
         cases = [
             ('{broken', 'not valid JSON'),
             ('[]', 'JSON object'),
-            ({'brain': {'source': 'magic'}}, 'brain.source'),
+            ({'masterChief': {'source': 'magic'}}, 'masterChief.source'),
             ({'executors': {'source': 'cloud'}}, 'executors.source'),
             ({'executors': {'source': 'api', 'baseURL': 'ftp://x', 'model': 'm', 'keyEnv': KEY}}, 'http'),
             ({'executors': {'source': 'api', 'baseURL': 'https://x', 'keyEnv': KEY}}, 'executors.model'),
             ({'executors': {'source': 'lmstudio', 'instance': ''}}, 'instance'),
+            ({'executors': {'source': 'opencode', 'model': 'no-provider'}}, 'executors.model'),
         ]
         for data, message in cases:
             with self.subTest(data=data):
@@ -224,6 +240,13 @@ class Launch(unittest.TestCase):
         (self.root / '.opencode' / launcher.CHOICES_FILE).write_text(json.dumps(choice), encoding='utf-8')
         environment = self.run_main([])
         self.assertEqual(environment['OPENCODE_KIT_EXECUTORS'], 'api')
+        self.assertNotIn('OPENCODE_KIT_INSTANCE', environment)
+
+    def test_opencode_launch_reports_the_source(self):
+        choice = {'executors': {'source': 'opencode', 'model': 'a/b'}}
+        (self.root / '.opencode' / launcher.CHOICES_FILE).write_text(json.dumps(choice), encoding='utf-8')
+        environment = self.run_main([])
+        self.assertEqual(environment['OPENCODE_KIT_EXECUTORS'], 'opencode')
         self.assertNotIn('OPENCODE_KIT_INSTANCE', environment)
 
 

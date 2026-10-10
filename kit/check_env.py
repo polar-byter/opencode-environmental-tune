@@ -74,7 +74,7 @@ def check_config() -> bool:
         return False
     
     print(f"     json data is valid; \r\n size: ({len(raw)} chars)")
-    print(f"     model (brain):       {result_config_data.get('model', '—')}")
+    print(f"     model (Master Chief):       {result_config_data.get('model', '—')}")
     print(f"     default_agent:       {result_config_data.get('default_agent', '—')}")
     lm = result_config_data.get("providers", {}).get("lmstudio", {})
     print(f"     lmstudio.baseURL:    {lm.get('settings', {}).get('baseURL', 'default')}")

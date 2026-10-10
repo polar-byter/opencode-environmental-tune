@@ -123,7 +123,7 @@ class PipelineControls(unittest.TestCase):
     def test_source_cannot_change_after_inspection_and_still_be_accepted(self):
         self.begin()
         self.metrics.inspect('task', 'App')
-        (self.root / 'app.py').write_text('brain implementation')
+        (self.root / 'app.py').write_text('Master Chief implementation')
         self.metrics.test('task', self.command, scope='App')
         with self.assertRaisesRegex(ValueError, 'source changed after inspection'):
             self.metrics.review('task', 'App', 'accepted', self.checks)

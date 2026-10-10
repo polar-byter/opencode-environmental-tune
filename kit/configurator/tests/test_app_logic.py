@@ -49,6 +49,20 @@ class Step7FormToChoices(unittest.TestCase):
                 app.form_to_choices(form(**changes))
 
 
+class ExecutorsFromOpencode(unittest.TestCase):
+    def test_form_to_choices(self):
+        result = app.form_to_choices(form(exec_source=app.EXEC_OPENCODE, exec_model='openrouter/qwen/qwen3-coder:free'))
+        self.assertEqual(result['executors'], {'source': 'opencode', 'model': 'openrouter/qwen/qwen3-coder:free'})
+
+    def test_model_without_provider_is_an_error(self):
+        with self.assertRaises(ValueError):
+            app.form_to_choices(form(exec_source=app.EXEC_OPENCODE, exec_model='qwen3-coder'))
+
+    def test_round_trip(self):
+        original = form(exec_source=app.EXEC_OPENCODE, exec_model='openrouter/qwen/qwen3-coder:free')
+        self.assertEqual(app.choices_to_form(app.form_to_choices(original)), original)
+
+
 class Step7ChoicesToForm(unittest.TestCase):
     def test_empty_file_gives_empty_form(self):
         self.assertEqual(app.choices_to_form({}), app.EMPTY_FORM)

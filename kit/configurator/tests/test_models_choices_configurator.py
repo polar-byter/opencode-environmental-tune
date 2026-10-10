@@ -32,6 +32,22 @@ class Step1MasterChiefFromOpencode(unittest.TestCase):
                 models_choices_configurator.master_chief_from_opencode(value)
 
 
+class ExecutorsFromOpencode(unittest.TestCase):
+    def test_same_rules_as_master_chief(self):
+        self.assertEqual(models_choices_configurator.executors_from_opencode(' openrouter/qwen/qwen3-coder:free '),
+                         {'source': 'opencode', 'model': 'openrouter/qwen/qwen3-coder:free'})
+        with self.assertRaises(ValueError):
+            models_choices_configurator.executors_from_opencode('qwen3-coder')
+
+    def test_launcher_understands_it(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            choice = models_choices_configurator.build_choices(
+                None, models_choices_configurator.executors_from_opencode('a/b'))
+            models_choices_configurator.save_choices(root, choice)
+            self.assertEqual(run_opencode.load_choices(root)['executors'], {'source': 'opencode', 'model': 'a/b'})
+
+
 class Step1ApiChoice(unittest.TestCase):
     def test_returns_all_fields(self):
         self.assertEqual(models_choices_configurator.api_choice('https://api.example.com/v1', 'm', 'MY_KEY'),

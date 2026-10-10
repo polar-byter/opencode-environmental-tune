@@ -41,7 +41,7 @@ CATEGORY_INCOMPLETE = 'incomplete'  # tests ran without failures, but some were 
 CATEGORY_NO_RESULT = 'no_result'    # no readable test results: setup, build or tool problem
 CATEGORY_TIMEOUT = 'timeout'        # the command did not finish in time
 
-# Exit codes of the command line, so the brain can react without parsing text.
+# Exit codes of the command line, so the Master Chief can react without parsing text.
 EXIT_OK = 0
 EXIT_TESTS_FAILED = 1
 EXIT_USAGE = 2
@@ -50,7 +50,7 @@ EXIT_NO_RESULT = 4
 
 
 class TaskHalted(Exception):
-    """The task reached a loop guard. The brain must stop and ask the user."""
+    """The task reached a loop guard. The Master Chief must stop and ask the user."""
 
 
 def valid_number(value):
@@ -73,11 +73,11 @@ def message_info(message):
     return info
 
 
-def brain_tool_child_references(export):
-    """Find child sessions that the brain started through its tools.
+def master_chief_tool_child_references(export):
+    """Find child sessions that the Master Chief started through its tools.
 
-    When the brain calls an executor, OpenCode runs the executor in a separate
-    child session. Its messages and tokens are not part of the brain's export,
+    When the Master Chief calls an executor, OpenCode runs the executor in a separate
+    child session. Its messages and tokens are not part of the Master Chief's export,
     so the report must find every child to count all usage.
 
     The main source of children is the OpenCode API (session.list, see
@@ -592,7 +592,7 @@ class TaskMetrics:
     def inspect(self, task: str, piece: str) -> dict:
         """Save file changes for the pending attempt; refuse a second inspection.
 
-        The brain must call this after the executor returns, before its own edits.
+        The Master Chief must call this after the executor returns, before its own edits.
         """
         with self.lock(task):
             events = self.running(task)
@@ -612,10 +612,10 @@ class TaskMetrics:
                                snapshot=filename, **changes)
 
     def review(self, task: str, piece: str, result: str, checks: Path | None = None) -> dict:
-        """Record the brain's accepted/rework decision and check acceptance evidence.
+        """Record the Master Chief's accepted/rework decision and check acceptance evidence.
 
         Acceptance requires allowed edits, matching requirement checks and a green
-        scoped/full run on unchanged files. This method does not call the brain,
+        scoped/full run on unchanged files. This method does not call the Master Chief,
         review source code or run tests. Legacy tasks may have no delegation.
         """
 
@@ -814,7 +814,7 @@ class TaskMetrics:
         for sid in sorted(allowed):
             for export in sessions[sid]:
                 warnings_list.extend(export.get('_metrics_warnings', []))
-                for child in brain_tool_child_references(export) - allowed:
+                for child in master_chief_tool_child_references(export) - allowed:
                     warnings_list.append(f'Нет выгрузки дочерней сессии: {child}')
                 for message in export['messages']:
                     info = message_info(message)
@@ -909,7 +909,7 @@ class TaskMetrics:
             seen.add(sid)
             try:
                 export = self.export_session(executable, sid)
-                children = brain_tool_child_references(export)
+                children = master_chief_tool_child_references(export)
                 try:
                     self.api_children(executable, sid, children)
                 except (ValueError, OSError, subprocess.TimeoutExpired) as error:
@@ -1025,7 +1025,7 @@ class TaskMetrics:
 
 def main(argv=None) -> int:
     """
-    Command line. Exit codes tell the brain what to do next:
+    Command line. Exit codes tell the Master Chief what to do next:
     0 passed or done; 1 tests ran and failed; 4 no readable test result (setup or build);
     3 STOP: a loop guard is reached, ask the user; 2 wrong usage or a broken journal.
     """
@@ -1085,7 +1085,7 @@ def main(argv=None) -> int:
 
 
 def report_test(event: dict, task: str) -> int:
-    """Prints what the brain should do after a test run and returns the exit code."""
+    """Prints what the Master Chief should do after a test run and returns the exit code."""
     if event.get('halt'):
         print_stop(event['halt'], task)
         return EXIT_STOP
@@ -1105,7 +1105,7 @@ def report_test(event: dict, task: str) -> int:
 
 
 def print_stop(reason: str, task: str) -> None:
-    """The STOP message. The brain must end the loop and wait for the user's decision."""
+    """The STOP message. The Master Chief must end the loop and wait for the user's decision."""
     print(f'STOP: {reason}', file=sys.stderr)
     print('Do not run more tests and do not send more reworks. Tell the user what happened and what '
           'you suggest, then wait. Continue only after the user decides, with: '

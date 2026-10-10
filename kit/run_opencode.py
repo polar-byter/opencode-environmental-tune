@@ -1,8 +1,8 @@
-"""Start OpenCode with the model choice for the brain and the executors.
+"""Start OpenCode with the model choice for the Master Chief and the executors.
 
 By default both executors are bound to an already loaded LM Studio instance and the
-brain keeps the model from the project config. An optional choice file written by the
-model configurator (.opencode/kit-models.json) can switch the brain and/or the
+Master Chief keeps the model from the project config. An optional choice file written by the
+model configurator (.opencode/kit-models.json) can switch the Master Chief and/or the
 executors to another model. Without that file the launcher behaves as before.
 """
 from __future__ import annotations
@@ -31,10 +31,10 @@ ALIAS = 'loaded-executor'
 
 # The model configurator writes the user's choice here; the launcher only reads it.
 CHOICES_FILE = 'kit-models.json'
-BRAIN_AGENTS = ('build', 'plan')
+MASTER_CHIEF_AGENTS = ('build', 'plan')
 EXECUTOR_AGENTS = ('executor', 'executor-fast')
 # Provider IDs that the launcher adds for "own API" choices.
-BRAIN_PROVIDER = 'kit-brain-api'
+MASTER_CHIEF_PROVIDER = 'kit-master-chief-api'
 EXECUTOR_PROVIDER = 'kit-executor-api'
 # OpenCode V2 package for any OpenAI-compatible endpoint.
 OPENAI_COMPATIBLE = '@opencode/ai/providers/openai-compatible'
@@ -85,15 +85,24 @@ def _api(section: dict, where: str) -> dict:
     return {'source': 'api', 'baseURL': url.rstrip('/'), 'model': _text(section, 'model', where), 'keyEnv': key_env}
 
 
+def _opencode(section: dict, where: str) -> dict:
+    """A model that OpenCode already knows: "provider/model" from /connect or OpenCode Go."""
+    model = _text(section, 'model', where)
+    if '/' not in model:
+        raise ValueError(f'{CHOICES_FILE}: "{where}.model" must look like provider/model, for example opencode-go/deepseek-v4.1-flash')
+    return {'source': 'opencode', 'model': model}
+
+
 def load_choices(root: Path) -> dict:
     """Read the optional choice file. A missing file or section means the default behaviour.
 
-    Returns {'brain': None | {...}, 'executors': None | {...}}.
-    brain:     {'source': 'opencode', 'model': 'provider/model'} or an API choice.
-    executors: {'source': 'lmstudio', 'instance': str | None} or an API choice.
+    Returns {'masterChief': None | {...}, 'executors': None | {...}}.
+    Master Chief:     {'source': 'opencode', 'model': 'provider/model'} or an API choice.
+    executors: {'source': 'lmstudio', 'instance': str | None},
+               {'source': 'opencode', 'model': 'provider/model'} or an API choice.
     """
     path = root / '.opencode' / CHOICES_FILE
-    result = {'brain': None, 'executors': None}
+    result = {'masterChief': None, 'executors': None}
     if not path.exists():
         return result
     try:
@@ -103,20 +112,17 @@ def load_choices(root: Path) -> dict:
     if not isinstance(data, dict):
         raise ValueError(f'{CHOICES_FILE} must contain a JSON object')
 
-    brain = data.get('brain')
-    if brain is not None:
-        if not isinstance(brain, dict):
-            raise ValueError(f'{CHOICES_FILE}: "brain" must be an object')
-        source = brain.get('source')
+    master_chief = data.get('masterChief')
+    if master_chief is not None:
+        if not isinstance(master_chief, dict):
+            raise ValueError(f'{CHOICES_FILE}: "masterChief" must be an object')
+        source = master_chief.get('source')
         if source == 'opencode':
-            model = _text(brain, 'model', 'brain')
-            if '/' not in model:
-                raise ValueError(f'{CHOICES_FILE}: "brain.model" must look like provider/model, for example opencode-go/deepseek-v4.1-flash')
-            result['brain'] = {'source': 'opencode', 'model': model}
+            result['masterChief'] = _opencode(master_chief, 'masterChief')
         elif source == 'api':
-            result['brain'] = _api(brain, 'brain')
+            result['masterChief'] = _api(master_chief, 'masterChief')
         else:
-            raise ValueError(f'{CHOICES_FILE}: "brain.source" must be "opencode" or "api"')
+            raise ValueError(f'{CHOICES_FILE}: "masterChief.source" must be "opencode" or "api"')
 
     executors = data.get('executors')
     if executors is not None:
@@ -128,10 +134,12 @@ def load_choices(root: Path) -> dict:
             if instance is not None and (not isinstance(instance, str) or not instance.strip()):
                 raise ValueError(f'{CHOICES_FILE}: "executors.instance" must be a non-empty string or absent')
             result['executors'] = {'source': 'lmstudio', 'instance': instance.strip() if instance else None}
+        elif source == 'opencode':
+            result['executors'] = _opencode(executors, 'executors')
         elif source == 'api':
             result['executors'] = _api(executors, 'executors')
         else:
-            raise ValueError(f'{CHOICES_FILE}: "executors.source" must be "lmstudio" or "api"')
+            raise ValueError(f'{CHOICES_FILE}: "executors.source" must be "lmstudio", "opencode" or "api"')
     return result
 
 
@@ -149,13 +157,14 @@ def api_provider(choice: dict, name: str) -> dict:
 def prepare(root: Path, explicit: str | None = None):
     """Write only our local overlay, preserving the source config and agent permissions.
 
-    Returns the selected LM Studio instance, or None when the executors use an own API.
+    Returns the selected LM Studio instance, or None when the executors use a model
+    from OpenCode or an own API.
     """
     config = json.loads(strip_jsonc((root / 'opencode.jsonc').read_text(encoding='utf-8-sig')))
     choices = load_choices(root)
     executors = choices['executors'] or {'source': 'lmstudio', 'instance': None}
-    if executors['source'] == 'api' and explicit:
-        raise ValueError('--model selects an LM Studio instance, but the executors are set to an own API in ' + CHOICES_FILE)
+    if executors['source'] != 'lmstudio' and explicit:
+        raise ValueError('--model selects an LM Studio instance, but the executors are not set to LM Studio in ' + CHOICES_FILE)
     if executors['source'] == 'lmstudio':
         for name in EXECUTOR_AGENTS:
             agent = config.get('agents', {}).get(name, {})
@@ -175,21 +184,24 @@ def prepare(root: Path, explicit: str | None = None):
         model = select_model(loaded_models(base_url(config)), configured_model(config), explicit or executors['instance'])
         patch['providers']['lmstudio'] = {'models': {ALIAS: {'modelID': model.id, 'name': model.name + ' (already loaded)'}}}
         executor_ref = 'lmstudio/' + ALIAS
+    elif executors['source'] == 'opencode':
+        # A model OpenCode already knows: no provider is added, only the reference.
+        executor_ref = executors['model']
     else:
         patch['providers'][EXECUTOR_PROVIDER] = api_provider(executors, 'Executor API (kit)')
         executor_ref = f"{EXECUTOR_PROVIDER}/{executors['model']}"
     for name in EXECUTOR_AGENTS:
         patch['agents'][name] = {'model': executor_ref}
 
-    brain = choices['brain']
-    if brain:
-        if brain['source'] == 'api':
-            patch['providers'][BRAIN_PROVIDER] = api_provider(brain, 'Brain API (kit)')
-            brain_ref = f"{BRAIN_PROVIDER}/{brain['model']}"
+    master_chief = choices['masterChief']
+    if master_chief:
+        if master_chief['source'] == 'api':
+            patch['providers'][MASTER_CHIEF_PROVIDER] = api_provider(master_chief, 'Master Chief API (kit)')
+            master_chief_ref = f"{MASTER_CHIEF_PROVIDER}/{master_chief['model']}"
         else:
-            brain_ref = brain['model']
-        for name in BRAIN_AGENTS:
-            patch['agents'][name] = {'model': brain_ref}
+            master_chief_ref = master_chief['model']
+        for name in MASTER_CHIEF_AGENTS:
+            patch['agents'][name] = {'model': master_chief_ref}
 
     directory.mkdir(exist_ok=True)
     temporary = directory / 'opencode.jsonc.tmp'
@@ -206,14 +218,17 @@ def describe(root: Path, model) -> str:
         lines.append(f'Already loaded: {model.name}\nInstance: {model.id}\nBoth executors use this instance; load settings are unchanged.')
     else:
         executors = choices['executors']
-        lines.append(f"Executors: own API {executors['baseURL']}, model {executors['model']}")
-    brain = choices['brain']
-    if brain and brain['source'] == 'api':
-        lines.append(f"Brain (build, plan): own API {brain['baseURL']}, model {brain['model']}")
-    elif brain:
-        lines.append(f"Brain (build, plan): {brain['model']}")
+        if executors['source'] == 'opencode':
+            lines.append(f"Executors: {executors['model']} (model from OpenCode)")
+        else:
+            lines.append(f"Executors: own API {executors['baseURL']}, model {executors['model']}")
+    master_chief = choices['masterChief']
+    if master_chief and master_chief['source'] == 'api':
+        lines.append(f"Master Chief (build, plan): own API {master_chief['baseURL']}, model {master_chief['model']}")
+    elif master_chief:
+        lines.append(f"Master Chief (build, plan): {master_chief['model']}")
     else:
-        lines.append('Brain: model from opencode.jsonc')
+        lines.append('Master Chief: model from opencode.jsonc')
     return '\n'.join(lines)
 
 
@@ -250,7 +265,7 @@ def main(argv=None) -> int:
             environment['OPENCODE_KIT_INSTANCE'] = model.id
         else:
             # No LM Studio instance is involved; do not leak one inherited from an outer launch.
-            environment['OPENCODE_KIT_EXECUTORS'] = 'api'
+            environment['OPENCODE_KIT_EXECUTORS'] = load_choices(root)['executors']['source']
             environment.pop('OPENCODE_KIT_INSTANCE', None)
         environment['OPENCODE_KIT_SERVER_MODE'] = 'standalone' if '--standalone' in arguments else 'shared'
         # Pass an argument list directly to the native CLI, without a shell.

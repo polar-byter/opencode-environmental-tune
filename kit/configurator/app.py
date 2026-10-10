@@ -34,7 +34,7 @@ from . import keys, models_choices_configurator, sources
 # Values of the radio buttons; 
 # they are also the keys of the form dictionary.
 MASTER_CHIEF_DEFAULT, MASTER_CHIEF_OPENCODE, MASTER_CHIEF_API = 'default', 'opencode', 'api'
-EXEC_LMSTUDIO, EXEC_API = 'lmstudio', 'api'
+EXEC_LMSTUDIO, EXEC_OPENCODE, EXEC_API = 'lmstudio', 'opencode', 'api'
 
 # Project root: kit/configurator/app.py ->we go 2 levels up.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -44,9 +44,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 #   master_chief_model       model reference or model name
 #   master_chief_url         API address (only for MASTER_CHIEF_API)
 #   master_chief_key_env     name of the key variable (only for MASTER_CHIEF_API)
-#   exec_source       EXEC_LMSTUDIO | EXEC_API
+#   exec_source       EXEC_LMSTUDIO | EXEC_OPENCODE | EXEC_API
 #   exec_instance     loaded instance ID or "" (only for EXEC_LMSTUDIO)
-#   exec_model, exec_url, exec_key_env   (only for EXEC_API)
+#   exec_model        model reference (EXEC_OPENCODE) or model name (EXEC_API)
+#   exec_url, exec_key_env   (only for EXEC_API)
 EMPTY_FORM = {
     'master_chief_source': MASTER_CHIEF_DEFAULT,
     'master_chief_model': '',
@@ -69,6 +70,7 @@ def form_to_choices(form: dict) -> dict:
     MASTER_CHIEF_OPENCODE -> models_choices_configurator.master_chief_from_opencode(master_chief_model);
     MASTER_CHIEF_API -> models_choices_configurator.api_choice(master_chief_url, master_chief_model, master_chief_key_env).
     exec_source EXEC_LMSTUDIO -> models_choices_configurator.lmstudio_choice(exec_instance);
+    EXEC_OPENCODE -> models_choices_configurator.executors_from_opencode(exec_model);
     EXEC_API -> models_choices_configurator.api_choice(exec_url, exec_model, exec_key_env).
     Then models_choices_configurator.build_choices(master_chief, executors).
 
@@ -87,6 +89,8 @@ def form_to_choices(form: dict) -> dict:
     exec_source = form['exec_source']
     if exec_source == EXEC_LMSTUDIO:
         executors = models_choices_configurator.lmstudio_choice(form['exec_instance'])
+    elif exec_source == EXEC_OPENCODE:
+        executors = models_choices_configurator.executors_from_opencode(form['exec_model'])
     elif exec_source == EXEC_API:
         executors = models_choices_configurator.api_choice(form['exec_url'], form['exec_model'], form['exec_key_env'])
     else:
@@ -117,6 +121,9 @@ def choices_to_form(data: dict) -> dict:
         if executors['source'] == EXEC_LMSTUDIO:
             result_form['exec_source'] = EXEC_LMSTUDIO
             result_form['exec_instance'] = executors.get('instance', '')
+        elif executors['source'] == EXEC_OPENCODE:
+            result_form['exec_source'] = EXEC_OPENCODE
+            result_form['exec_model'] = executors['model']
         elif executors['source'] == EXEC_API:
             result_form['exec_source'] = EXEC_API
             result_form['exec_model'] = executors['model']
@@ -213,20 +220,24 @@ class ConfiguratorApp:
             row=4, column=1, sticky='ew', padx=4, pady=2)
 
     def build_executor_block(self):
-        """Frame "Executors (executor, executor-fast)": two radio buttons bound to
-        vars['exec_source'], a combobox for exec_instance with "Refresh list"
-        (refresh_lmstudio), entries for exec_url, exec_model, exec_key_env and the key."""
+        """Frame "Executors (executor, executor-fast)": three radio buttons bound to
+        vars['exec_source'], a combobox for exec_instance with "Refresh list" (refresh_lmstudio),
+        a combobox for exec_model with "Refresh list" (refresh_executor_models),
+        entries for exec_url, exec_key_env and the key."""
         # 1. The frame, placed in row 1 of the window (row 0 is the Master Chief frame).
         frame = ttk.LabelFrame(self.window, text='Executors (executor, executor-fast)')
         frame.grid(row=1, column=0, sticky='ew', padx=8, pady=4)
         frame.columnconfigure(1, weight=1)
 
-        # 2. Two radio buttons sharing one variable: LM Studio or an own API.
+        # 2. Three radio buttons sharing one variable: LM Studio, a model from OpenCode
+        #    (for example a free OpenRouter model connected with /connect) or an own API.
         source = self.vars['exec_source']
         ttk.Radiobutton(frame, text='LM Studio (loaded model)', variable=source,
                         value=EXEC_LMSTUDIO).grid(row=0, column=0, sticky='w', padx=4, pady=2)
+        ttk.Radiobutton(frame, text='Model from OpenCode', variable=source,
+                        value=EXEC_OPENCODE).grid(row=0, column=1, sticky='w', padx=4, pady=2)
         ttk.Radiobutton(frame, text='Own API', variable=source,
-                        value=EXEC_API).grid(row=0, column=1, sticky='w', padx=4, pady=2)
+                        value=EXEC_API).grid(row=0, column=2, sticky='w', padx=4, pady=2)
 
         # 3. Row 1: the loaded LM Studio model and the refresh button.
         #    Kept in a field: refresh_lmstudio will fill it later.
@@ -236,18 +247,23 @@ class ConfiguratorApp:
         ttk.Button(frame, text='Refresh list',
                    command=self.refresh_lmstudio).grid(row=1, column=2, sticky='w', padx=4, pady=2)
 
-        # 4. Rows 2-4: fields used only for "Own API".
-        ttk.Label(frame, text='API address:').grid(row=2, column=0, sticky='w', padx=4, pady=2)
+        # 4. Row 2: the model for "Model from OpenCode" and "Own API", with its own refresh button.
+        #    Kept in a field: refresh_executor_models will fill it later.
+        ttk.Label(frame, text='Model:').grid(row=2, column=0, sticky='w', padx=4, pady=2)
+        self.exec_model_combo = ttk.Combobox(frame, textvariable=self.vars['exec_model'])
+        self.exec_model_combo.grid(row=2, column=1, sticky='ew', padx=4, pady=2)
+        ttk.Button(frame, text='Refresh list',
+                   command=self.refresh_executor_models).grid(row=2, column=2, sticky='w', padx=4, pady=2)
+
+        # 5. Rows 3-4: fields used only for "Own API".
+        ttk.Label(frame, text='API address:').grid(row=3, column=0, sticky='w', padx=4, pady=2)
         ttk.Entry(frame, textvariable=self.vars['exec_url']).grid(
-            row=2, column=1, sticky='ew', padx=4, pady=2)
-        ttk.Label(frame, text='API model:').grid(row=3, column=0, sticky='w', padx=4, pady=2)
-        ttk.Entry(frame, textvariable=self.vars['exec_model']).grid(
             row=3, column=1, sticky='ew', padx=4, pady=2)
         ttk.Label(frame, text='Key variable:').grid(row=4, column=0, sticky='w', padx=4, pady=2)
         ttk.Entry(frame, textvariable=self.vars['exec_key_env']).grid(
             row=4, column=1, sticky='ew', padx=4, pady=2)
 
-        # 5. Row 5: the API key itself, with its own variable (never written to the file).
+        # 6. Row 5: the API key itself, with its own variable (never written to the file).
         self.exec_key = tk.StringVar()
         ttk.Label(frame, text='API key:').grid(row=5, column=0, sticky='w', padx=4, pady=2)
         ttk.Entry(frame, textvariable=self.exec_key, show='*').grid(
@@ -317,6 +333,26 @@ class ConfiguratorApp:
             self.status.set(f'Model list was not received: {error}')
             return
         self.master_chief_combo['values'] = models
+        self.status.set(f'Models found: {len(models)}')
+
+    def refresh_executor_models(self):
+        """Fill the executor model combobox: sources.opencode_models() for EXEC_OPENCODE,
+        sources.api_models(url, key) for EXEC_API. Errors go to the status label."""
+        form = self.read_form()
+        source = form['exec_source']
+        try:
+            if source == EXEC_OPENCODE:
+                models = sources.opencode_models()
+            elif source == EXEC_API:
+                key = self.typed_or_saved_key(self.exec_key, form['exec_key_env'])
+                models = sources.api_models(form['exec_url'], key)
+            else:
+                self.status.set('For LM Studio use the Refresh list button in the "LM Studio model" row')
+                return
+        except ValueError as error:
+            self.status.set(f'Model list was not received: {error}')
+            return
+        self.exec_model_combo['values'] = models
         self.status.set(f'Models found: {len(models)}')
 
     def refresh_lmstudio(self):

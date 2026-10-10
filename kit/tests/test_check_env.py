@@ -44,7 +44,7 @@ class TestStripJsonc(unittest.TestCase):
         self.assertEqual(json.loads(out), {"a": 'he said "hi"'})
 
     def test_comment_after_value_on_same_line(self):
-        out = check_env.strip_jsonc('{\n "model": "x", // brain\n "a": 1\n}')
+        out = check_env.strip_jsonc('{\n "model": "x", // Master Chief\n "a": 1\n}')
         self.assertEqual(json.loads(out), {"model": "x", "a": 1})
 
     def test_real_config_parses(self):

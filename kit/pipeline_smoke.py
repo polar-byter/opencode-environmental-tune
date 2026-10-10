@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-pipeline_smoke.py — optional offline smoke test of the brain → executor → review flow.
+pipeline_smoke.py — optional offline smoke test of the Master Chief → executor → review flow.
 
 It doesn't use Open Code to talks to LM Studio directly, so you can check that the
 local executor model can implement a spec-commented skeleton.
@@ -94,12 +94,12 @@ def resolve_executor_model(config: dict, override: str | None = None) -> str | N
     return alias
 
 
-# ── the demo fixture (brain side) ───────────────────────────────────
+# ── the demo fixture (Master Chief side) ───────────────────────────────────
 
-def brain_skeleton_app() -> str:
+def master_chief_skeleton_app() -> str:
     """Skeleton of the module under test: signatures + spec comments + placeholder bodies."""
     return '''# -*- coding: utf-8 -*-
-"""calculator.py — percent/discount. Skeleton: brain. Implementation: executor."""
+"""calculator.py — percent/discount. Skeleton: Master Chief. Implementation: executor."""
 
 
 def percent(part: float, whole: float) -> float:
@@ -130,10 +130,10 @@ def discount(price: float, percent_off: float) -> float:
 '''
 
 
-def brain_skeleton_tests() -> str:
-    """Tests written by the brain against the skeleton. They fail until implemented."""
+def master_chief_skeleton_tests() -> str:
+    """Tests written by the Master Chief against the skeleton. They fail until implemented."""
     return '''# -*- coding: utf-8 -*-
-"""test_calculator.py — unit tests. Skeleton: brain. Run: brain."""
+"""test_calculator.py — unit tests. Skeleton: Master Chief. Run: Master Chief."""
 import os
 import sys
 import unittest
@@ -208,7 +208,7 @@ def strip_markdown(code: str) -> str:
     return code.strip()
 
 
-# ── review (brain side) ─────────────────────────────────────────────
+# ── review (Master Chief side) ─────────────────────────────────────────────
 
 def run_tests(workdir: Path) -> tuple[bool, str]:
     """Runs unittest inside workdir. Returns (ok, combined output)."""
@@ -226,7 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Builds the CLI parser."""
     parser = argparse.ArgumentParser(
         prog="pipeline_smoke.py",
-        description="Offline smoke test of the brain -> executor flow via LM Studio.",
+        description="Offline smoke test of the Master Chief -> executor flow via LM Studio.",
     )
     parser.add_argument("--model", help="already loaded LM Studio instance ID")
     parser.add_argument("--keep", action="store_true", help="keep the temp dir and print its path")
@@ -238,9 +238,9 @@ def run_smoke(workdir: Path, model: str, base: str = LMSTUDIO_BASE) -> int:
     app_dir.mkdir(parents=True, exist_ok=True)
     tests_dir.mkdir(parents=True, exist_ok=True)
 
-    skeleton = brain_skeleton_app()
+    skeleton = master_chief_skeleton_app()
     (app_dir / "calculator.py").write_text(skeleton, encoding="utf-8")
-    (tests_dir / "test_calculator.py").write_text(brain_skeleton_tests(), encoding="utf-8")
+    (tests_dir / "test_calculator.py").write_text(master_chief_skeleton_tests(), encoding="utf-8")
     print(f"Workdir: {workdir}")
 
     ok_before, _ = run_tests(workdir)
@@ -272,7 +272,7 @@ def run_smoke(workdir: Path, model: str, base: str = LMSTUDIO_BASE) -> int:
 def main(argv=None) -> int:
     """CLI entry point. Returns 0 when tests are green, 1 otherwise."""
     args = build_parser().parse_args(argv)
-    print("pipeline smoke test: brain -> executor -> review (offline)")
+    print("pipeline smoke test: Master Chief -> executor -> review (offline)")
     print("=" * 60)
 
     config = load_config()
