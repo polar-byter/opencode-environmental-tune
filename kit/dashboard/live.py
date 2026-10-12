@@ -6,6 +6,7 @@ the affected part. Polling file size and mtime is enough: the kit appends to its
 and rewrites the choice file and the overlay as whole files.
 
 Status: SKELETON. Every function raises NotImplementedError until it is implemented.
+Later optional optimization. Manual refresh comes first; see README.ru.md.
 """
 from __future__ import annotations
 

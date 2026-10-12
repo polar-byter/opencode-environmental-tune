@@ -5,6 +5,7 @@ root session for CACHE_SECONDS. The CLI is found by kit/opencode_cli.py (through
 TaskMetrics.collect_exports) — the same OpenCode the rest of the kit uses.
 
 Status: SKELETON. Every function raises NotImplementedError until it is implemented.
+Later iteration: tokens and CLI integration. Start with README.ru.md.
 """
 from __future__ import annotations
 

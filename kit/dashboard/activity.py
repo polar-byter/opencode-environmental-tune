@@ -11,6 +11,7 @@ Pure functions over the JSON of `opencode session export <id>` (OpenCode 2.0.26 
 Reasoning text is never shown: it may be long and is not meant for the user.
 
 Status: SKELETON. Every function raises NotImplementedError until it is implemented.
+Later iteration: real OpenCode exports. Start with README.ru.md.
 """
 from __future__ import annotations
 

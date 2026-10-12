@@ -15,6 +15,8 @@ Security (the server can save API keys and rebuild the OpenCode config):
 Routes (ROUTES below): method, pattern with <name> parts, handler method name.
 
 Status: SKELETON. Every function raises NotImplementedError until it is implemented.
+Later multi-project server. The first browser exercise uses simple.py instead.
+Keep these contracts for later iterations; see README.ru.md.
 """
 from __future__ import annotations
 

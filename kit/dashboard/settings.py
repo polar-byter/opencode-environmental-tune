@@ -10,6 +10,7 @@ Security rules (the page is local, but keys are secrets):
 - A key is saved only through keys.save_user_variable, after the form passed form_to_choices.
 
 Status: SKELETON. Every function raises NotImplementedError until it is implemented.
+Later iteration: write operations, after the read-only dashboard. See README.ru.md.
 """
 from __future__ import annotations
 

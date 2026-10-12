@@ -9,6 +9,8 @@ Status: SKELETON. Every function raises NotImplementedError until it is implemen
 """
 from __future__ import annotations
 
+# Later iteration: multiple tasks and projects. Start with README.ru.md.
+
 from dataclasses import dataclass
 import json
 from pathlib import Path

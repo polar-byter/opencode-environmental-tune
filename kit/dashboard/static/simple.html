@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Задача OpenCode</title>
+</head>
+<body>
+  <main>
+    <h1 id="title">Задача OpenCode</h1>
+    <button id="refresh" type="button">Обновить</button>
+    <p id="message" role="status"></p>
+    <dl>
+      <dt>Статус</dt><dd id="status">Нет данных</dd>
+      <dt>События</dt><dd id="event-count">Нет данных</dd>
+      <dt>Успешные рабочие прогоны / все рабочие</dt><dd id="runs">Нет данных</dd>
+      <dt>Возвраты на доработку</dt><dd id="reworks">Нет данных</dd>
+      <dt>Сбои исполнителя</dt><dd id="failures">Нет данных</dd>
+    </dl>
+  </main>
+  <script>
+    'use strict';
+
+    // Учебный каркас этапа 3. Начни после готового GET /api/task.
+    // Вернуть JSON ответа; при !response.ok бросить Error(data.error).
+    async function loadTask() {
+      // ПОДСКАЗКА: await fetch('/api/task'), затем await response.json().
+      throw new Error('TODO: loadTask');
+    }
+
+    // Заполнить title, status, event-count, runs, reworks, failures из brief_summary.
+    function renderTask(data) {
+      // ПОДСКАЗКА: document.getElementById(...).textContent = ...;
+      // Используй textContent: название задачи может содержать HTML как обычный текст.
+      // status переведи через словарь running/ halted/ finished; runs = зелёные / все.
+      throw new Error('TODO: renderTask');
+    }
+
+    // На время запроса disable кнопки; успех -> renderTask и пустое message.
+    // Ошибка -> message.textContent; наконец снова включить кнопку.
+    async function refreshTask() {
+      // ПОДСКАЗКА: try/catch/finally похож на Python try/except/finally.
+      throw new Error('TODO: refreshTask');
+    }
+
+    // Привязать refreshTask к click и выполнить первое обновление.
+    function main() {
+      // ПОДСКАЗКА: addEventListener('click', refreshTask).
+      throw new Error('TODO: main');
+    }
+
+    // После реализации main добавь ниже её вызов.
+  </script>
+</body>
+</html>

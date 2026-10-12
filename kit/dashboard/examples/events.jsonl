@@ -1,0 +1,5 @@
+{"kind":"start","at":100,"title":"Учебный пример: первая задача","event_id":"demo-start"}
+{"kind":"test","at":110,"status":"passed","category":"passed","scope":"full","tests":3,"failures":0,"errors":0,"skipped":0,"duration_seconds":1.5,"event_id":"demo-test"}
+{"kind":"halt","at":120,"reason":"Учебная остановка","event_id":"demo-halt"}
+{"kind":"resume","at":130,"reason":"Учебное продолжение","event_id":"demo-resume"}
+{"kind":"finish","at":140,"ended":140,"event_id":"demo-finish"}

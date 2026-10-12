@@ -2,7 +2,8 @@
 // this server. Charts are inline SVG.
 //
 // Status: SKELETON. Every function throws until it is implemented (steps 10.x in the
-// vault note "20. Веб-дашборд. План и архитектура").
+// original architecture, now archived in the vault folder "Дашборд OpenCode").
+// Later full interface. The first browser exercise is static/simple.html.
 'use strict';
 
 const state = {

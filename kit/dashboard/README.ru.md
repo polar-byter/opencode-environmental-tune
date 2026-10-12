@@ -1,0 +1,59 @@
+# Дашборд: учебный маршрут
+
+Здесь лежит каркас, который ты постепенно реализуешь сам. Начинаем с Python:
+одна строка JSON, затем файл, затем вывод в терминале. Первая страница появится
+после того, как чтение и сводка уже работают.
+
+Полный план и уроки находятся в папке **Дашборд OpenCode** выбранного Obsidian Vault.
+`currentsteps.md` в корне Vault хранит текущий подшаг и последние результаты.
+
+## Что открывать сейчас
+
+| Очередь | Функция | Результат |
+| --- | --- | --- |
+| 1 | `journal.parse_event` | Строка JSON превращается в проверенный словарь |
+| 2 | `journal.read_events` | Файл превращается в список событий |
+| 3 | `console.main` | События видны в терминале |
+
+Проверка первой функции из корня репозитория:
+
+```powershell
+py -m unittest kit.dashboard.tests.test_journal.Step1ParseAndRead.test_parse_event_checks_shape -v
+```
+
+Пока вместо тела стоит `NotImplementedError`, красный тест ожидаем. После реализации
+тест должен показать `OK`. Для проверки чтения файла понадобятся также:
+
+```powershell
+py -m unittest kit.dashboard.tests.test_journal.Step1ParseAndRead kit.dashboard.tests.test_learning.Iteration1Reader -v
+```
+
+После реализации `console.main` проверь весь первый этап:
+
+```powershell
+py -m unittest kit.dashboard.tests.test_journal.Step1ParseAndRead kit.dashboard.tests.test_learning.Iteration1Reader kit.dashboard.tests.test_learning.Iteration1Console -v
+py -m kit.dashboard.console kit/dashboard/examples/events.jsonl
+```
+
+Ожидаемый ручной вывод начинается с `Events: 5`, затем показывает start, test, halt,
+resume и finish с их временем. Это выдуманный учебный файл, не статистика реальной задачи.
+
+## После первого этапа
+
+1. `task_status`, `test_runs`, `brief_summary`: краткая сводка одной задачи без сложной истории частей.
+2. `simple.py` и `static/simple.html`: сервер с двумя адресами, одна страница, кнопка обновления.
+3. Несколько задач, история частей и лимиты: постепенно подключаем старые модули.
+4. Экспорт OpenCode, токены, кэш и живая лента.
+5. Автообновление, затем настройки моделей с защитой POST.
+6. Отдельный этап React при желании: Python API остаётся прежним.
+
+`py -m kit.dashboard` — будущий полный сервер. Его старые номера `step 1.x` ...
+`step 10.x` обозначают прежний план, а не новый порядок обучения.
+`JournalTail`, `pieces`, `guard_status`, `summary`, остальные серверные модули
+и полная `static/app.js` понадобятся позже.
+
+`py -m kit.dashboard.simple ...` тоже пока каркас. Запускай сервер после завершения
+его учебного этапа; готового работающего сайта сейчас нет.
+
+Пишем обычные `for` и `if`, пользуемся явными переменными. Краткость не является
+критерием качества. Помощник проверяет код, объясняет ошибки и готовит следующий урок.

@@ -1,6 +1,8 @@
 """Start the dashboard: py -m kit.dashboard [--project PATH ...] [--port N] [--no-browser]
 
 Status: SKELETON. main raises NotImplementedError until it is implemented.
+This is the later multi-project entry point. Begin with console.py, then simple.py;
+see README.ru.md for the new learning order.
 """
 from __future__ import annotations
 
