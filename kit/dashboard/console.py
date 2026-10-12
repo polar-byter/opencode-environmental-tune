@@ -17,20 +17,26 @@ from .journal import read_events
 def main(argv: list[str] | None = None) -> int:
     """Read a positional journal path with argparse, then print each event.
 
-    argv=None lets argparse read the real command line; tests pass a list of strings.
+    argv = None lets argparse read the real command line; tests pass a list of strings.
     Output: first "Events: <count>", then "<kind> @ <at>" for each event in file order.
     Missing/empty file: print "Events: 0" and return 0.
     ValueError or OSError from reading: print "ERROR: <message>" to stderr, return 1.
     Success returns 0. Argument errors and --help keep argparse's normal behavior.
     Never write to the journal or start OpenCode.
     """
-    # ПОДСКАЗКА: argparse.ArgumentParser описывает параметры команды. Добавь один
-    #   позиционный аргумент 'path' с type=Path, затем вызови parse_args(argv).
-    #   Пример независимой команды смотри в kit/dashboard/__main__.py: build_parser.
-    # ПОДСКАЗКА: вызови уже готовую read_events(args.path). len даёт число событий.
-    #   f-строка позволяет вставить значение переменной в вывод print.
-    # ПОДСКАЗКА: try/except нужен вокруг чтения. У print есть аргумент file=sys.stderr.
-    raise NotImplementedError('learning iteration 1: console.main')
+    param_parser = argparse.ArgumentParser(description="Inspect a journal file.")
+    param_parser.add_argument('path', type=Path, help='Path to the journal file')
+    args = param_parser.parse_args(argv)
+    args_path = Path(args.path)
+    try:
+        result = read_events(args_path)
+    except (ValueError, OSError) as error:
+        print(f'ERROR: {error}', file=sys.stderr)
+        return 1
+    print(f'Events: {len(result)}')
+    for event in result:
+        print(f'{event["kind"]} @ {event["at"]}')
+    return 0
 
 
 if __name__ == '__main__':
