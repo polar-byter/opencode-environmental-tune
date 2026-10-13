@@ -206,7 +206,43 @@ def brief_summary(events: list[dict]) -> dict:
     A failed executor attempt is not a rework. This is a small view of the same
     journal, not a replacement for the final task_metrics report.
     """
-    raise NotImplementedError('learning iteration 2: brief_summary')
+    event_count = len(events)
+    if not events or events[0].get('kind') != 'start':
+        raise ValueError('brief_summary: events must be non-empty and start with a "start" event')
+
+    if len(events) == 1:
+        return {
+            'title': events[0].get('title', 'Untitled task'),
+            'status': task_status(events),
+            'event_count': 1,
+            'last_event_at': events[0].get('at'),
+            'work_runs': 0,
+            'green_work_runs': 0,
+            'reworks': 0,
+            'executor_failures': 0
+        }
+
+    last_event_at = events[-1].get('at')
+    # remind me: work_runs is the number of test events
+    # whose phase is not baseline, and green_work_runs is the number of those whose status is passed.
+    # baseline tests we do when we want to check the executor's environment and code itself.
+    # it goes right after the start event, and it is not counted in work_runs or green_work_runs.
+    # so these kinds of tests are not passed from the very beginning, but they are not failures either. They are just a baseline.
+    work_runs = sum(1 for e in events if e.get('kind') == 'test' and e.get('phase') != 'baseline')
+    green_work_runs = sum(1 for e in events if e.get('kind') == 'test' and e.get('phase') != 'baseline' and e.get('status') == 'passed')
+    reworks = sum(1 for e in events if e.get('kind') == 'review' and e.get('result') == 'rework')
+    executor_failures = sum(1 for e in events if e.get('kind') == 'review' and e.get('result') == 'failed')
+
+    return {
+        'title': events[0].get('title', 'Untitled task'),
+        'status': task_status(events),
+        'event_count': event_count,
+        'last_event_at': last_event_at,
+        'work_runs': work_runs,
+        'green_work_runs': green_work_runs,
+        'reworks': reworks,
+        'executor_failures': executor_failures
+    }
 
 
 def guard_status(events: list[dict]) -> list[dict]:

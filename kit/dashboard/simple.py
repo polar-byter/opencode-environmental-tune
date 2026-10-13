@@ -21,60 +21,109 @@ PAGE = Path(__file__).resolve().parent / 'static' / 'simple.html'
 
 
 def task_view(path: Path) -> dict:
-    """Read the configured file again on every call; return brief_summary(events).
-
-    Empty/missing journal -> ValueError("no events yet"). A bad journal propagates
-    ValueError, disk errors propagate OSError. Do not return raw journal events:
-    the page needs only the fields documented by brief_summary.
+    """Reads the configured file again on every call; 
+    returns brief_summary(events).
+    Empty/missing journal -> ValueError("no events yet"). 
+    A bad journal propagates
+    ValueError, disk errors propagate OSError. 
+    Does not return raw journal events:
+    Our goal: only the fields documented by brief_summary.
     """
-    raise NotImplementedError('learning iteration 3: task_view')
-
+    path = Path(path).resolve()
+    event_list = journal.read_events(path)
+    if not event_list:
+        raise ValueError("no events yet")
+    return journal.brief_summary(event_list)
 
 class Handler(BaseHTTPRequestHandler):
-    """One GET request. The standard library creates Handler objects for us.
-
-    make_server stores the chosen path as httpd.journal_path. It is not supplied by
-    a browser, so a URL cannot select arbitrary files on the computer.
+    """One GET request. 
+    creates Handler objects.
+    make_server stores the path chosen as httpd.journal_path.
+    It is not supplied by a browser, so a URL cannot select arbitrary files on the computer.
     """
 
     def send_bytes(self, status: int, content_type: str, body: bytes) -> None:
-        """Send status, Content-Type, Content-Length, Cache-Control: no-store and body.
-
-        Use send_response, send_header, end_headers, then wfile.write(body).
-        len(body) counts bytes; headers must be sent before the body.
+        """Sends 
+        status, 
+        Content-Type, 
+        Content-Length, 
+        Cache-Control: no-store and body.
         """
-        raise NotImplementedError('learning iteration 3: Handler.send_bytes')
+        self.send_response(status)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(body)
+
 
     def do_GET(self) -> None:
         """Serve only two paths (use urlsplit(self.path).path to discard the query).
 
-        Before routing, allow Host only if it is 127.0.0.1:<actual port> or
-        localhost:<actual port> (case-insensitive); otherwise send plain-text 403.
-        / -> PAGE.read_bytes(), status 200, text/html; charset=utf-8.
-        /api/task -> task_view(self.server.journal_path), JSON encoded as UTF-8,
-                     status 200, application/json; charset=utf-8.
-        Other path -> plain-text 404. Never derive a disk path from the URL.
+        allows Host only if it is 127.0.0.1:<actual port>, localhost:<actual port>;
+        otherwise send plain-text 403.
+
+        route "/" -> PAGE.read_bytes(), 
+            status 200, text/html; charset=utf-8.
+        route "/api/task" -> task_view(self.server.journal_path), 
+            JSON encoded as UTF-8, status 200, application/json; charset=utf-8.
+        
+        Other path -> plain-text 404.
         ValueError -> JSON {"error": str(error)} with 400.
         OSError -> JSON {"error": "cannot read journal or page"} with 500.
-        Send error responses through send_bytes too. Do not enable CORS.
+        Sends error responses through send_bytes too. 
+        Does not enable CORS.
         POST retains BaseHTTPRequestHandler's default 501 response.
         """
-        raise NotImplementedError('learning iteration 3: Handler.do_GET')
+        host = self.headers.get('Host', '').lower()
+        port = self.server.server_port
+        if host not in (f'127.0.0.1:{port}', f'localhost:{port}'):
+            self.send_bytes(403, 'text/plain; charset=utf-8', b'Forbidden')
+            return
+        path = urlsplit(self.path).path
+        try:
+            if path == '/':
+                body = PAGE.read_bytes()
+                status = 200
+                content_type = 'text/html; charset=utf-8'
+            elif path == '/api/task':
+                data = task_view(self.server.journal_path)
+                body = json.dumps(data).encode('utf-8')
+                status = 200
+                content_type = 'application/json; charset=utf-8'
+            else:
+                body = b'Not Found'
+                status = 404
+                content_type = 'text/plain; charset=utf-8'
+        except ValueError as e:
+            error_body = json.dumps({"error": str(e)}).encode('utf-8')
+            body = error_body
+            status = 400
+            content_type = 'application/json; charset=utf-8'
+            
+        except OSError:
+            error_body = json.dumps({"error": "cannot read journal or page"}).encode('utf-8')
+            body = error_body
+            status = 500
+            content_type = 'application/json; charset=utf-8'
+
+        self.send_bytes(status, content_type, body)
+        return
 
 
 def make_server(port: int, path: Path) -> HTTPServer:
-    """Create HTTPServer(('127.0.0.1', port), Handler), store journal_path, return it.
+    """Creates HTTPServer(('127.0.0.1', port), Handler), store journal_path, return it.
 
     The stored path is Path(path).resolve(). Port 0 chooses a free port for checks.
     Do not start serving here: the caller owns serve_forever and server_close.
     Do not require an existing journal: it may appear after startup.
     """
-    raise NotImplementedError('learning iteration 3: make_server')
-
+    server = HTTPServer(('127.0.0.1', port), Handler)
+    server.journal_path = Path(path).resolve()
+    return server
 
 def main(argv: list[str] | None = None) -> int:
-    """Parse positional path (Path), --port (int, default 8765), call make_server.
-
+    """Parses positional path (Path), --port (int, default 8765), calls make_server.
     Print "Dashboard: http://127.0.0.1:<actual port>/", then serve_forever.
     Ctrl+C returns 0; ValueError/OSError -> "ERROR: <message>" on stderr and return 1.
     Always close a successfully created server in finally. No automatic browser launch.
