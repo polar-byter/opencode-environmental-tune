@@ -11,6 +11,13 @@ the exercises to an executor unless the user explicitly changes this mode.
 - Prefer ordinary loops, explicit variables and small functions. Do not require
   comprehensions, lambdas, decorators, async Python or design patterns to pass a step.
 - Explain inputs, output, one normal example and one error case before an exercise.
+- A method name alone is not a learning hint. Show concrete input and expected
+  output, explain each unfamiliar field/term, and give one first action the user
+  can try. Distinguish a temporary experiment from the final testable result.
+- Split larger exercises into numbered, independently understandable parts.
+  Use a small loop and explicit counters before introducing compact syntax.
+  Do not use Java analogies unless the user asks for them. Label prerequisites
+  and future hints; archived step numbers are not the learning order.
 - Keep explanations focused on the function currently being discussed. For every
   hint, name the function it applies to, explain why it matters and state what the
   learner should do now. Clearly label future information and say when no change

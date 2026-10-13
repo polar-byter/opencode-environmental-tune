@@ -16,6 +16,21 @@
 
 Остальная часть документа предназначена для проверки и изменения самого скрипта. Например, она поможет повторить вызов, если Мастер Чиф получил ошибку. Примеры ниже показывают инструменты агента, а не обязательные действия пользователя.
 
+### Задание исполнителю: work_item
+
+Общая задача может содержать несколько заданий исполнителю, например реализацию
+`ExpenseService` и `ReportWriter`. Каждое называется `work_item`. Повторная отправка
+того же задания после ревью — новая попытка, а не новое задание.
+
+Команды `delegate`, `inspect` и `review` принимают имя задания через `--work-item`.
+Новые события журнала сохраняют это имя в поле `work_item`. В дашборде функция
+`work_items()` собирает строки заданий; `work_item_count` в полной сводке — их количество.
+
+Для совместимости старый аргумент `--piece` продолжает работать. Старое поле
+`piece` при чтении преобразуется в `work_item` функцией `normalize_work_item`;
+исторические файлы не переписываются. Если оба поля присутствуют и различаются,
+событие отклоняется: нельзя незаметно приписать результат другому заданию.
+
 ### Что делает каждая команда
 
 Учёт проходит вместе с задачей: сначала нужно отметить начало, затем записывать проверки, а в конце собрать результат. Для каждого из этих действий есть своя команда.
@@ -33,8 +48,8 @@
 
 ```powershell
 py kit/task_metrics.py start --task expenses-001 --session ses_... --title "Учёт расходов"
-py kit/task_metrics.py review --task expenses-001 --piece ExpenseService --result rework
-py kit/task_metrics.py review --task expenses-001 --piece ExpenseService --result accepted
+py kit/task_metrics.py review --task expenses-001 --work-item ExpenseService --result rework
+py kit/task_metrics.py review --task expenses-001 --work-item ExpenseService --result accepted
 py kit/task_metrics.py test --task expenses-001 -- py -m unittest discover -s kit/tests -v
 py kit/task_metrics.py finish --task expenses-001
 ```
@@ -131,7 +146,7 @@ py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
 
 | Лимит | По умолчанию | Что считает |
 |---|---|---|
-| `max_reworks` | 3 | возвраты одного и того же куска кода исполнителю; отдельно — сбои исполнителя на одном куске (`failed`) |
+| `max_reworks` | 3 | возвраты одного и того же задания исполнителю исполнителю; отдельно — сбои исполнителя на одном задании (`failed`) |
 | `max_no_result` | 3 | прогоны подряд без читаемого результата (`no_result`, `timeout`) |
 | `max_failed_runs` | 12 | неуспешные рабочие прогоны подряд в одной области тестов; начальный baseline не входит |
 | `max_runs` | 60 | все прогоны после start/resume, включая baseline и проверки отдельных классов |

@@ -23,6 +23,12 @@ def main(argv: list[str] | None = None) -> int:
     ValueError or OSError from reading: print "ERROR: <message>" to stderr, return 1.
     Success returns 0. Argument errors and --help keep argparse's normal behavior.
     Never write to the journal or start OpenCode.
+
+    Уже реализовано. В команде ...console demo.jsonl путь demo.jsonl - позиционный
+    аргумент: значение без метки --path на оговорённом месте команды.
+    argv=None читает команду терминала; argv=['demo.jsonl'] удобно передать в тесте.
+    read_events даёт список, print показывает его; return 0/1 сообщает успех/ошибку
+    вызывающему коду, а не печатает число. Подробный разбор - в уроке этапа 1.
     """
     param_parser = argparse.ArgumentParser(description="Inspect a journal file.")
     param_parser.add_argument('path', type=Path, help='Path to the journal file')

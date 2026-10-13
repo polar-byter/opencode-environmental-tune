@@ -212,12 +212,12 @@ class PipelineControls(unittest.TestCase):
         (folder / 'checks.json').write_text((self.root / self.checks).read_text())
         (self.root / 'test_ok.py').write_text(
             'import unittest, app\nclass T(unittest.TestCase):\n def test_ok(self): self.assertEqual(app.value, 2)\n')
-        self.assertEqual(cli('delegate', '--task', 'cli', '--piece', 'App', '--files', 'app.py',
+        self.assertEqual(cli('delegate', '--task', 'cli', '--work-item', 'App', '--files', 'app.py',
                              '--requirements', '.metrics/cli/requirements.json'), 0)
         (self.root / 'app.py').write_text('value = 2\n')
-        self.assertEqual(cli('inspect', '--task', 'cli', '--piece', 'App'), 0)
+        self.assertEqual(cli('inspect', '--task', 'cli', '--work-item', 'App'), 0)
         self.assertEqual(cli('test', '--task', 'cli', '--scope', 'App', '--', *self.command), 0)
-        self.assertEqual(cli('review', '--task', 'cli', '--piece', 'App', '--result', 'accepted',
+        self.assertEqual(cli('review', '--task', 'cli', '--work-item', 'App', '--result', 'accepted',
                              '--checks', '.metrics/cli/checks.json'), 0)
         self.assertEqual(cli('test', '--task', 'cli', '--scope', 'full', '--', *self.command), 0)
         self.assertEqual(cli('finish', '--task', 'cli'), 0)
@@ -229,7 +229,7 @@ class PipelineControls(unittest.TestCase):
         self.begin()
         (self.root / 'unexpected.txt').write_text('executor change')
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            result = main(['--root', str(self.root), 'inspect', '--task', 'task', '--piece', 'App'])
+            result = main(['--root', str(self.root), 'inspect', '--task', 'task', '--work-item', 'App'])
         self.assertEqual(result, 1)
 
     def test_pending_attempt_prevents_new_delegation_and_is_reported(self):

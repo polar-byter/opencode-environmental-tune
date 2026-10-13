@@ -24,28 +24,46 @@
     // Учебный каркас этапа 3. Начни после готового GET /api/task.
     // Вернуть JSON ответа; при !response.ok бросить Error(data.error).
     async function loadTask() {
-      // ПОДСКАЗКА: await fetch('/api/task'), затем await response.json().
+      // После работающего Python-адреса /api/task. Результат - объект сводки.
+      // 1. fetch('/api/task') отправляет запрос; await ждёт ответ, даёт response.
+      // 2. response.json() разбирает JSON; await нужен и для этого ожидания.
+      // 3. response.ok - признак HTTP-успеха. Если false, брось Error(data.error).
+      // 4. Верни полученный data. DOM и кнопку здесь не меняй.
       throw new Error('TODO: loadTask');
     }
 
     // Заполнить title, status, event-count, runs, reworks, failures из brief_summary.
     function renderTask(data) {
-      // ПОДСКАЗКА: document.getElementById(...).textContent = ...;
-      // Используй textContent: название задачи может содержать HTML как обычный текст.
-      // status переведи через словарь running/ halted/ finished; runs = зелёные / все.
+      // Получаем уже загруженный объект; запросов renderTask не делает.
+      // Пример: document.getElementById('title').textContent = data.title;
+      // getElementById находит элемент HTML по id; textContent меняет видимый текст.
+      // 1. Начни с title; затем event-count <- data.event_count.
+      // 2. status: running -> 'В работе', halted -> 'Остановлена', finished -> 'Завершена'.
+      // 3. runs: green_work_runs / work_runs, например '2 / 3'.
+      // 4. reworks <- data.reworks; failures <- data.executor_failures.
+      // Используй textContent, не innerHTML: '<b>Task</b>' должно остаться текстом.
       throw new Error('TODO: renderTask');
     }
 
     // На время запроса disable кнопки; успех -> renderTask и пустое message.
     // Ошибка -> message.textContent; наконец снова включить кнопку.
     async function refreshTask() {
-      // ПОДСКАЗКА: try/catch/finally похож на Python try/except/finally.
+      // Связываем две предыдущие функции. Аргументов и возвращаемого значения нет.
+      // 1. Найди refresh и message через getElementById. button.disabled = true
+      //    выключает повторные клики на время запроса.
+      // 2. В try: дождись loadTask(), передай объект renderTask, очисти message.
+      // 3. В catch(error): запиши error.message в message.textContent.
+      // 4. В finally: button.disabled = false, даже если сервер недоступен.
       throw new Error('TODO: refreshTask');
     }
 
     // Привязать refreshTask к click и выполнить первое обновление.
     function main() {
-      // ПОДСКАЗКА: addEventListener('click', refreshTask).
+      // Когда остальные три функции готовы:
+      // 1. У кнопки refresh вызови addEventListener('click', refreshTask).
+      //    Передаём функцию БЕЗ (): браузер вызовет её сам при клике.
+      // 2. Отдельно вызови refreshTask() сейчас, чтобы не ждать первого клика.
+      // Затем добавь main() в указанном ниже месте. Пока заглушки не запускай.
       throw new Error('TODO: main');
     }
 

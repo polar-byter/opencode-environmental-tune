@@ -10,20 +10,24 @@ halt, resume, finish.
 Every event has kind, at Unix seconds and "event_id".
 inspection/review are related to their delegation through "delegation_id".
 
-I learn and implement (2026-10-13) next functions in order: 
-parse_event -> read_events -> console.main,
+Учебный порядок: parse_event -> read_events -> console.main -> task_status ->
+test_runs -> brief_summary. Первые четыре уже реализованы пользователем.
+Текущий подшаг - в currentsteps.md выбранного Vault; старые номера step 1.x
+не обозначают очередь. Остальные функции понадобятся позже.
 
 """
 from __future__ import annotations
+from asyncio import events
 import json
 from pathlib import Path
 # .. means "kit" package, one level up from this module.
 from ..task_metrics import (CATEGORY_FAILED, CATEGORY_INCOMPLETE, CATEGORY_NO_RESULT, CATEGORY_TIMEOUT,
-                            DEFAULT_LIMITS, is_halted, since_last_resume, task_limits, trailing, valid_number)
+                            DEFAULT_LIMITS, is_halted, normalize_work_item, since_last_resume,
+                            task_limits, trailing, valid_number)
 
 RUNNING, HALTED, FINISHED = 'running', 'halted', 'finished'
 
-# Piece states shown on the timeline.
+# Work item states shown on the timeline.
 AT_EXECUTOR = 'executor'   # delegated, the executor has not returned (no inspection yet)
 IN_REVIEW = 'review'       # inspected, no review recorded yet
 ACCEPTED = 'accepted'      # the latest attempt was accepted
@@ -38,6 +42,14 @@ def parse_event(line: str, number: int) -> dict:
     Returns the dict.
     Raises:
         ValueError: invalid JSON or wrong shape; the message contains "line <number>".
+    Legacy 'piece' is read as 'work_item'; conflicting names are rejected.
+
+    Уже реализовано. '{"kind":"test","at":10}' -> словарь события.
+    json.loads('[]') даёт список, но parse_event НЕ возвращает его: проверка
+    отклонит список с ValueError. Здесь возвращается dict либо возникает ошибка.
+    number=3 нужен для текста 'line 3'. valid_number - готовая проверка времени:
+    конечное неотрицательное число, не bool. Причина ошибки разбора JSON
+    сохраняется через from error; решение пропустить строку принимает read_events.
     """
     try:
         resulting_dict = json.loads(line)
@@ -47,7 +59,10 @@ def parse_event(line: str, number: int) -> dict:
             raise ValueError(f'line {number}: missing or invalid "kind" or "at"')
     except json.JSONDecodeError as error:
         raise ValueError(f'line {number}: invalid JSON') from error
-    return resulting_dict
+    try:
+        return normalize_work_item(resulting_dict)
+    except ValueError as error:
+        raise ValueError(f'line {number}: {error}') from error
 
 
 def read_events(path: Path) -> list[dict]:
@@ -61,6 +76,11 @@ def read_events(path: Path) -> list[dict]:
       through parse_event, with its 1-based line number
     - Read as UTF-8 text; a BOM at the start is accepted.
     - Valid JSON with the wrong event shape raises ValueError even on the last line.
+
+    Уже реализовано. Файл с двумя правильными строками -> два словаря в списке.
+    Пропуск последней строки - допущение: мы не доказываем, что её ещё пишут.
+    Проверяем номер последней непустой строки И причину ошибки JSONDecodeError.
+    Готовая строка '[]' не проходит проверку события и не пропускается.
     """
     resulting_events = []
     path = Path(path)
@@ -107,38 +127,52 @@ class JournalTail:
 
     def new_events(self) -> list[dict]:
         """Events appended since the previous call (see the class description)."""
-        # ПОДСКАЗКА: работай с байтами, а не с текстом: self.path.read_bytes(). Смещение
-        #   считается в байтах, а русская буква в UTF-8 занимает 2 байта.
-        # ПОДСКАЗКА: срез data[self.offset:] — «всё начиная с позиции» (как substring).
-        #   bytes.rfind(b'\n') находит последний перевод строки; всё после него — недописанная
-        #   строка, её пока не трогаем.
-        # ПОДСКАЗКА: перед декодированием готового куска: chunk.decode('utf-8-sig'), затем
-        #   строки разбираются через parse_event. Не забудь сдвинуть self.offset.
-        # ПОДСКАЗКА: self.reset в начале каждого вызова сбрасывай в False — тест это проверяет.
+        # ПОЗЖЕ, на этапе автообновления; сейчас read_events менять не нужно.
+        # Цель: возвращать только новые события. Файл не изменился -> результат [].
+        # self.offset - число прочитанных БАЙТОВ, не букв. read_bytes() даёт байты;
+        # decode('utf-8-sig') превращает их в текст без BOM в начале.
+        # 1. Начни с отсутствующего файла: результат [], reset=False.
+        # 2. Возьми data[self.offset:] - часть байтов от сохранённой позиции до конца.
+        # 3. Обрабатывай только часть до последнего b'\n' включительно. rfind(b'\n')
+        #    даёт его позицию или -1. Без перевода строки ничего не потребляй,
+        #    даже если JSON выглядит готовым: писатель ещё не закончил строку.
+        # 4. Готовую часть преврати в текст; непустые строки передай parse_event.
+        #    Увеличь offset только на число обработанных байтов.
+        # 5. Файл короче offset -> читать с 0, reset=True для этого вызова.
+        #    В начале остальных вызовов reset=False.
+        # Перед упражнением отдельно разберём bytes и состояние объекта.
         raise NotImplementedError('dashboard step 1.3: JournalTail.new_events')
 
 
 def task_status(events: list[dict]) -> str:
-    """FINISHED if any finish event exists; otherwise HALTED if task_metrics.is_halted(events)
+    """Returns FINISHED if any finish event exists; otherwise HALTED if task_metrics.is_halted(events)
     returns an event; otherwise RUNNING.
     Raises:
         ValueError: events is empty.
+
+    Уже реализовано. Константа FINISHED содержит строку 'finished', не 'FINISHED'.
+    start, halt -> 'halted'; start, halt, resume -> 'running'; finish -> 'finished'.
+    is_halted получает всю историю и возвращает активный halt или None.
+    Поэтому завершение проверяется раньше остановки, а отмену halt не дублируем.
     """
-    # ПОДСКАЗКА: пустой список в Python ложен: if not events: ...
-    # ПОДСКАЗКА: any(условие for e in events) — True, если условие верно хотя бы для одного
-    #   элемента (как stream().anyMatch() в Java). Функция is_halted уже импортирована.
-    raise NotImplementedError('dashboard step 1.4: task_status')
+    if not events:
+        raise ValueError('task_status: empty events list')
+    if any(e.get('kind') == 'finish' for e in events):
+        return FINISHED
+    # I checked it only after the finish check, because is_halted may return a halt event even after a finish.
+    if is_halted(events) is not None:
+        return HALTED
+    return RUNNING
 
-
-def pieces(events: list[dict]) -> list[dict]:
-    """One row per delegated piece, in the order of its first delegation.
+def work_items(events: list[dict]) -> list[dict]:
+    """One row per delegated work item, in the order of its first delegation.
 
     Row fields:
-        piece        piece name
-        files        files of the latest delegation of this piece
-        scope        scope of the latest delegation (piece name if missing)
-        attempts     number of delegation events for this piece
-        reworks      number of reviews with result "rework" for this piece
+        work_item    work item name
+        files        files of the latest delegation of this work item
+        scope        scope of the latest delegation (work item name if missing)
+        attempts     number of delegation events for this work item
+        reworks      number of reviews with result "rework" for this work item
         failures     number of reviews with result "failed" (not reworks)
         state        AT_EXECUTOR | IN_REVIEW | ACCEPTED | REWORK | FAILED, from the latest
                      attempt: no inspection and no review -> AT_EXECUTOR; inspection but no
@@ -148,40 +182,79 @@ def pieces(events: list[dict]) -> list[dict]:
         accepted_at  "at" of the accepting review of the latest attempt, else None
         unexpected   sorted unique files listed in "unexpected" of its inspections and reviews
 
+    Normalize legacy event fields with normalize_work_item before grouping events.
     An inspection/review belongs to the delegation whose event_id equals its delegation_id.
     Without delegation_id (old journals) it belongs to the latest earlier delegation of the
-    same piece. Inspections/reviews of an unknown piece are ignored.
+    same work item. Inspections/reviews of an unknown work item are ignored.
     """
-    # ПОДСКАЗКА: это самая большая функция шага — делай в два прохода.
-    #   1) Один проход по событиям: строки частей в dict {piece: row} и попытки в dict
-    #      {event_id делегирования: {...что известно о попытке...}}. С Python 3.7 dict
-    #      помнит порядок вставки — как LinkedHashMap, поэтому «порядок первого
-    #      делегирования» получится сам.
-    #   2) Второй проход по строкам: состояние по последней попытке каждой части.
-    # ПОДСКАЗКА: dict.setdefault(key, default) — вернуть значение или сначала положить
-    #   default (как computeIfAbsent).
-    # ПОДСКАЗКА: для unexpected удобен set(): .update(список) добавляет без повторов;
-    #   в конце sorted(множество) даёт отсортированный список.
-    # ПОДСКАЗКА: event.get('delegation_id') вернёт None, если ключа нет, — без исключения.
-    raise NotImplementedError('dashboard step 1.5: pieces')
+    # ПОЗЖЕ, после страницы и списка задач. Для test_runs эта функция не нужна.
+    # Цель: история заданий исполнителю. Пример: delegation(A), review(A, rework),
+    # delegation(A) -> одна строка A, attempts=2, reworks=1, state=AT_EXECUTOR.
+    # Без delegation результат []. Поля строки перечислены в описании выше.
+    # 1. Начни с одного delegation: создай строку задания, другие события пропусти.
+    # 2. Храни строки в словаре по имени: rows['A'] -> строка задания A.
+    #    Нет имени -> создать; есть -> увеличить attempts, обновить files/scope.
+    #    started_at при повторной попытке не меняется.
+    # 3. Отдельно храни попытки по event_id события delegation. У review/inspection
+    #    поле delegation_id указывает на этот event_id, а не на имя задания:
+    #    review с delegation_id='d1' относится к delegation event_id='d1'.
+    # 4. Без delegation_id ищи последнюю предшествующую попытку того же задания.
+    #    Неизвестное задание -> пропустить review/inspection. До группировки
+    #    вызови normalize_work_item: готовый помощник поддерживает старые имена.
+    # 5. Считай reworks/failures отдельно; state и accepted_at - по последней попытке.
+    #    Старое accepted не делает новую попытку принятой.
+    # 6. unexpected - имена неожиданно изменённых файлов: убери повторы, отсортируй.
+    #    Верни строки в порядке первого delegation; dict помнит порядок добавления.
+    # Это несколько упражнений. Перед этапом разберём состояния и полный пример
+    # результата. setdefault и сравнения с Java для решения не требуются.
+    raise NotImplementedError('dashboard step 1.5: work_items')
 
 
 def test_runs(events: list[dict]) -> list[dict]:
     """Every test event as a uniform row, in journal order.
-
     Row: at, scope (default "full"), phase (default "work"), status, category,
     tests, failures, errors, skipped, duration (from "duration_seconds").
     A counter missing from the event stays None: unknown is not zero.
+
+    Эта функция НЕ запускает тесты и НЕ читает файл. Она получает готовые
+    events от read_events. Запуск и запись результатов делает kit/task_metrics.py.
     """
-    # ПОДСКАЗКА: e.get('scope', 'full') — значение по умолчанию, если ключа нет.
-    # ПОДСКАЗКА: начни с пустого списка и обычного for. Для события kind == 'test'
-    #   собери словарь с полями из описания и добавь через append. Поля не переименовывай:
-    #   duration берётся из duration_seconds. Списковое включение изучим позже.
+
+
+
+    # ТЕКУЩЕЕ УПРАЖНЕНИЕ: события -> строки для таблицы тестов.
+    # Вход:
+    # [{'kind': 'start', 'at': 100},
+    #  {'kind': 'test', 'at': 110, 'tests': 5, 'status': 'passed'},
+    #  {'kind': 'finish', 'at': 120}]
+    # Результат (один словарь внутри списка):
+    # [{'at': 110, 'scope': 'full', 'phase': 'work', 'status': 'passed',
+    #   'category': None, 'tests': 5, 'failures': None, 'errors': None,
+    #   'skipped': None, 'duration': None}]
+    # start и finish не входят. kind в новом словаре тоже не нужен.
+    #
+    # 1. Сначала сделай только отбор: пустой список, for по events,
+    #    проверка event.get('kind') == 'test'. Пробно добавь подходящее событие
+    #    через append. Из трёх событий останется одно.
+    #    Это промежуточная проверка, НЕ окончательное решение для тестов.
+    # 2. Теперь вместо исходного события добавляй НОВЫЙ словарь с десятью ключами
+    #    выше. Исходное событие не меняй: оно нужно другим функциям.
+    # 3. Например 'tests' берётся из event.get('tests'). Нет ключа -> None.
+    #    Это «неизвестно», не 0. event['tests'] без ключа вызвал бы KeyError.
+    # 4. Только для scope и phase задай запасное значение вторым аргументом get:
+    #    {}.get('scope', 'full') -> 'full';
+    #    {'scope': 'reader'}.get('scope', 'full') -> 'reader'.
+    #    У phase запасное значение 'work'. Не заменяй существующие значения.
+    # 5. 'duration' получает event.get('duration_seconds'). Остальные поля читаются
+    #    под тем же именем. Верни список ПОСЛЕ цикла, а не после первого события.
+    # Нет событий test (или вход []) -> []. Порядок сохраняется.
+    # baseline пока НЕ исключай: test_runs собирает ВСЕ записи test.
+    # Значение каждого поля и отдельные опыты с get - в уроке 04, раздел 2.2.
     raise NotImplementedError('dashboard step 1.6: test_runs')
 
 
 def brief_summary(events: list[dict]) -> dict:
-    """Small task header for learning iteration 2; no piece history or guard counters.
+    """Small task header for learning iteration 2; no work-item history or guard counters.
 
     Requires a non-empty list whose first event is start; otherwise raises ValueError.
     Returns exactly these keys:
@@ -197,11 +270,23 @@ def brief_summary(events: list[dict]) -> dict:
     A failed executor attempt is not a rework. This is a small view of the same
     journal, not a replacement for the final task_metrics report.
     """
-    # ПОДСКАЗКА: сначала проверь список и первое событие, затем вызови готовые
-    #   task_status и test_runs. Отбери рабочие прогоны обычным циклом.
-    # ПОДСКАЗКА: заведи отдельные счётчики. В цикле увеличивай нужный через += 1.
-    #   baseline входит в event_count, но не входит в work_runs и green_work_runs.
-    # ПОДСКАЗКА: в конце верни один словарь. Имена его ключей — договор с будущей страницей.
+    # СЛЕДУЮЩЕЕ упражнение, после test_runs. Сейчас test_runs менять не нужно.
+    # Результат brief_summary - ОДИН словарь для страницы, не список тестов.
+    # Пример: start с title='Учёба' и один test passed -> title='Учёба',
+    # event_count=2, work_runs=1, green_work_runs=1, reworks=executor_failures=0.
+    # 1. Проверь непустой список, затем kind первого события: нужен start.
+    #    Иначе ValueError. Не обращайся к events[0] до проверки пустого списка.
+    # 2. title возьми у первого события (нет ключа -> 'Untitled task'),
+    #    last_event_at - у последнего. events[-1] означает последний элемент.
+    #    event_count - длина ВСЕГО списка events, не списка тестов.
+    # 3. Состояние получи вызовом готовой task_status(events).
+    # 4. Получи test_runs(events). Заведи два счётчика с начальным 0.
+    #    Циклом пропускай phase='baseline' (проверка до реализации).
+    #    Остальные запуски увеличивают work_runs; status='passed' также увеличивает
+    #    green_work_runs. += 1 означает «прибавить единицу».
+    # 5. Отдельным циклом считай review: result='rework' - возврат кода,
+    #    result='failed' - исполнитель не выдал работу. Это разные счётчики.
+    # 6. Верни словарь с ровно восемью ключами из описания.
     raise NotImplementedError('learning iteration 2: brief_summary')
 
 
@@ -210,9 +295,10 @@ def guard_status(events: list[dict]) -> list[dict]:
 
     One row per name in DEFAULT_LIMITS order: {name, value, limit, detail}.
     Only events after the last resume count (since_last_resume).
-        max_reworks      largest per-piece count of rework reviews or of failed reviews (each
+    Normalize legacy event fields with normalize_work_item before counting reviews.
+        max_reworks      largest per-work-item count of rework reviews or of failed reviews (each
                          is checked against this limit separately, as in limit_breach);
-                         detail = that piece (the first one in journal order on a tie, reworks
+                         detail = that work item (the first one in journal order on a tie, reworks
                          before failures), or None when 0
         max_no_result    trailing(tests, {no_result, timeout}); detail None
         max_failed_runs  largest trailing(scoped, NOT_GREEN) over scopes, where "scoped" is
@@ -222,12 +308,23 @@ def guard_status(events: list[dict]) -> list[dict]:
         max_runs         number of test runs; detail None
     limit comes from task_limits(events).
     """
-    # ПОДСКАЗКА: открой kit/task_metrics.py, функцию limit_breach, и повтори её подсчёт.
-    #   Разница одна: limit_breach останавливается на первом превышении, а здесь нужно
-    #   посчитать значение каждого лимита. since_last_resume и trailing уже импортированы.
-    # ПОДСКАЗКА: «ничья по максимуму — первый по порядку» получается, если обновлять
-    #   максимум только при строго большем значении (>), а не при >=.
-    # ПОДСКАЗКА: строки результата — в порядке ключей DEFAULT_LIMITS: for name in DEFAULT_LIMITS.
+    # ПОЗЖЕ, после work_items. Функция ПОКАЗЫВАЕТ ограничения, не останавливает задачу.
+    # Пример строки: {'name': 'max_runs', 'value': 2, 'limit': 60, 'detail': None}.
+    # value - уже 2 запуска, limit - допустимо 60, detail - уточнение причины.
+    # 1. Начни с max_runs: since_last_resume(events) оставляет события после
+    #    последнего resume. Посчитай в них test, включая baseline.
+    #    task_limits(events) даёт limit. В конце нужны все четыре строки
+    #    в порядке DEFAULT_LIMITS, не только превышенный лимит.
+    # 2. max_no_result: цепочка no_result/timeout С КОНЦА списка тестов.
+    #    passed, no_result, timeout -> 2. Готовая trailing помогает это посчитать.
+    # 3. max_reworks: по каждому заданию отдельно считай rework и failed.
+    #    Два rework и один failed дают максимум 2, НЕ 3. До подсчёта нормализуй
+    #    имена через normalize_work_item. При равенстве оставь первое задание;
+    #    сравнение через >, не >=, сохраняет уже выбранный максимум.
+    # 4. max_failed_runs разберём отдельно: цепочки по scope, baseline исключён,
+    #    успешный full сбрасывает все цепочки. При равенстве первый scope по алфавиту.
+    # Перед пунктами 2-4 сверим примеры с limit_breach в task_metrics.py.
+    # Её правила - договор; её ответ НЕ содержит все четыре счётчика.
     raise NotImplementedError('dashboard step 1.7: guard_status')
 
 
@@ -236,14 +333,21 @@ def summary(events: list[dict]) -> dict:
 
     Keys: title (start.title), session (start.session), status (task_status),
     started_at (start.at), ended_at (finish "ended" if finished, else None),
-    last_event_at (at of the last event), pieces (len of pieces()), reworks (total
+    last_event_at (at of the last event), work_item_count (len(work_items(events))), reworks (total
     rework reviews), failures (total failed reviews), work_runs and green_work_runs
     (non-baseline tests; green = status "passed"), last_full (the last non-baseline test
     row with scope "full", or None), halt_reason (reason of the active halt, or None).
     """
-    # ПОДСКАЗКА: собирай из уже готовых функций шага: task_status, pieces, test_runs, is_halted.
-    #   Своей логики здесь почти нет — это «сборщик».
-    # ПОДСКАЗКА: events[-1] — последний элемент списка (как list.get(list.size() - 1)).
-    # ПОДСКАЗКА: sum(1 for e in events if ...) — счётчик по условию; True считается как 1,
-    #   поэтому работает и sum(r['status'] == 'passed' for r in runs).
+    # ПОЗЖЕ, после work_items и brief_summary. Сейчас пишем brief_summary, не summary.
+    # Вход - история задачи с start. Результат - словарь с полями выше.
+    # 1. Получи task_status, work_items, test_runs в отдельных переменных.
+    #    Два задания с пятью попытками -> work_item_count=2, длина списка заданий.
+    # 2. title/session/started_at возьми у start; last_event_at - у events[-1].
+    #    ended_at - поле ended события finish, если задача завершена; иначе None.
+    # 3. Как в brief_summary, циклами считай рабочие тесты и ревью.
+    #    Запоминай последнюю строку рабочего теста scope='full' в last_full;
+    #    если такого теста нет, None. Важен порядок журнала, не сортировка по at.
+    # 4. is_halted(events) даёт активный halt: его reason нужен для halt_reason;
+    #    если остановки нет, None. Верни общий словарь.
+    # Здесь не открываем файлы и не запускаем команды. sum с генератором не нужен.
     raise NotImplementedError('dashboard step 1.8: summary')

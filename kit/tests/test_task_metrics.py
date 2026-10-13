@@ -45,14 +45,14 @@ class MetricsCase(unittest.TestCase):
 
     def test_review_and_idempotent_finish(self):
         self.metrics.start('task')
-        self.metrics.review('task', 'piece', 'rework')
-        self.metrics.review('task', 'piece', 'accepted')
+        self.metrics.review('task', 'work_item', 'rework')
+        self.metrics.review('task', 'work_item', 'accepted')
         report = self.metrics.finish('task')
         self.assertIn('нет данных', report)
         self.assertEqual(self.metrics.finish('task'), report)
         self.assertEqual(sum(e['kind']=='finish' for e in self.metrics.read('task')), 1)
         with self.assertRaises(ValueError):
-            self.metrics.review('task', 'piece', 'accepted')
+            self.metrics.review('task', 'work_item', 'accepted')
 
     def test_lock_excludes_second_writer(self):
         self.metrics.start('task')

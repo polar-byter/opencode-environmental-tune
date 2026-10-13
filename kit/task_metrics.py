@@ -31,7 +31,7 @@ WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
 
 # Loop guards. Any of them stops the task until the user decides how to continue.
 DEFAULT_LIMITS = dict(
-    max_reworks=3,      # returns of one piece to the executor
+    max_reworks=3,      # returns of one work item to the executor
     max_no_result=3,    # test runs in a row without readable test results (setup or build problem)
     max_failed_runs=12, # test runs in a row that are not fully green (a module of several
                         # functions stays red until its last function is done, so this is generous)
@@ -59,6 +59,22 @@ class TaskHalted(Exception):
 
 def valid_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0
+
+
+def normalize_work_item(event: dict) -> dict:
+    """Read the legacy journal field without changing the original event.
+
+    Events without 'piece' are returned unchanged. Otherwise a shallow copy
+    replaces 'piece' with 'work_item'. Equal old/new names are accepted;
+    conflicting names raise ValueError rather than attaching work to the wrong item.
+    """
+    if 'piece' not in event:
+        return event
+    if 'work_item' in event and event['work_item'] != event['piece']:
+        raise ValueError('Conflicting work_item and legacy piece fields')
+    normalized = dict(event)
+    normalized['work_item'] = normalized.pop('piece')
+    return normalized
 
 
 def session_id(value):
@@ -355,22 +371,22 @@ def limit_breach(events: list[dict], limits: dict) -> str | None:
     Only events after the last 'resume' count: after the user's decision every guard
     starts from zero.
     """
-    recent = since_last_resume(events)
+    recent = [normalize_work_item(event) for event in since_last_resume(events)]
     tests = [e for e in recent if e['kind'] == 'test']
     reworks, failures = {}, {}
     for event in recent:
         if event['kind'] == 'review' and event['result'] == 'rework':
-            reworks[event['piece']] = reworks.get(event['piece'], 0) + 1
+            reworks[event['work_item']] = reworks.get(event['work_item'], 0) + 1
         elif event['kind'] == 'review' and event['result'] == 'failed':
-            failures[event['piece']] = failures.get(event['piece'], 0) + 1
-    for piece, count in reworks.items():
+            failures[event['work_item']] = failures.get(event['work_item'], 0) + 1
+    for work_item, count in reworks.items():
         if count >= limits['max_reworks']:
-            return (f'{piece} was sent back {count} times (limit {limits["max_reworks"]}). '
+            return (f'{work_item} was sent back {count} times (limit {limits["max_reworks"]}). '
                     f'The spec or the tests may be wrong.')
     # A failed attempt is not a rework, but endless retries of a broken executor must stop too.
-    for piece, count in failures.items():
+    for work_item, count in failures.items():
         if count >= limits['max_reworks']:
-            return (f'The executor failed {count} times on {piece} without changing files '
+            return (f'The executor failed {count} times on {work_item} without changing files '
                     f'(limit {limits["max_reworks"]}). Check that the executor model is available.')
     no_result = trailing(tests, {CATEGORY_NO_RESULT, CATEGORY_TIMEOUT})
     if no_result >= limits['max_no_result']:
@@ -413,7 +429,7 @@ def diagnose(output: str, returncode: int, parsed: dict, category: str, junit_gi
     if any(marker in text for marker in ('build failed', 'build error', 'compilation error', 'compilation failed')) \
             or re.search(r'error (cs|ts)\d+', text):
         hints.append('The project does not compile. If the error is in code the executor just wrote, '
-                     'send that piece back; otherwise fix the project or ask the user.')
+                     'send that work_item back; otherwise fix the project or ask the user.')
     if parsed['status'] == 'empty':
         hints.append('No tests were found. Check the test folder, file names and test filters.')
     if parsed.get('diagnostic', '').startswith('No JUnit XML'):
@@ -436,21 +452,21 @@ def build_parser() -> argparse.ArgumentParser:
         start.add_argument('--' + name.replace('_', '-'), type=int, dest=name,
                             help=f'loop guard, default {DEFAULT_LIMITS[name]}')
     review = sub.add_parser('review')
-    review.add_argument('--piece', required=True)
+    review.add_argument('--work-item', '--piece', dest='work_item', required=True)
     review.add_argument('--result', choices=sorted(REVIEW_RESULTS), required=True,
                         help='failed = the executor returned no work and changed no files; not a rework')
     review.add_argument('--checks', type=Path, help='JSON requirement/code/test checklist for acceptance')
     delegation = sub.add_parser('delegate')
-    delegation.add_argument('--piece', required=True)
+    delegation.add_argument('--work-item', '--piece', dest='work_item', required=True)
     delegation.add_argument('--files', nargs='+', required=True)
-    delegation.add_argument('--scope', help='test scope; defaults to the piece name')
+    delegation.add_argument('--scope', help='test scope; defaults to the work item name')
     delegation.add_argument('--requirements', type=Path, required=True, help='JSON list frozen before the executor call')
     inspect = sub.add_parser('inspect')
-    inspect.add_argument('--piece', required=True)
+    inspect.add_argument('--work-item', '--piece', dest='work_item', required=True)
     resume = sub.add_parser('resume')
     resume.add_argument('--reason', required=True)
     test = sub.add_parser('test')
-    test.add_argument('--scope', default='full', help='piece/module name or full for the complete suite')
+    test.add_argument('--scope', default='full', help='work-item/module name or full for the complete suite')
     test.add_argument('--phase', choices=['work', 'baseline'], default='work')
     check = sub.add_parser('check')
     for command in (test, check):
@@ -504,7 +520,7 @@ class TaskMetrics:
                         e.get('kind') not in EVENT_KINDS for e in events)):
                 raise ValueError('Invalid journal events')
 
-            return events
+            return [normalize_work_item(event) for event in events]
         except (OSError, ValueError, AttributeError) as error:
             raise ValueError(f'Cannot read task {task}; start it first or inspect events.jsonl: {error}') from error
 
@@ -566,18 +582,18 @@ class TaskMetrics:
         reason = limit_breach(events, task_limits(events))
         return self.append(task, 'halt', reason=reason) if reason else None
 
-    def delegate(self, task: str, piece: str, files: list[str], scope: str | None = None,
+    def delegate(self, task: str, work_item: str, files: list[str], scope: str | None = None,
                  requirements: Path | None = None) -> dict:
 
         """Log one executor attempt and save pre-execution file hashes.
 
-        piece names the task; files must identify one unique allowed file.
-        scope names the test scope and defaults to piece.
+        work item names the task; files must identify one unique allowed file.
+        scope names the test scope and defaults to work_item.
         Each retry after review is a new attempt.
         """
-        # Require a piece name, file list and non-blank effective test scope.
-        if not piece.strip() or not files or not (scope or piece).strip():
-            raise ValueError('Delegation needs a piece, files and a non-empty test scope')
+        # Require a work item name, file list and non-blank effective test scope.
+        if not work_item.strip() or not files or not (scope or work_item).strip():
+            raise ValueError('Delegation needs a work item, files and a non-empty test scope')
 
         # Validate paths and remove duplicate file names.
         allowed = sorted({source_path(self.root, name) for name in files})
@@ -597,10 +613,10 @@ class TaskMetrics:
             before = snapshot(self.root)
             filename = 'before-' + uuid.uuid4().hex + '.json'
             (self.task_dir(task) / filename).write_text(json.dumps(before), encoding='utf-8')
-            return self.append(task, 'delegation', piece=piece.strip(), files=allowed,
-                               scope=(scope or piece).strip(), snapshot=filename, requirements=frozen)
+            return self.append(task, 'delegation', work_item=work_item.strip(), files=allowed,
+                               scope=(scope or work_item).strip(), snapshot=filename, requirements=frozen)
 
-    def inspect(self, task: str, piece: str) -> dict:
+    def inspect(self, task: str, work_item: str) -> dict:
         """Save file changes for the pending attempt; refuse a second inspection.
 
         The Master Chief must call this after the executor returns, before its own edits.
@@ -609,8 +625,8 @@ class TaskMetrics:
             events = self.running(task)
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             attempts = [e for e in events if e['kind'] == 'delegation' and e['event_id'] not in closed]
-            if not attempts or attempts[-1]['piece'] != piece:
-                raise ValueError('Inspect must match the pending delegated piece')
+            if not attempts or attempts[-1]['work_item'] != work_item:
+                raise ValueError('Inspect must match the pending delegated work item')
             attempt = attempts[-1]
             if any(e['kind'] == 'inspection' and e['delegation_id'] == attempt['event_id'] for e in events):
                 raise ValueError('Executor edits already inspected; do not overwrite the evidence')
@@ -619,10 +635,10 @@ class TaskMetrics:
             changes = compare(before, after, attempt['files'])
             filename = 'after-' + uuid.uuid4().hex + '.json'
             (self.task_dir(task) / filename).write_text(json.dumps(after), encoding='utf-8')
-            return self.append(task, 'inspection', delegation_id=attempt['event_id'], piece=piece,
+            return self.append(task, 'inspection', delegation_id=attempt['event_id'], work_item=work_item,
                                snapshot=filename, **changes)
 
-    def review(self, task: str, piece: str, result: str, checks: Path | None = None) -> dict:
+    def review(self, task: str, work_item: str, result: str, checks: Path | None = None) -> dict:
         """Record the Master Chief's accepted/rework/failed decision and check acceptance evidence.
 
         Acceptance requires allowed edits, matching requirement checks and a green
@@ -632,14 +648,14 @@ class TaskMetrics:
         Chief, review source code or run tests. Legacy tasks may have no delegation.
         """
 
-        piece = piece.strip()
-        if not piece or result not in REVIEW_RESULTS:
-            raise ValueError('Review requires a piece and accepted/rework/failed result')
+        work_item = work_item.strip()
+        if not work_item or result not in REVIEW_RESULTS:
+            raise ValueError('Review requires a work item and accepted/rework/failed result')
         
         with self.lock(task):
             events = self.running(task)
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
-            # pending delegations are those that have not been reviewed yet; we need to find the last one for this piece
+            # pending delegations are those that have not been reviewed yet; we need to find the last one for this work item
             pending = [e for e in events if e['kind'] == 'delegation' and e['event_id'] not in closed]
             evidence = {}
             # if the task is tracking delegations, we must have a pending delegation to review; otherwise, raise an error
@@ -648,8 +664,8 @@ class TaskMetrics:
             
             if pending:
                 attempt = pending[-1]
-                if attempt['piece'] != piece:
-                    raise ValueError('Review must match the pending delegated piece')
+                if attempt['work_item'] != work_item:
+                    raise ValueError('Review must match the pending delegated work item')
                 
                 before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
                 after = snapshot(self.root)
@@ -702,7 +718,7 @@ class TaskMetrics:
                     if compare(tested, after, [])['changed']:
                         raise ValueError('Project files changed since the green test; rerun tests before acceptance')
                     
-            event = self.append(task, 'review', piece=piece, result=result, **evidence)
+            event = self.append(task, 'review', work_item=work_item, result=result, **evidence)
             halt = self.guard(task, events + [event])
             return dict(event, halt=halt['reason']) if halt else event
 
@@ -982,7 +998,7 @@ class TaskMetrics:
         attempts = [e for e in events if e['kind'] == 'delegation']
         if attempts or events[0].get('track_delegations'):
             closed = {e.get('delegation_id') for e in reviews}
-            pending = [e['piece'] for e in attempts if e['event_id'] not in closed]
+            pending = [e['work_item'] for e in attempts if e['event_id'] not in closed]
             lines += [f'Заданий исполнителю зарегистрировано: **{len(attempts)}** · без записанного ревью: '
                       f'**{len(pending)}**.', '']
             if pending:
@@ -1062,11 +1078,11 @@ def main(argv=None) -> int:
             limits = {name: getattr(args, name) for name in DEFAULT_LIMITS}
             event = metrics.start(args.task, args.session, args.title, limits, args.track_delegations)
         elif args.action == 'review':
-            event = metrics.review(args.task, args.piece, args.result, args.checks)
+            event = metrics.review(args.task, args.work_item, args.result, args.checks)
         elif args.action == 'delegate':
-            event = metrics.delegate(args.task, args.piece, args.files, args.scope, args.requirements)
+            event = metrics.delegate(args.task, args.work_item, args.files, args.scope, args.requirements)
         elif args.action == 'inspect':
-            event = metrics.inspect(args.task, args.piece)
+            event = metrics.inspect(args.task, args.work_item)
         elif args.action == 'resume':
             event = metrics.resume(args.task, args.reason)
         elif args.action == 'finish':
@@ -1116,7 +1132,7 @@ def report_test(event: dict, task: str) -> int:
     if category == CATEGORY_PASSED:
         return EXIT_OK
     if category in {CATEGORY_FAILED, CATEGORY_INCOMPLETE}:
-        print('TESTS FAILED: the tests ran. Read the failures: send the piece back to the executor '
+        print('TESTS FAILED: the tests ran. Read the failures: send the work item back to the executor '
               '(review --result rework) or fix the tests if they contradict the spec.', file=sys.stderr)
         return EXIT_TESTS_FAILED
     print('NO RESULT: the tests did not produce a readable result. Usually this is a setup or build '

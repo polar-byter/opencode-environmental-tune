@@ -210,7 +210,7 @@ What happens automatically:
 3. The Master Chief asks the **executor** to fill the method body per spec.
 4. The executor fills **only the body**.
 5. The Master Chief reviews the code and runs tests again. A failing test goes back to the executor as a rework. A build or setup problem is fixed by the Master Chief or brought to you; the executor is not asked to fix it. After successful verification the Master Chief marks the module complete and starts the next module whose dependencies are ready.
-6. If one piece has been sent back 3 times, or 3 test runs in a row gave no result, the statistics script stops the task (`STOP`). The Master Chief explains what happened and waits for your decision: clarify the spec, fix the tests, or fix the setup. This way the test-and-rework loop cannot run forever.
+6. If one work item has been sent back 3 times, or 3 test runs in a row gave no result, the statistics script stops the task (`STOP`). The Master Chief explains what happened and waits for your decision: clarify the spec, fix the tests, or fix the setup. This way the test-and-rework loop cannot run forever.
 
 The Master Chief continues until the approved plan is complete. It asks for your input when access or tools are missing, or when a decision would change the task. Ordinary module transitions need no further approval.
 
@@ -261,4 +261,4 @@ After the one-time setup, describe your task and approve the plan. The Master Ch
 
 ## Executor verification after the first real run
 
-The Master Chief delegates a small complete class by default and registers its allowed file and requirements before the call. Acceptance requires a recorded check for every requirement, green scoped tests and unchanged file boundaries, including untracked files. Run piece/module tests during implementation and the unfiltered full suite at task completion. One initial red baseline is excluded from the per-scope failure streak; build failures still count. Start metrics before environment setup. Registered attempts missing a review are shown in the report; actions outside the protocol cannot be detected automatically. The user does not run these steps manually.
+The Master Chief delegates a small complete class by default and registers its allowed file and requirements before the call. Acceptance requires a recorded check for every requirement, green scoped tests and unchanged file boundaries, including untracked files. Run work-item/module tests during implementation and the unfiltered full suite at task completion. One initial red baseline is excluded from the per-scope failure streak; build failures still count. Start metrics before environment setup. Registered attempts missing a review are shown in the report; actions outside the protocol cannot be detected automatically. The user does not run these steps manually.

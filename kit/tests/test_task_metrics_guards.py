@@ -118,7 +118,7 @@ class GuardCase(unittest.TestCase):
 
     # --- loop guards ---
 
-    def test_third_rework_of_one_piece_stops_the_task(self):
+    def test_third_rework_of_one_work_item_stops_the_task(self):
         self.metrics.start('task')
         self.metrics.review('task', 'Calc', 'rework')
         self.metrics.review('task', 'Other', 'rework')
@@ -187,7 +187,7 @@ class GuardCase(unittest.TestCase):
 
     def test_journal_without_limits_uses_defaults(self):
         events = [{'kind': 'start', 'at': 1}] + [
-            {'kind': 'review', 'piece': 'X', 'result': 'rework', 'at': 2}] * 3
+            {'kind': 'review', 'work_item': 'X', 'result': 'rework', 'at': 2}] * 3
         self.assertIn('sent back 3 times', limit_breach(events, task_metrics.task_limits(events)))
 
     def test_report_shows_stops_and_runs_without_result(self):
