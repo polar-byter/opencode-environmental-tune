@@ -113,10 +113,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def make_server(port: int, path: Path) -> HTTPServer:
     """Creates HTTPServer(('127.0.0.1', port), Handler), store journal_path, return it.
-
     The stored path is Path(path).resolve(). Port 0 chooses a free port for checks.
-    Do not start serving here: the caller owns serve_forever and server_close.
-    Do not require an existing journal: it may appear after startup.
     """
     server = HTTPServer(('127.0.0.1', port), Handler)
     server.journal_path = Path(path).resolve()
@@ -128,7 +125,24 @@ def main(argv: list[str] | None = None) -> int:
     Ctrl+C returns 0; ValueError/OSError -> "ERROR: <message>" on stderr and return 1.
     Always close a successfully created server in finally. No automatic browser launch.
     """
-    raise NotImplementedError('learning iteration 3: simple.main')
+    arg_parser = argparse.ArgumentParser(description='Learning iteration 3: simple dashboard')
+    arg_parser.add_argument('path', type=Path, help='Path to the journal file')
+    arg_parser.add_argument('--port', type=int, default=8765, help='Port to serve on (default: 8765)')
+    args = arg_parser.parse_args(argv)
+    try:
+        server = make_server(args.port, args.path)
+        print(f'Dashboard: http://127.0.0.1:{server.server_port}/')
+        server.serve_forever()
+    except (ValueError, OSError) as e:
+        print(f'ERROR: {e}', file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\nKeyboardInterrupt received, exiting.")
+        return 0
+    finally:
+        if 'server' in locals():
+            server.server_close()
+    return 0
 
 
 if __name__ == '__main__':

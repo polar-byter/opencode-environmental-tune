@@ -1,4 +1,6 @@
 """Focused exercises for learning iteration 3, independent of a running server."""
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 from http.client import HTTPMessage
 from http.server import HTTPServer
@@ -306,3 +308,134 @@ class Iteration3MakeServer(unittest.TestCase):
         self.assertEqual(server.server_port, server.server_address[1])
         self.assertIs(server.RequestHandlerClass, simple.Handler)
         self.assertEqual(server.journal_path, Path('events.jsonl').resolve())
+
+
+class Iteration3Main(unittest.TestCase):
+    def run_main(self, argv, port=8765, create_error=None, serve_error=None):
+        server = Mock(server_port=port, server_address=('127.0.0.1', port))
+        out, err = io.StringIO(), io.StringIO()
+
+        def serve():
+            self.assertEqual(out.getvalue(), f'Dashboard: http://127.0.0.1:{port}/\n')
+            if serve_error is not None:
+                raise serve_error
+
+        server.serve_forever.side_effect = serve
+        with patch('kit.dashboard.simple.make_server', return_value=server,
+                   side_effect=create_error) as factory, \
+                patch('webbrowser.open') as browser, \
+                redirect_stdout(out), redirect_stderr(err):
+            try:
+                result = simple.main(argv)
+            except KeyboardInterrupt:
+                self.fail('main must handle KeyboardInterrupt and return 0')
+        browser.assert_not_called()
+        return result, server, factory, out.getvalue(), err.getvalue()
+
+    def test_default_port_path_type_and_normal_return(self):
+        result, server, factory, out, err = self.run_main(['events.jsonl'])
+        factory.assert_called_once_with(8765, Path('events.jsonl'))
+        self.assertEqual(result, 0)
+        self.assertEqual(out, 'Dashboard: http://127.0.0.1:8765/\n')
+        self.assertEqual(err, '')
+        self.assertEqual(server.method_calls, [call.serve_forever(), call.server_close()])
+
+    def test_zero_port_prints_actual_port_and_preserves_path_with_spaces(self):
+        result, server, factory, out, err = self.run_main(
+            ['journal folder/events.jsonl', '--port', '0'], port=49152,
+        )
+        factory.assert_called_once_with(0, Path('journal folder/events.jsonl'))
+        self.assertEqual(result, 0)
+        self.assertEqual(out, 'Dashboard: http://127.0.0.1:49152/\n')
+        self.assertEqual(err, '')
+        server.server_close.assert_called_once_with()
+
+    def test_none_argv_reads_real_command_line(self):
+        with patch('sys.argv', ['simple.py', 'events.jsonl', '--port', '8766']):
+            result, server, factory, out, err = self.run_main(None, port=8766)
+        factory.assert_called_once_with(8766, Path('events.jsonl'))
+        self.assertEqual(result, 0)
+        self.assertEqual(err, '')
+        server.server_close.assert_called_once_with()
+
+    def assert_argument_exit(self, argv, code):
+        out, err = io.StringIO(), io.StringIO()
+        with patch('kit.dashboard.simple.make_server') as factory, \
+                redirect_stdout(out), redirect_stderr(err):
+            with self.assertRaises(SystemExit) as caught:
+                simple.main(argv)
+        self.assertEqual(caught.exception.code, code)
+        factory.assert_not_called()
+        return out.getvalue(), err.getvalue()
+
+    def test_missing_path_keeps_argparse_error(self):
+        out, err = self.assert_argument_exit([], 2)
+        self.assertEqual(out, '')
+        self.assertIn('path', err)
+
+    def test_non_integer_port_keeps_argparse_error(self):
+        out, err = self.assert_argument_exit(['events.jsonl', '--port', 'abc'], 2)
+        self.assertEqual(out, '')
+        self.assertIn('--port', err)
+
+    def test_help_exits_without_creating_server(self):
+        out, err = self.assert_argument_exit(['--help'], 0)
+        self.assertIn('--port', out)
+        self.assertIn('path', out)
+        self.assertEqual(err, '')
+
+    def test_unknown_option_keeps_argparse_error(self):
+        out, err = self.assert_argument_exit(['events.jsonl', '--unknown'], 2)
+        self.assertEqual(out, '')
+        self.assertIn('--unknown', err)
+
+    def test_keyboard_interrupt_during_serving_returns_zero_and_closes(self):
+        result, server, factory, out, err = self.run_main(
+            ['events.jsonl'], serve_error=KeyboardInterrupt(),
+        )
+        self.assertEqual(result, 0)
+        self.assertEqual(err, '')
+        self.assertEqual(server.method_calls, [call.serve_forever(), call.server_close()])
+
+    def test_creation_errors_print_to_stderr_and_do_not_close_uncreated_server(self):
+        for error in [OSError('port is occupied'), ValueError('bad port')]:
+            with self.subTest(error=error):
+                result, server, factory, out, err = self.run_main(
+                    ['events.jsonl'], create_error=error,
+                )
+                self.assertEqual(result, 1)
+                self.assertEqual(out, '')
+                self.assertEqual(err, f'ERROR: {error}\n')
+                self.assertEqual(server.method_calls, [])
+                factory.assert_called_once_with(8765, Path('events.jsonl'))
+
+    def test_serving_errors_print_to_stderr_and_close_created_server(self):
+        for error in [OSError('connection error'), ValueError('bad request')]:
+            with self.subTest(error=error):
+                result, server, factory, out, err = self.run_main(
+                    ['events.jsonl'], serve_error=error,
+                )
+                self.assertEqual(result, 1)
+                self.assertEqual(err, f'ERROR: {error}\n')
+                self.assertEqual(server.method_calls,
+                                 [call.serve_forever(), call.server_close()])
+
+    def test_keyboard_interrupt_during_creation_returns_zero(self):
+        result, server, factory, out, err = self.run_main(
+            ['events.jsonl'], create_error=KeyboardInterrupt(),
+        )
+        self.assertEqual(result, 0)
+        self.assertNotIn('Dashboard:', out)
+        self.assertEqual(err, '')
+        self.assertEqual(server.method_calls, [])
+
+    def test_unexpected_error_is_not_hidden_but_server_is_closed(self):
+        server = Mock(server_port=8765)
+        error = RuntimeError('unexpected bug')
+        server.serve_forever.side_effect = error
+        with patch('kit.dashboard.simple.make_server', return_value=server), \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            with self.assertRaises(RuntimeError) as caught:
+                simple.main(['events.jsonl'])
+        self.assertIs(caught.exception, error)
+        server.server_close.assert_called_once_with()
