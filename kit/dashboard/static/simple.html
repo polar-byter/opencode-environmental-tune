@@ -22,7 +22,12 @@
     'use strict';
 
     async function loadTask() {
-      throw new Error('TODO: loadTask');
+      const response = await fetch('/api/task');
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || response.statusText);
+      }
+      return data;
     }
 
     function renderTask(data) {
