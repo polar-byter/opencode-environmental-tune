@@ -161,6 +161,38 @@ class Step1Tests(unittest.TestCase):
         raw = ev('test', 120, status='passed', category='passed')
         self.assertEqual(journal.test_runs([start(), raw])[0]['scope'], 'full')
 
+    def test_empty_and_non_test_events_return_empty(self):
+        self.assertEqual(journal.test_runs([]), [])
+        events = [start(), ev('halt', 110), ev('resume', 120), ev('finish', 130)]
+        self.assertEqual(journal.test_runs(events), [])
+
+    def test_rows_have_exact_fields_and_defaults(self):
+        raw = ev('test', 110, tests=5, status='passed')
+        self.assertEqual(journal.test_runs([start(), raw, ev('finish', 120)]), [{
+            'at': 110, 'scope': 'full', 'phase': 'work', 'status': 'passed',
+            'category': None, 'tests': 5, 'failures': None, 'errors': None,
+            'skipped': None, 'duration': None,
+        }])
+
+    def test_preserves_file_order_without_changing_events(self):
+        first = ev('test', 130, scope='reader', phase='baseline', duration_seconds=2.5)
+        second = ev('test', 120, tests=8)
+        events = [start(), first, ev('review', 140, result='accepted'), second]
+        original = [dict(event) for event in events]
+        rows = journal.test_runs(events)
+        self.assertEqual([row['at'] for row in rows], [130, 120])
+        self.assertEqual((rows[0]['scope'], rows[0]['phase'], rows[0]['duration']),
+                         ('reader', 'baseline', 2.5))
+        self.assertEqual(events, original)
+        self.assertIsNot(rows[0], first)
+        self.assertIsNot(rows[1], second)
+
+    def test_known_zero_counts_stay_zero(self):
+        raw = ev('test', 110, tests=0, failures=0, errors=0, skipped=0, duration_seconds=0)
+        row = journal.test_runs([raw])[0]
+        for field in ('tests', 'failures', 'errors', 'skipped', 'duration'):
+            self.assertEqual(row[field], 0)
+
 
 class Step1Guards(unittest.TestCase):
     def values(self, events):

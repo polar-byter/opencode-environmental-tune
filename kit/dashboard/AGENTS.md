@@ -7,6 +7,10 @@ the exercises to an executor unless the user explicitly changes this mode.
 
 - Start with README.ru.md and the current step in the vault's currentsteps.md.
 - The full learning roadmap is in the vault folder `Дашборд OpenCode`.
+- Keep Russian teaching explanations in the vault lessons, not in source files.
+  Source comments and docstrings stay English. Do not add retrospective teaching
+  notes to completed functions or remove/change the learner's own comments.
+  Detailed function hints live in the vault note `06. Подсказки к функциям`.
 - Use console.py for iteration 1 and simple.py for the first browser iteration.
 - Prefer ordinary loops, explicit variables and small functions. Do not require
   comprehensions, lambdas, decorators, async Python or design patterns to pass a step.
@@ -30,4 +34,4 @@ the exercises to an executor unless the user explicitly changes this mode.
 - Update the current work file after a completed step; update roadmap milestones
   and the dashboard learning log after a completed iteration.
 
-Russian learning hints are intentional; identifiers and API field names stay English.
+Russian is for the conversation and vault lessons; code documentation stays English.
