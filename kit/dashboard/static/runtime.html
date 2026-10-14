@@ -31,8 +31,39 @@
     #events li { padding: 10px 0; border-top: 1px solid #29374c; display: flex; gap: 18px; overflow-wrap: anywhere; }
     time { font-size: 13px; min-width: 76px; }
     footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 22px; font-size: 13px; }
+    [hidden] { display: none !important; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    .tabs [aria-selected="true"] { border-color: #9ec8ff; background: #20384a; }
+    .activity { margin-bottom: 16px; overflow-wrap: anywhere; }
+    .activity p { line-height: 1.6; }
+    .compact { padding-left: 20px; line-height: 1.8; }
+    progress { width: 100%; accent-color: #8bdfb2; }
+    .work-row { border-top: 1px solid #29374c; padding: 14px 0; }
+    summary { cursor: pointer; }
+    .completion { background: radial-gradient(ellipse at top right, #214939, #162b28 70%); border: 1px solid #3b765b; border-radius: 14px; padding: 24px; margin: 18px 0; overflow-wrap: anywhere; }
+    .completion h2 { color: #a5edc0; font-size: 25px; margin-bottom: 8px; }
+    .completion.unverified { background: #302a20; border-color: #796443; }
+    .completion.unverified h2 { color: #edd6a5; }
+    .completion p { line-height: 1.6; }
+    .live-work { background: radial-gradient(ellipse at top right, #233f59, #162737 70%); border: 1px solid #456c90; border-radius: 14px; padding: 24px; margin: 18px 0; overflow-wrap: anywhere; }
+    .live-work h2 { color: #b4d9ff; font-size: 25px; margin-bottom: 8px; }
+    .live-work p { line-height: 1.6; }
+    .live-work.paused { border-color: #796443; background: #302a20; }
+    .live-work .cards { margin: 18px 0; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); }
+    .live-work dd { font-size: 20px; }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .actions a { display: inline-block; border: 1px solid #496956; border-radius: 8px; padding: 10px 12px; text-decoration: none; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 780px; font-size: 14px; }
+    th, td { border-bottom: 1px solid #29374c; text-align: right; padding: 14px 10px; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; min-width: 160px; white-space: normal; overflow-wrap: anywhere; }
+    th { color: #9cacc4; font-weight: 500; }
+    td .muted { display: block; margin-top: 6px; font-size: 12px; }
+    .token-cards { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    #token-scroll-hint { display: none; }
     @media (max-width: 620px) { main { padding: 22px 16px; } header { display: block; } .badge { display: inline-block; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .card { padding: 16px; } dd { font-size: 23px; } }
     @media (max-width: 360px) { .cards { grid-template-columns: 1fr; } }
+    @media (max-width: 620px) { .toolbar label, .toolbar select { flex-basis: 100%; } .token-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .token-cards dd { font-size: 20px; } #token-scroll-hint { display: block; } }
   </style>
 </head>
 <body>
@@ -44,8 +75,53 @@
   <div class="toolbar">
     <label for="task-select">Задача</label><select id="task-select" aria-label="Задача"></select>
     <button id="refresh" type="button">Обновить</button>
+    <button id="ongoing-tasks" type="button" disabled title="Открыть последнюю задачу в работе этого проекта">В работе: 0</button>
+    <button id="model-settings" type="button">Настройки моделей</button>
   </div>
+  <p id="settings-message" class="muted" role="status" aria-live="polite"></p>
   <p id="message" role="status" aria-live="polite"></p>
+  <section id="live-work" class="live-work" hidden aria-labelledby="live-title">
+    <div class="eyebrow muted">Текущая работа</div>
+    <h2 id="live-title">Сейчас в работе</h2>
+    <p id="live-stage"></p><p id="live-actor" class="muted"></p>
+    <p id="live-action"></p><p id="live-function"></p>
+    <dl class="cards">
+      <div class="card"><dt>Задания приняты</dt><dd id="live-items">—</dd></div>
+      <div class="card"><dt>Функции реализованы</dt><dd id="live-functions">—</dd></div>
+      <div class="card"><dt>Токены: вход / выход</dt><dd id="live-tokens">—</dd></div>
+      <div class="card"><dt>С начала задачи</dt><dd id="live-elapsed">—</dd></div>
+    </dl>
+    <p id="live-last-message" class="muted"></p>
+    <p id="live-data-status" class="muted"></p>
+    <button id="live-details" type="button">Посмотреть детализацию работ</button>
+  </section>
+  <section id="completion" class="completion" hidden aria-labelledby="completion-title">
+    <div class="eyebrow muted">Итог задачи</div>
+    <h2 id="completion-title">✓ Работа завершена</h2>
+    <p id="completion-text"></p>
+    <p id="completion-path" class="muted"></p>
+    <div class="actions">
+      <button id="open-project" type="button">Открыть папку проекта</button>
+      <a id="launch-file" hidden target="_blank" rel="noopener">Посмотреть файл запуска</a>
+      <a id="completion-report" target="_blank" rel="noopener">Итоговый отчёт</a>
+    </div>
+    <p id="project-message" class="muted" role="status" aria-live="polite"></p>
+  </section>
+  <nav class="tabs" role="tablist" aria-label="Представление задачи">
+    <button id="overview-tab" role="tab" aria-selected="true" aria-controls="overview">Обзор</button>
+    <button id="details-tab" role="tab" aria-selected="false" aria-controls="details">Детализация работ</button>
+    <button id="tokens-tab" role="tab" aria-selected="false" aria-controls="tokens">Токены</button>
+  </nav>
+  <div id="overview" role="tabpanel" aria-labelledby="overview-tab">
+  <section class="activity">
+    <h2>Что происходит</h2>
+    <p id="stage">Читаем задачу…</p>
+    <p id="models" class="muted"></p>
+    <a id="architecture" hidden target="_blank" rel="noopener">Посмотреть архитектуру кода</a>
+    <p id="function-count" class="muted"></p>
+    <progress id="function-progress" hidden aria-label="Прогресс функций"></progress>
+    <p id="current-function"></p>
+  </section>
   <dl class="cards">
     <div class="card"><dt>Статус</dt><dd id="status">—</dd></div>
     <div class="card"><dt>События</dt><dd id="event-count">—</dd></div>
@@ -55,6 +131,25 @@
     <div class="card"><dt>Последнее событие</dt><dd id="updated">—</dd></div>
   </dl>
   <section class="activity"><h2>Последние события</h2><ol id="events"></ol></section>
+  </div>
+  <div id="tokens" role="tabpanel" aria-labelledby="tokens-tab" hidden>
+    <section class="activity">
+      <h2>Расход токенов</h2><p id="token-status" class="muted"></p>
+      <dl id="token-totals" class="cards token-cards"></dl>
+      <p id="token-scroll-hint" class="muted">Таблицу можно прокрутить по горизонтали →</p>
+      <div class="table-wrap"><table aria-label="Токены по моделям">
+        <thead><tr><th>Модель / роль</th><th>Вход</th><th>Выход</th><th>Рассуждения</th><th>Кэш: чтение</th><th>Кэш: запись</th></tr></thead>
+        <tbody id="token-models"></tbody>
+      </table></div>
+      <p class="muted">Категории показаны отдельно: рассуждения и кэш могут пересекаться с другими счётчиками. Это данные OpenCode, не денежный счёт.</p>
+      <ul id="token-warnings" class="compact muted"></ul>
+    </section>
+  </div>
+  <div id="details" role="tabpanel" aria-labelledby="details-tab" hidden>
+    <section class="activity"><h2>Задания исполнителю</h2><div id="work-items"></div></section>
+    <section class="activity"><h2>Функции</h2><ol id="functions" class="compact"></ol></section>
+    <section class="activity"><h2>Сообщения и действия моделей</h2><p id="session-status" class="muted"></p><div id="session-feed"></div></section>
+  </div>
   <footer><span id="task-id" class="muted"></span><a id="report" hidden target="_blank" rel="noopener">Открыть итоговый отчёт</a><span class="muted">Автообновление каждые 2 секунды</span></footer>
 </main>
 <script>
@@ -62,8 +157,157 @@
   const parameters = new URLSearchParams(window.location.search);
   let activeTask = parameters.get('task') || '';
   let busy = false;
+  let latestTasks = [];
+  let liveStarted = null;
   const labels = { running: 'В работе', halted: 'Остановлена', finished: 'Завершена' };
   const kinds = { start: 'Начало задачи', delegation: 'Задание исполнителю', inspection: 'Проверка изменений', review: 'Ревью', test: 'Тесты', halt: 'Остановка', resume: 'Продолжение', finish: 'Завершение задачи' };
+  const states = {executor: 'Исполнитель работает', review: 'На ревью', accepted: 'Принято', rework: 'Возвращено на доработку', failed: 'Сбой исполнителя', planned: 'Запланирована', working: 'В работе', implemented: 'Реализована, ожидает ревью'};
+  const element = id => document.getElementById(id);
+  function paragraph(text, parent, className = '') {
+    const node = document.createElement('p'); node.textContent = text; node.className = className; parent.append(node); return node;
+  }
+  function showTab(name) {
+    for (const id of ['overview', 'details', 'tokens']) {
+      element(id).hidden = id !== name;
+      element(id + '-tab').setAttribute('aria-selected', String(id === name));
+    }
+    parameters.set('view', name);
+    window.history.replaceState(null, '', '?' + parameters.toString());
+  }
+
+  const tokenFields = {input: 'Вход', output: 'Выход', reasoning: 'Рассуждения', cache_read: 'Кэш: чтение', cache_write: 'Кэш: запись'};
+  const formatCount = value => Number.isInteger(value) && value >= 0 ? value.toLocaleString('ru-RU') : 'Нет данных';
+  function updateElapsed() {
+    if (liveStarted == null) return;
+    const elapsed = Math.max(0, Math.floor(Date.now() / 1000 - liveStarted));
+    element('live-elapsed').textContent = Math.floor(elapsed / 60) + ' мин ' + elapsed % 60 + ' сек';
+  }
+  function renderLive(data, work, live, items, last, stage, model) {
+    const panel = element('live-work'); panel.hidden = data.status === 'finished';
+    liveStarted = panel.hidden ? null : data.started_at;
+    if (panel.hidden) return;
+    const running = data.status === 'running';
+    panel.className = running ? 'live-work' : 'live-work paused';
+    element('live-title').textContent = running ? 'Сейчас в работе' : 'Работа приостановлена';
+    element('live-stage').textContent = work.error || stage;
+    const role = last?.state === 'executor' ? 'executor' : 'master_chief';
+    const actor = role === 'executor' ? 'Исполнитель' : 'Master Chief';
+    const now = Date.now() / 1000;
+    const cutoff = role === 'executor' && last ? last.attempts.at(-1).at : data.started_at;
+    const recent = event => event.role === role && Number.isFinite(event.at) && event.at >= cutoff && event.at <= now;
+    const cacheFresh = Number.isFinite(live.updated_at) && now - live.updated_at >= 0 && now - live.updated_at <= 30;
+    const current = running && cacheFresh ? [...(live.current || [])].filter(event => recent(event) && now - event.at <= 90).at(-1) : null;
+    const latest = [...(live.feed || [])].filter(recent).at(-1);
+    const observed = current || latest;
+    element('live-actor').textContent = `${actor}: ${current?.model || (role === 'executor' ? last?.model : null) || model(role)}${last && ['executor', 'review'].includes(last.state) ? ' · задание: ' + last.id : ''}`;
+    const tools = {read: 'Чтение файла', edit: 'Изменение файла', write: 'Запись файла', bash: 'Выполнение команды', task: 'Вызов исполнителя', apply_patch: 'Изменение кода', glob: 'Поиск файлов', grep: 'Поиск в коде'};
+    let action = 'Свежих данных о действии модели пока нет.';
+    if (observed) {
+      const detail = observed.kind === 'tool' ? [tools[observed.tool] || observed.tool, observed.target].filter(Boolean).join(' · ') : (observed.kind === 'thinking' ? 'Формирование ответа' : 'Публичное сообщение модели');
+      action = `${current ? 'Сейчас' : 'Последнее зафиксированное действие'}: ${detail}`;
+    }
+    element('live-action').textContent = action;
+    const progress = work.progress || {};
+    element('live-function').textContent = running && progress.current ? `Работает над функцией ${progress.current.name} · ${progress.current.file}` : '';
+    element('live-items').textContent = items.length ? `${items.filter(item => item.state === 'accepted').length} / ${items.length}` : 'Пока нет заданий';
+    element('live-functions').textContent = progress.available ? `${progress.implemented} / ${progress.total}` : 'Реестр не передан';
+    const tokens = data.tokens || {};
+    element('live-tokens').textContent = tokens.available ? `${formatCount(tokens.totals?.input)} / ${formatCount(tokens.totals?.output)}` : 'Нет данных';
+    const message = [...(live.feed || [])].filter(event => recent(event) && event.kind === 'text').at(-1);
+    element('live-last-message').textContent = message ? 'Последнее сообщение: ' + message.text : '';
+    element('live-data-status').textContent = live.available ? `Сессии прочитаны ${live.updated_at ? new Date(live.updated_at * 1000).toLocaleTimeString() : ''}. Журнал обновляется каждые 2 секунды; сессии — каждые 15 секунд.` : (live.reason || 'Сессия OpenCode недоступна; этап показывается по журналу задачи.');
+    updateElapsed();
+  }
+  function renderTokens(data) {
+    const usage = data.tokens || {}, totals = element('token-totals'), models = element('token-models');
+    totals.replaceChildren(); models.replaceChildren();
+    const timestamp = usage.snapshot_at ? new Date(usage.snapshot_at * 1000).toLocaleString() : '';
+    element('token-status').textContent = usage.available ? `${usage.source === 'finish' ? 'Итоговый срез при завершении задачи' : 'Текущий срез завершённых сообщений'}${timestamp ? ' · ' + timestamp : ''}${usage.sessions != null ? ' · сессий: ' + usage.sessions : ''}` : (usage.reason || 'Данные о токенах пока недоступны');
+    if (usage.available) {
+      for (const [field, label] of Object.entries(tokenFields)) {
+        const card = document.createElement('div'); card.className = 'card';
+        const title = document.createElement('dt'); title.textContent = label;
+        const value = document.createElement('dd'); value.textContent = formatCount(usage.totals?.[field]);
+        card.append(title, value); totals.append(card);
+      }
+      for (const model of usage.models || []) {
+        const row = document.createElement('tr'), name = document.createElement('td');
+        name.textContent = model.provider + '/' + model.model;
+        const role = document.createElement('span'); role.className = 'muted';
+        const roles = (model.roles || []).map(value => value === 'master_chief' ? 'Master Chief' : 'Исполнитель');
+        role.textContent = `${roles.join(' / ') || 'Роль не установлена'} · сообщений: ${formatCount(model.messages)}`;
+        name.append(role); row.append(name);
+        for (const field of Object.keys(tokenFields)) { const cell = document.createElement('td'); cell.textContent = formatCount(model[field]); row.append(cell); }
+        models.append(row);
+      }
+    }
+    const warnings = element('token-warnings'); warnings.replaceChildren();
+    for (const text of usage.warnings || []) { const row = document.createElement('li'); row.textContent = text; warnings.append(row); }
+  }
+
+  function renderCompletion(data) {
+    const completion = data.completion || {}, panel = element('completion');
+    panel.hidden = !completion.finished;
+    if (!completion.finished) return;
+    panel.className = completion.verified ? 'completion' : 'completion unverified';
+    element('completion-title').textContent = completion.verified ? '✓ Работа завершена' : 'Задача завершена';
+    const duration = Math.floor(completion.duration_seconds / 60) + ' мин ' + (completion.duration_seconds % 60) + ' сек';
+    const checked = completion.verified ? `Итоговая полная проверка: ${formatCount(completion.full_tests?.tests)} тестов, успешно.` : 'Успешная полная проверка не подтверждена' + (completion.pending ? '; есть задания без ревью.' : '.');
+    element('completion-text').textContent = `Время работы: ${duration}. ${checked}`;
+    element('completion-path').textContent = completion.project_path;
+    element('completion-report').href = '/api/report?' + new URLSearchParams({task: data.task});
+    const launcher = element('launch-file'); launcher.hidden = !completion.launcher;
+    if (completion.launcher) { launcher.href = completion.launcher.url; launcher.textContent = 'Файл запуска: ' + completion.launcher.name; }
+  }
+
+  function renderWork(data) {
+    const work = data.work || {}, live = work.sessions || {}, progress = work.progress || {};
+    const configured = work.configured_models || {}, actual = live.models || {};
+    const model = role => (actual[role] || []).join(', ') || (configured[role] ? configured[role] + ' (выбрана в настройках)' : 'модель неизвестна');
+    element('models').textContent = `Master Chief: ${model('master_chief')} · Исполнитель: ${model('executor')}`;
+    const items = work.items || [], last = [...items].sort((a, b) => a.attempts.at(-1).at - b.attempts.at(-1).at).at(-1);
+    let stage = 'Master Chief готовит план и архитектуру.';
+    if (work.architecture && work.architecture.registered) stage = 'Master Chief опубликовал архитектуру кода.';
+    if (last) {
+      const executor = last.model || model('executor');
+      stage = {executor: `Master Chief передал задание «${last.id}» исполнителю ${executor}.`, review: `Исполнитель ${executor} передал «${last.id}» на ревью Master Chief.`, accepted: `Master Chief принял задание «${last.id}» от ${executor}.`, rework: `Master Chief вернул «${last.id}» исполнителю ${executor} на доработку.`, failed: `Исполнитель завершил попытку «${last.id}» со сбоем.`}[last.state] || stage;
+    }
+    if (data.status === 'finished') stage = `Работа завершена. Принято заданий: ${items.filter(item => item.state === 'accepted').length} из ${items.length}.`;
+    if (data.status === 'halted') stage = 'Задача остановлена. Продолжение ожидает решения пользователя.';
+    if (last && work.architecture?.registered) stage = 'Master Chief подготовил архитектуру. ' + stage;
+    element('stage').textContent = work.error || stage;
+    renderLive(data, work, live, items, last, stage, model);
+    const architecture = element('architecture');
+    architecture.hidden = !work.architecture;
+    architecture.href = '/architecture?' + new URLSearchParams({task: data.task});
+    architecture.textContent = work.architecture?.registered ? 'Посмотреть архитектуру кода' : 'Посмотреть документ проекта (без регистрации в этой задаче)';
+    element('function-count').textContent = progress.available ? `Исполнитель реализовал ${progress.implemented} из ${progress.total} функций · принято на ревью: ${progress.accepted}.` : (progress.reason || 'Реестр функций недоступен');
+    element('function-progress').hidden = !progress.available;
+    if (progress.available) { element('function-progress').max = progress.total; element('function-progress').value = progress.implemented; }
+    element('current-function').textContent = data.status === 'running' && progress.current ? `Работает над функцией ${progress.current.name} · ${progress.current.file}` : (data.status === 'running' ? 'Текущая функция пока не сообщена исполнителем.' : '');
+    const workList = element('work-items');
+    const expanded = new Set([...workList.querySelectorAll('details[open]')].map(row => row.dataset.item));
+    workList.replaceChildren();
+    if (!items.length) paragraph('Заданий исполнителю пока нет.', workList, 'muted');
+    for (const item of items) {
+      const row = document.createElement('details'); row.className = 'work-row';
+      row.dataset.item = item.id; row.open = expanded.has(item.id);
+      const title = document.createElement('summary'); title.textContent = `${item.id} · ${states[item.state] || item.state} · ${item.model || 'модель не установлена'} · попыток: ${item.attempts.length}`;
+      row.append(title);
+      for (const [index, attempt] of item.attempts.entries()) {
+        paragraph(`Попытка ${index + 1} · ${new Date(attempt.at * 1000).toLocaleString()} · ${states[attempt.state] || attempt.state} · ${attempt.model || 'модель не установлена'}`, row);
+        paragraph('Файлы: ' + (attempt.files || []).join(', '), row, 'muted');
+        for (const test of attempt.tests || []) paragraph(`Тесты (${test.scope}): ${test.status}, количество: ${test.tests ?? 'неизвестно'}`, row, 'muted');
+      }
+      workList.append(row);
+    }
+    const functions = element('functions'); functions.replaceChildren();
+    for (const fn of progress.functions || []) { const li = document.createElement('li'); li.textContent = `${fn.name} · ${fn.file} · ${states[fn.state] || fn.state}`; functions.append(li); }
+    if (!progress.available) { const li = document.createElement('li'); li.textContent = 'Список функций не опубликован; количество не вычисляется по файлам.'; functions.append(li); }
+    element('session-status').textContent = live.available ? (live.loading ? 'Обновляем сессии…' : 'Публичные сообщения и инструменты OpenCode; обновление сессий каждые 15 секунд.') : (live.reason || 'Сессии недоступны');
+    const feed = element('session-feed'); feed.replaceChildren();
+    for (const event of [...(live.feed || [])].reverse()) paragraph(`${new Date(event.at * 1000).toLocaleTimeString()} · ${event.role === 'master_chief' ? 'Master Chief' : 'Исполнитель'} · ${event.model || 'модель неизвестна'}: ${event.kind === 'text' ? event.text : [event.tool, event.target, event.status].filter(Boolean).join(' · ')}`, feed, 'work-row');
+  }
 
   async function readJSON(url) {
     const response = await fetch(url);
@@ -73,6 +317,8 @@
   }
 
   function render(data) {
+    renderTokens(data); renderCompletion(data);
+    renderWork(data);
     document.getElementById('title').textContent = data.title;
     document.title = data.title + ' · OpenCode';
     document.getElementById('status').textContent = labels[data.status] || data.status;
@@ -111,10 +357,14 @@
       if (expectedProject && expectedProject !== metadata.project.id) throw new Error('Страница открыта для другого проекта');
       document.getElementById('project-name').textContent = metadata.project.name;
       const tasks = await readJSON('/api/tasks');
+      latestTasks = tasks;
+      const ongoing = tasks.filter(task => task.status === 'running');
+      element('ongoing-tasks').textContent = 'В работе: ' + ongoing.length;
+      element('ongoing-tasks').disabled = !ongoing.length;
       if (!activeTask && tasks.length) activeTask = tasks[0].task;
       const selector = document.getElementById('task-select');
       selector.replaceChildren();
-      for (const task of tasks) selector.add(new Option(task.title, task.task));
+      for (const task of tasks) selector.add(new Option(`${labels[task.status] || task.status} · ${task.title}`, task.task));
       if (activeTask && !tasks.some(task => task.task === activeTask)) selector.add(new Option(activeTask, activeTask));
       selector.value = activeTask;
       if (!activeTask) {
@@ -139,11 +389,53 @@
   }
 
   function main() {
+    element('live-details').addEventListener('click', () => showTab('details'));
+    element('ongoing-tasks').addEventListener('click', () => {
+      const task = latestTasks.find(task => task.status === 'running');
+      if (task) { element('task-select').value = task.task; element('task-select').dispatchEvent(new Event('change')); }
+    });
+    setInterval(updateElapsed, 1000);
+    for (const id of ['overview', 'details', 'tokens']) element(id + '-tab').addEventListener('click', () => showTab(id));
+    showTab(['details', 'tokens'].includes(parameters.get('view')) ? parameters.get('view') : 'overview');
+    element('open-project').addEventListener('click', async () => {
+      const button = element('open-project'); button.disabled = true;
+      element('project-message').textContent = 'Открываем папку проекта…';
+      try {
+        const ui = await readJSON('/api/ui');
+        const response = await fetch('/api/project/open', {method: 'POST', headers: {'X-Dashboard-UI-Token': ui.token}});
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || response.statusText);
+        element('project-message').textContent = 'Папка проекта открыта в файловом менеджере.';
+      } catch (error) { element('project-message').textContent = error.message; }
+      finally { button.disabled = false; }
+    });
+    element('model-settings').addEventListener('click', async () => {
+      const button = element('model-settings'); button.disabled = true;
+      element('settings-message').textContent = 'Запускаем настройки моделей…';
+      try {
+        const ui = await readJSON('/api/ui');
+        const response = await fetch('/api/models/open', {method: 'POST', headers: {'X-Dashboard-UI-Token': ui.token}});
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || response.statusText);
+        element('settings-message').textContent = result.reused ? 'Конфигуратор уже запущен. Переключитесь на его окно.' : 'Конфигуратор запущен. Настройки доступны в отдельном окне.';
+      } catch (error) { element('settings-message').textContent = error.message; }
+      finally { button.disabled = false; }
+    });
     document.getElementById('refresh').addEventListener('click', refreshTask);
     document.getElementById('task-select').addEventListener('change', event => {
       activeTask = event.target.value;
       parameters.set('task', activeTask);
       window.history.replaceState(null, '', '?' + parameters.toString());
+      element('stage').textContent = 'Читаем выбранную задачу…';
+      element('completion').hidden = true; element('project-message').textContent = '';
+      element('live-work').hidden = true; liveStarted = null;
+      element('token-status').textContent = 'Читаем токены выбранной задачи…';
+      for (const id of ['token-totals', 'token-models', 'token-warnings']) element(id).replaceChildren();
+      element('title').textContent = 'Загрузка задачи…'; element('models').textContent = '';
+      for (const id of ['work-items', 'functions', 'session-feed']) element(id).replaceChildren();
+      element('architecture').hidden = true;
+      element('function-count').textContent = ''; element('current-function').textContent = '';
+      element('function-progress').hidden = true;
       refreshTask();
     });
     refreshTask();

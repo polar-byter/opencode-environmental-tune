@@ -2,17 +2,20 @@
 from __future__ import annotations
 
 import argparse
+import html
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import secrets
 import sys
+import subprocess
 import threading
 from urllib.parse import parse_qs, urlsplit
 import uuid
 
 from . import journal
+from . import tracking, observations, delivery
 from .launcher import SERVICE, VERSION, project_id, read_state, runtime_folder, write_state
 from ..task_metrics import TaskMetrics
 
@@ -30,7 +33,7 @@ def task_directory(root: Path, task: str) -> Path:
     return directory
 
 
-def task_view(root: Path, task: str) -> dict:
+def task_view(root: Path, task: str, reader=None) -> dict:
     events = journal.read_events(task_directory(root, task) / 'events.jsonl')
     result = journal.brief_summary(events)
     result.update(task=task, started_at=events[0]['at'], session=events[0].get('session'))
@@ -39,6 +42,24 @@ def task_view(root: Path, task: str) -> dict:
          if key in event}
         for event in events[-30:]
     ]
+    if reader is not None:
+        live = reader.view(root, events)
+        try:
+            result['tokens'] = observations.token_view(events, live)
+        except (ValueError, TypeError):
+            result['tokens'] = {'available': False, 'reason': 'Не удалось прочитать детализацию токенов'}
+        result['completion'] = delivery.completion(root, task, events)
+        try:
+            items = tracking.work_items(events)
+            observations.attach_models(items, live)
+            plan = tracking.architecture(root, task)
+            progress = tracking.function_progress(root, task, events)
+            result['work'] = {'items': items, 'progress': progress, 'sessions': live,
+                              'configured_models': observations.display_models(root),
+                              'architecture': {key: value for key, value in plan.items() if key != 'text'} if plan else None}
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            result['work'] = {'error': 'Не удалось прочитать дополнительные сведения задачи',
+                              'items': [], 'progress': {'available': False}, 'sessions': {'available': False}}
     return result
 
 
@@ -65,7 +86,41 @@ class DashboardServer(ThreadingHTTPServer):
         self.root = Path(root).resolve()
         self.instance = instance or uuid.uuid4().hex
         self.control_token = secrets.token_urlsafe(32)
+        self.ui_token = secrets.token_urlsafe(32)
+        self.reader = observations.SessionReader()
+        self.configurator = None
+        self.configurator_lock = threading.Lock()
         super().__init__(('127.0.0.1', port), Handler)
+
+    def open_configurator(self) -> dict:
+        with self.configurator_lock:
+            if self.configurator is not None and self.configurator.poll() is None:
+                return {'status': 'started', 'reused': True, 'pid': self.configurator.pid}
+            options = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {'start_new_session': True}
+            folder = runtime_folder(self.root)
+            folder.mkdir(parents=True, exist_ok=True)
+            with (folder / 'configurator.log').open('ab') as log:
+                process = subprocess.Popen([sys.executable, '-u', '-m', 'kit.configurator.app'],
+                                           cwd=self.root, stdin=subprocess.DEVNULL,
+                                           stdout=log, stderr=log, **options)
+            self.configurator = process
+            try:
+                code = process.wait(timeout=0.35)
+            except subprocess.TimeoutExpired:
+                return {'status': 'started', 'reused': False, 'pid': process.pid}
+            raise RuntimeError('Не удалось запустить конфигуратор; подробности в .metrics/.dashboard/configurator.log')
+
+    def open_project(self) -> dict:
+        """Open this server's project folder; never execute a launch script."""
+        if not self.root.is_dir():
+            raise FileNotFoundError('Project folder no longer exists')
+        if os.name == 'nt':
+            os.startfile(str(self.root))
+        else:
+            program = 'open' if sys.platform == 'darwin' else 'xdg-open'
+            subprocess.Popen([program, str(self.root)], stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return {'opened': True}
 
     def state(self) -> dict:
         return {'service': SERVICE, 'version': VERSION, 'instance_id': self.instance,
@@ -131,9 +186,30 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.dumps(task_list(self.server.root), ensure_ascii=False).encode('utf-8')
                 status, content_type = 200, 'application/json; charset=utf-8'
             elif parts.path == '/api/task':
-                data = task_view(self.server.root, self.selected_task(query))
+                data = task_view(self.server.root, self.selected_task(query), self.server.reader)
                 body = json.dumps(data, ensure_ascii=False, allow_nan=False).encode('utf-8')
                 status, content_type = 200, 'application/json; charset=utf-8'
+            elif parts.path == '/api/ui':
+                body = json.dumps({'token': self.server.ui_token}).encode('utf-8')
+                status, content_type = 200, 'application/json; charset=utf-8'
+            elif parts.path in ('/architecture', '/launch-file'):
+                task = self.selected_task(query)
+                task_directory(self.server.root, task)
+                if parts.path == '/launch-file':
+                    target = delivery.launch_file(self.server.root, task)
+                    document = {'document': target.relative_to(self.server.root).as_posix(), 'text': target.read_text(encoding='utf-8-sig')} if target else None
+                    heading = 'Файл запуска'
+                else:
+                    document = tracking.architecture(self.server.root, task)
+                    heading = 'Архитектура кода'
+                if document is None:
+                    raise FileNotFoundError('Документ ещё не опубликован')
+                title = html.escape(document['document'])
+                text = html.escape(document['text'])
+                body = (f'<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                        f'<title>Архитектура · {title}</title><style>body{{max-width:1000px;margin:30px auto;padding:0 20px;background:#101724;color:#e8edf5;font:16px system-ui}}'
+                        f'pre{{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}}a{{color:#9ec8ff}}</style><h1>{heading}</h1><p>{title}</p><pre>{text}</pre></html>').encode('utf-8')
+                status, content_type = 200, 'text/html; charset=utf-8'
             elif parts.path == '/api/report':
                 folder = task_directory(self.server.root, self.selected_task(query))
                 report = folder / 'report.md'
@@ -161,6 +237,23 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.host_allowed():
             self.send_json(403, {'error': 'Forbidden Host'})
+            return
+        if urlsplit(self.path).path in ('/api/models/open', '/api/project/open'):
+            origin = self.headers.get('Origin', '')
+            allowed = (f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}')
+            token = self.headers.get('X-Dashboard-UI-Token', '')
+            if origin not in allowed or not token or not secrets.compare_digest(token, self.server.ui_token):
+                self.send_json(403, {'error': 'Forbidden settings request'})
+                return
+            if self.headers.get('Content-Length', '0') != '0' or urlsplit(self.path).query:
+                self.send_json(400, {'error': 'This action accepts no parameters'})
+                return
+            try:
+                result = self.server.open_configurator() if urlsplit(self.path).path == '/api/models/open' else self.server.open_project()
+                self.send_json(200, result)
+            except (OSError, RuntimeError):
+                error = 'Не удалось открыть конфигуратор. Проверьте .metrics/.dashboard/configurator.log' if urlsplit(self.path).path == '/api/models/open' else 'Не удалось открыть папку проекта'
+                self.send_json(503, {'error': error})
             return
         if urlsplit(self.path).path != '/api/stop':
             self.send_json(404, {'error': 'Not found'})

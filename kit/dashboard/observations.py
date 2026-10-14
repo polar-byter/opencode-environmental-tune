@@ -1,0 +1,191 @@
+"""Non-blocking OpenCode observations for the operational page, never reasoning text."""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import threading
+import time
+
+from ..task_metrics import TaskMetrics, TOKEN_FIELDS, message_info, message_model, valid_number
+
+
+class ObservedMetrics(TaskMetrics):
+    def cli_json(self, executable: str, args: list[str]):
+        options = {'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {}
+        result = subprocess.run([executable, *args], cwd=self.root, stdin=subprocess.DEVNULL,
+                                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10, **options)
+        if result.returncode:
+            raise ValueError('OpenCode session data is unavailable')
+        try:
+            return json.loads(result.stdout.lstrip('\ufeff'))
+        except ValueError as error:
+            raise ValueError('OpenCode returned an unreadable session') from error
+
+
+def display_models(root: Path) -> dict:
+    """Configured references only, not proof of what a session actually used."""
+    from ..run_opencode import load_choices
+    choices = load_choices(root)
+    result = {}
+    for role, field in (('master_chief', 'masterChief'), ('executor', 'executors')):
+        choice = choices.get(field)
+        if choice and isinstance(choice.get('model'), str):
+            result[role] = choice['model']
+    return result
+
+
+def token_view(events: list[dict], live: dict) -> dict:
+    """Prefer the finish journal snapshot; otherwise use the background export snapshot.
+
+    Never sum overlapping categories. A missing counter makes that column unknown.
+    Roles describe actual observed models, not configured model choices.
+    """
+    finished = next((event for event in events if event['kind'] == 'finish'), None)
+    raw = finished.get('usage') if finished else live.get('usage')
+    snapshot_at = finished.get('ended', finished['at']) if finished else live.get('updated_at')
+    if not valid_number(snapshot_at):
+        snapshot_at = None
+    source = 'finish' if finished else 'session'
+    empty = {'available': False, 'source': source, 'snapshot_at': snapshot_at,
+             'models': [], 'totals': dict.fromkeys(TOKEN_FIELDS), 'sessions': None,
+             'warnings': [], 'reason': 'Данные о токенах пока недоступны'}
+    if not isinstance(raw, dict) or not isinstance(raw.get('models'), list):
+        return empty
+    if len(raw['models']) > 2000:
+        raise ValueError('Too many token rows')
+    rows = []
+    actual = live.get('models', {})
+    for row in raw['models']:
+        if not isinstance(row, dict) or any(not isinstance(row.get(key), str) or not row[key] or len(row[key]) > 250 for key in ('provider', 'model')):
+            raise ValueError('Invalid token model')
+        result = {key: row[key] for key in ('provider', 'model')}
+        reference = row['provider'] + '/' + row['model']
+        result['roles'] = [role for role in ('master_chief', 'executor') if reference in actual.get(role, [])]
+        for field in (*TOKEN_FIELDS, 'messages', 'missing_usage'):
+            value = row.get(field)
+            result[field] = value if type(value) is int and value >= 0 else None
+        rows.append(result)
+    totals = {field: sum(row[field] for row in rows) if rows and all(row[field] is not None for row in rows) else None for field in TOKEN_FIELDS}
+    sessions = raw.get('sessions')
+    warnings = raw.get('warnings', [])
+    warnings = [item[:500] for item in warnings[:20] if isinstance(item, str)] if isinstance(warnings, list) else []
+    return dict(empty, available=bool(rows), models=rows, totals=totals,
+                sessions=len(set(sessions)) if isinstance(sessions, list) and all(isinstance(item, str) for item in sessions) else None,
+                warnings=warnings)
+
+
+def observations(exports: list[dict], root_session: str, since: float, until: float) -> dict:
+    """Project the actual session tree into public text/tools/models and current activity."""
+    models = {'master_chief': [], 'executor': []}
+    feed, current, calls, session_models = [], [], [], {}
+    for export in exports:
+        session = export.get('info', {}).get('id')
+        role = 'master_chief' if session == root_session else 'executor'
+        for message in export.get('messages', []):
+            info = message_info(message)
+            if info.get('role', info.get('type')) != 'assistant':
+                continue
+            stamp = info.get('time', {})
+            created = stamp.get('created')
+            if not valid_number(created) or not since - 5 <= created / 1000 <= until:
+                continue
+            provider, model = message_model(info)
+            reference = provider + '/' + model if provider != 'unknown' and model != 'unknown' else None
+            if reference and reference not in models[role]:
+                models[role].append(reference)
+            if reference:
+                session_models[session] = reference
+            parts = message.get('parts', message.get('content', []))
+            last_tool = None
+            for index, part in enumerate(parts):
+                if not isinstance(part, dict) or part.get('type') not in ('text', 'tool'):
+                    continue
+                at = part.get('time', {}).get('created', part.get('time', {}).get('start', created))
+                if not valid_number(at) or not since <= at / 1000 <= until:
+                    continue
+                row = {'session': session, 'role': role, 'model': reference,
+                       'at': at / 1000, 'id': str(part.get('id', part.get('partID', info.get('id', '') + ':' + str(index))))}
+                if part['type'] == 'text':
+                    text = part.get('text')
+                    if not isinstance(text, str) or not text.strip():
+                        continue
+                    row.update(kind='text', text=' '.join(text.split())[:500])
+                else:
+                    state = part.get('state', {})
+                    inputs = state.get('input', {})
+                    if not isinstance(inputs, dict):
+                        inputs = {}
+                    tool = part.get('name', part.get('tool', 'tool'))
+                    # Do not expose shell commands, outputs, prompts or credentials.
+                    target = inputs.get('path', inputs.get('filePath', ''))
+                    if not isinstance(target, str):
+                        target = ''
+                    row.update(kind='tool', tool=tool, target=target[:250], status=state.get('status'))
+                    last_tool = row
+                    metadata = state.get('metadata', {})
+                    child = metadata.get('sessionID', metadata.get('sessionId')) if isinstance(metadata, dict) else None
+                    if role == 'master_chief' and child:
+                        calls.append({'at': row['at'], 'session': child})
+                feed.append(row)
+            if not valid_number(stamp.get('completed')):
+                running = last_tool if last_tool and last_tool.get('status') in ('running', 'pending') else None
+                current.append(dict(running or {'at': created / 1000, 'kind': 'thinking'},
+                                    role=role, model=reference, session=session))
+    return {'available': True, 'models': models, 'feed': sorted(feed, key=lambda row: row['at'])[-100:],
+            'current': sorted(current, key=lambda row: row['at']), 'calls': calls, 'session_models': session_models}
+
+
+class SessionReader:
+    """Export in a daemon worker; HTTP requests return immediately with cached data."""
+    def __init__(self, collect=None, ttl=15, clock=time.monotonic):
+        self.collect = collect or (lambda root, sid: ObservedMetrics(root).collect_exports(sid))
+        self.ttl, self.clock = ttl, clock
+        self.lock = threading.Lock()
+        self.entries = {}
+
+    def view(self, root: Path, events: list[dict]) -> dict:
+        session = events[0].get('session')
+        if not session:
+            return {'available': False, 'loading': False, 'reason': 'Задача без сессии OpenCode'}
+        key = (str(root.resolve()), session, events[0]['at'])
+        ended = next((event.get('ended', event['at']) for event in events if event['kind'] == 'finish'), None)
+        with self.lock:
+            if key not in self.entries and len(self.entries) >= 32:
+                idle = [(value['next'], item) for item, value in self.entries.items() if not value['loading']]
+                if not idle:
+                    return {'available': False, 'loading': True, 'reason': 'Читаем другие сессии проекта'}
+                del self.entries[min(idle)[1]]
+            entry = self.entries.setdefault(key, {'next': 0, 'loading': False, 'data': None})
+            if not entry['loading'] and self.clock() >= entry['next'] and not (ended and entry.get('final')):
+                entry['loading'] = True
+                threading.Thread(target=self.fetch, args=(key, root, session, events[0]['at'], ended), daemon=True).start()
+            result = dict(entry['data'] or {'available': False, 'reason': 'Читаем сессии OpenCode'})
+            result['loading'] = entry['loading']
+            return result
+
+    def fetch(self, key, root, session, since, ended):
+        try:
+            exports = self.collect(root, session)
+            until = ended or time.time()
+            data = observations(exports, session, since, until)
+            data['usage'] = TaskMetrics(root).parse_exports(exports, session, since, until)
+            data.update(updated_at=time.time())
+        except (OSError, ValueError, TypeError, AttributeError, subprocess.TimeoutExpired):
+            data = {'available': False, 'reason': 'Не удалось получить сессии OpenCode', 'updated_at': time.time()}
+        with self.lock:
+            entry = self.entries[key]
+            entry.update(data=data, loading=False, next=self.clock() + self.ttl,
+                         final=bool(ended and data['available']))
+
+
+def attach_models(items: list[dict], live: dict):
+    """Match tool-created child sessions to the serialized delegation time window."""
+    child_models = live.get('session_models', {})
+    for item in items:
+        for attempt in item['attempts']:
+            end = attempt.get('inspection_at', attempt.get('review_at', float('inf')))
+            child = next((call['session'] for call in live.get('calls', []) if attempt['at'] <= call['at'] <= end), None)
+            attempt['model'] = child_models.get(child)
+        item['model'] = item['attempts'][-1].get('model')
