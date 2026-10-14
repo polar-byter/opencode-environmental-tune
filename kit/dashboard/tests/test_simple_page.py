@@ -88,3 +88,48 @@ class Iteration3RenderTask(PageChecks):
 
     def test_next_call_replaces_old_values_without_changing_data(self):
         self.check_scenario('render_repeat')
+
+
+class Iteration3RefreshTask(PageChecks):
+    def test_disables_button_and_clears_message_while_waiting(self):
+        self.check_scenario('refresh_pending')
+
+    def test_success_passes_loaded_data_to_render_and_enables_button(self):
+        self.check_scenario('refresh_success')
+
+    def test_load_error_is_shown_as_text_without_rendering(self):
+        self.check_scenario('refresh_load_error')
+
+    def test_render_error_is_shown_and_button_is_enabled(self):
+        self.check_scenario('refresh_render_error')
+
+    def test_successful_retry_clears_previous_error(self):
+        self.check_scenario('refresh_retry')
+
+    def test_each_refresh_loads_and_renders_fresh_data(self):
+        self.check_scenario('refresh_repeat')
+
+
+class Iteration3Main(PageChecks):
+    def test_registers_refresh_callback_for_click(self):
+        self.check_scenario('main_listener')
+
+    def test_first_refresh_runs_once_after_listener_registration(self):
+        self.check_scenario('main_initial')
+
+    def test_click_starts_another_refresh(self):
+        self.check_scenario('main_click')
+
+    def test_button_reference_does_not_leak_to_global_scope(self):
+        self.check_scenario('main_local')
+
+
+class Iteration3PageStartup(PageChecks):
+    def test_script_starts_one_load_and_displays_summary(self):
+        self.check_scenario('startup_initial')
+
+    def test_click_loads_and_displays_updated_summary(self):
+        self.check_scenario('startup_click')
+
+    def test_initial_error_is_cleared_after_successful_click(self):
+        self.check_scenario('startup_retry')

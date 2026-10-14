@@ -31,17 +31,58 @@
     }
 
     function renderTask(data) {
-      throw new Error('TODO: renderTask');
+      const titleElement = document.getElementById('title');
+      titleElement.textContent = data.title;
+      const statusElement = document.getElementById('status');
+      statusElement.textContent = data.status;
+      if (data.status === 'running') {
+        statusElement.textContent = 'В работе';
+      } else if (data.status === 'halted') {
+        statusElement.textContent = 'Остановлена';
+      } else if (data.status === 'finished') {
+        statusElement.textContent = 'Завершена';
+      } else {
+        statusElement.textContent = data.status;
+      }
+      
+      const eventCountElement = document.getElementById('event-count');
+      eventCountElement.textContent = data.event_count;
+      const runsElement = document.getElementById('runs');
+
+      const runsText = `${data.green_work_runs} / ${data.work_runs}`;
+      runsElement.textContent = runsText;
+      
+      const reworksElement = document.getElementById('reworks');
+      reworksElement.textContent = data.reworks;
+      const failuresElement = document.getElementById('failures');
+      failuresElement.textContent = data.executor_failures;
+      
     }
 
     async function refreshTask() {
-      throw new Error('TODO: refreshTask');
+      const idButtonElement = document.getElementById('refresh');
+      idButtonElement.disabled = true;
+      const messageElement = document.getElementById('message');
+      messageElement.textContent = '';
+      try {
+        const data = await loadTask();
+        renderTask(data);
+      } catch (error) {
+        const messageElement = document.getElementById('message');
+        messageElement.textContent = error.message;
+      } finally {
+        idButtonElement.disabled = false;
+      }
+
+
     }
 
     function main() {
-      throw new Error('TODO: main');
+      const idButtonElement = document.getElementById('refresh');
+      idButtonElement.addEventListener('click', refreshTask);
+      refreshTask();
     }
-
+    main();
   </script>
 </body>
 </html>

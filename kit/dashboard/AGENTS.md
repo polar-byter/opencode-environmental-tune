@@ -7,6 +7,7 @@ the exercises to an executor unless the user explicitly changes this mode.
 
 - Start with README.ru.md and the current step in the vault's currentsteps.md.
 - The full learning roadmap is in the vault folder `Дашборд OpenCode`.
+- Operational `launcher.py`, `runtime.py`, and `static/runtime.html` provide the automatic task viewer. Keep learner implementations in `simple.py`/`simple.html` intact when maintaining this infrastructure. The next learning track is React against the existing runtime JSON API; implement exercises only within the user's authorized scope.
 - Keep Russian teaching explanations in the vault lessons, not in source files.
   Source comments and docstrings stay English. Do not add retrospective teaching
   notes to completed functions or remove/change the learner's own comments.

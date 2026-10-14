@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Задача OpenCode</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; background: #101724; color: #e8edf5; }
+    body { margin: 0; }
+    main { max-width: 1060px; margin: auto; padding: 32px 24px; }
+    header { display: flex; align-items: start; justify-content: space-between; gap: 20px; }
+    h1 { margin: 6px 0 12px; font-size: clamp(24px, 4vw, 36px); overflow-wrap: anywhere; }
+    h2 { font-size: 18px; margin: 0 0 18px; }
+    .muted, dt, time { color: #9cacc4; }
+    .eyebrow { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
+    .badge { border-radius: 20px; padding: 6px 12px; font-size: 13px; white-space: nowrap; background: #20384a; }
+    .online { color: #8bdfb2; }
+    .offline { color: #ffb0a4; }
+    .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
+    select, button { font: inherit; padding: 10px 12px; border: 1px solid #3d4c63; border-radius: 8px; background: #1b2638; color: inherit; }
+    select { flex: 1; min-width: 0; max-width: 100%; }
+    button { cursor: pointer; }
+    button:disabled { opacity: .5; cursor: wait; }
+    a { color: #9ec8ff; }
+    .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 26px; }
+    .card, .activity { background: #192333; border: 1px solid #29374c; border-radius: 12px; padding: 20px; }
+    dt { font-size: 13px; }
+    dd { margin: 8px 0 0; font-size: 26px; font-weight: 600; }
+    #message { color: #ffb0a4; min-height: 22px; overflow-wrap: anywhere; }
+    #events { list-style: none; padding: 0; margin: 0; }
+    #events li { padding: 10px 0; border-top: 1px solid #29374c; display: flex; gap: 18px; overflow-wrap: anywhere; }
+    time { font-size: 13px; min-width: 76px; }
+    footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 22px; font-size: 13px; }
+    @media (max-width: 620px) { main { padding: 22px 16px; } header { display: block; } .badge { display: inline-block; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .card { padding: 16px; } dd { font-size: 23px; } }
+    @media (max-width: 360px) { .cards { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div><div class="eyebrow muted">OpenCode · наблюдение за задачей</div><h1 id="title">Загрузка задачи…</h1><div id="project-name" class="muted"></div></div>
+    <span id="connection" class="badge">Подключение…</span>
+  </header>
+  <div class="toolbar">
+    <label for="task-select">Задача</label><select id="task-select" aria-label="Задача"></select>
+    <button id="refresh" type="button">Обновить</button>
+  </div>
+  <p id="message" role="status" aria-live="polite"></p>
+  <dl class="cards">
+    <div class="card"><dt>Статус</dt><dd id="status">—</dd></div>
+    <div class="card"><dt>События</dt><dd id="event-count">—</dd></div>
+    <div class="card"><dt>Успешные прогоны / все</dt><dd id="runs">—</dd></div>
+    <div class="card"><dt>Возвраты на доработку</dt><dd id="reworks">—</dd></div>
+    <div class="card"><dt>Сбои исполнителя</dt><dd id="failures">—</dd></div>
+    <div class="card"><dt>Последнее событие</dt><dd id="updated">—</dd></div>
+  </dl>
+  <section class="activity"><h2>Последние события</h2><ol id="events"></ol></section>
+  <footer><span id="task-id" class="muted"></span><a id="report" hidden target="_blank" rel="noopener">Открыть итоговый отчёт</a><span class="muted">Автообновление каждые 2 секунды</span></footer>
+</main>
+<script>
+  'use strict';
+  const parameters = new URLSearchParams(window.location.search);
+  let activeTask = parameters.get('task') || '';
+  let busy = false;
+  const labels = { running: 'В работе', halted: 'Остановлена', finished: 'Завершена' };
+  const kinds = { start: 'Начало задачи', delegation: 'Задание исполнителю', inspection: 'Проверка изменений', review: 'Ревью', test: 'Тесты', halt: 'Остановка', resume: 'Продолжение', finish: 'Завершение задачи' };
+
+  async function readJSON(url) {
+    const response = await fetch(url);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    return data;
+  }
+
+  function render(data) {
+    document.getElementById('title').textContent = data.title;
+    document.title = data.title + ' · OpenCode';
+    document.getElementById('status').textContent = labels[data.status] || data.status;
+    document.getElementById('event-count').textContent = data.event_count;
+    document.getElementById('runs').textContent = `${data.green_work_runs} / ${data.work_runs}`;
+    document.getElementById('reworks').textContent = data.reworks;
+    document.getElementById('failures').textContent = data.executor_failures;
+    document.getElementById('updated').textContent = new Date(data.last_event_at * 1000).toLocaleTimeString();
+    document.getElementById('task-id').textContent = 'ID задачи: ' + data.task;
+    const list = document.getElementById('events');
+    list.replaceChildren();
+    for (const event of [...data.activity].reverse()) {
+      const row = document.createElement('li');
+      const time = document.createElement('time');
+      time.textContent = new Date(event.at * 1000).toLocaleTimeString();
+      const text = document.createElement('span');
+      const detail = event.work_item || event.scope || '';
+      text.textContent = [kinds[event.kind] || event.kind, detail, event.result || event.status || '', event.reason || ''].filter(Boolean).join(' · ');
+      row.append(time, text);
+      list.append(row);
+    }
+    const report = document.getElementById('report');
+    report.hidden = data.status !== 'finished';
+    report.href = '/api/report?' + new URLSearchParams({ task: data.task });
+  }
+
+  async function refreshTask() {
+    if (busy) return;
+    busy = true;
+    const button = document.getElementById('refresh');
+    const connection = document.getElementById('connection');
+    button.disabled = true;
+    try {
+      const metadata = await readJSON('/api/health');
+      const expectedProject = parameters.get('project');
+      if (expectedProject && expectedProject !== metadata.project.id) throw new Error('Страница открыта для другого проекта');
+      document.getElementById('project-name').textContent = metadata.project.name;
+      const tasks = await readJSON('/api/tasks');
+      if (!activeTask && tasks.length) activeTask = tasks[0].task;
+      const selector = document.getElementById('task-select');
+      selector.replaceChildren();
+      for (const task of tasks) selector.add(new Option(task.title, task.task));
+      if (activeTask && !tasks.some(task => task.task === activeTask)) selector.add(new Option(activeTask, activeTask));
+      selector.value = activeTask;
+      if (!activeTask) {
+        document.getElementById('title').textContent = 'Пока нет задач';
+      } else {
+        const selected = activeTask;
+        const data = await readJSON('/api/task?' + new URLSearchParams({ task: selected, project: metadata.project.id }));
+        if (selected !== activeTask) return;
+        render(data);
+      }
+      document.getElementById('message').textContent = '';
+      connection.textContent = 'На связи';
+      connection.className = 'badge online';
+    } catch (error) {
+      document.getElementById('message').textContent = error.message;
+      connection.textContent = 'Не удалось обновить';
+      connection.className = 'badge offline';
+    } finally {
+      button.disabled = false;
+      busy = false;
+    }
+  }
+
+  function main() {
+    document.getElementById('refresh').addEventListener('click', refreshTask);
+    document.getElementById('task-select').addEventListener('change', event => {
+      activeTask = event.target.value;
+      parameters.set('task', activeTask);
+      window.history.replaceState(null, '', '?' + parameters.toString());
+      refreshTask();
+    });
+    refreshTask();
+    setInterval(() => { if (!document.hidden) refreshTask(); }, 2000);
+  }
+  main();
+</script>
+</body>
+</html>

@@ -74,10 +74,207 @@ function checkRender(source, scenario, ids) {
   }
 }
 
+async function checkRefresh(source, scenario, ids) {
+  const known = ['refresh_pending', 'refresh_success', 'refresh_load_error',
+    'refresh_render_error', 'refresh_retry', 'refresh_repeat'];
+  assert.ok(known.includes(scenario), 'Unknown refresh scenario');
+  const elements = new Map(ids.map((id) => [id, new TextElement()]));
+  const button = elements.get('refresh');
+  const message = elements.get('message');
+  assert.ok(button && message, 'Refresh button and message must exist');
+  message.textContent = 'Previous error';
+  const context = vm.createContext({
+    document: { getElementById: (id) => elements.get(id) ?? null },
+    fetch: () => { throw new Error('Use loadTask instead of a direct fetch'); },
+  });
+  vm.runInContext(source, context, { timeout: 1000 });
+  const summary = { title: 'Study', status: 'finished', event_count: 5,
+    work_runs: 1, green_work_runs: 1, reworks: 0, executor_failures: 0 };
+  const original = structuredClone(summary);
+  const updated = { ...summary, event_count: 6 };
+  const failure = new Error('<b>Connection failed</b>');
+  const rendered = [];
+  const calls = [];
+  let loadCount = 0;
+  let release;
+  context.loadTask = async () => {
+    assert.equal(button.disabled, true, 'Disable the button before loading');
+    calls.push('load');
+    loadCount += 1;
+    if (scenario === 'refresh_pending') {
+      return new Promise((resolve) => { release = resolve; });
+    }
+    if (scenario === 'refresh_load_error' ||
+        (scenario === 'refresh_retry' && loadCount === 1)) throw failure;
+    return loadCount === 1 ? summary : updated;
+  };
+  context.renderTask = (data) => {
+    assert.equal(button.disabled, true, 'Keep the button disabled while rendering');
+    calls.push('render');
+    if (scenario === 'refresh_render_error') throw failure;
+    rendered.push(data);
+  };
+  const refresh = () => vm.runInContext('refreshTask()', context, { timeout: 1000 });
+  const first = refresh();
+
+  if (scenario === 'refresh_pending') {
+    const disabledDuringLoad = button.disabled;
+    const textDuringLoad = message.textContent;
+    const renderedDuringLoad = rendered.length;
+    release(summary);
+    assert.equal(await first, undefined);
+    assert.equal(disabledDuringLoad, true);
+    assert.equal(textDuringLoad, '', 'Clear the old message before awaiting data');
+    assert.equal(renderedDuringLoad, 0, 'Await loadTask before rendering');
+  } else {
+    assert.equal(await first, undefined, 'Handle errors without returning summary data');
+  }
+  assert.equal(button.disabled, false, 'Enable the button after success or failure');
+
+  if (scenario === 'refresh_load_error' || scenario === 'refresh_render_error') {
+    assert.equal(message.textContent, failure.message, 'Show the error as literal text');
+    assert.deepEqual(calls, scenario === 'refresh_load_error' ? ['load'] : ['load', 'render']);
+    assert.equal(rendered.length, 0);
+  } else if (scenario === 'refresh_retry') {
+    assert.equal(message.textContent, failure.message);
+    assert.equal(rendered.length, 0);
+    assert.equal(await refresh(), undefined);
+    assert.equal(button.disabled, false);
+    assert.equal(message.textContent, '', 'Remove the old error on a successful retry');
+    assert.deepEqual(calls, ['load', 'load', 'render']);
+    assert.strictEqual(rendered[0], updated);
+  } else {
+    assert.equal(message.textContent, '', 'A successful refresh must clear old errors');
+    assert.deepEqual(calls, ['load', 'render']);
+    assert.strictEqual(rendered[0], summary);
+    if (scenario === 'refresh_repeat') {
+      assert.equal(await refresh(), undefined);
+      assert.deepEqual(calls, ['load', 'render', 'load', 'render']);
+      assert.strictEqual(rendered[1], updated);
+      assert.equal(button.disabled, false);
+    }
+  }
+  assert.deepEqual(summary, original, 'Do not change the loaded summary');
+}
+
+function checkMain(source, scenario, ids) {
+  const known = ['main_listener', 'main_initial', 'main_click', 'main_local'];
+  assert.ok(known.includes(scenario), 'Unknown main scenario');
+  assert.ok(ids.includes('refresh'), 'Refresh button must exist');
+  const calls = [];
+  let listener;
+  let refreshCount = 0;
+  const button = {
+    addEventListener: (event, callback) => {
+      assert.equal(event, 'click');
+      assert.equal(typeof callback, 'function', 'Pass a function, not its call result');
+      assert.equal(listener, undefined, 'Register one listener');
+      listener = callback;
+      calls.push('listen');
+    },
+  };
+  const context = vm.createContext({
+    document: {
+      getElementById: (id) => {
+        assert.equal(id, 'refresh');
+        calls.push('find');
+        return button;
+      },
+    },
+    fetch: () => { throw new Error('main must call refreshTask, not fetch'); },
+  });
+  vm.runInContext(source, context, { timeout: 1000 });
+  const before = Object.keys(context).sort();
+  context.refreshTask = () => {
+    refreshCount += 1;
+    calls.push('refresh');
+  };
+  assert.equal(vm.runInContext('main()', context, { timeout: 1000 }), undefined);
+  assert.deepEqual(calls, ['find', 'listen', 'refresh']);
+  assert.equal(refreshCount, 1, 'Refresh once on startup');
+  assert.strictEqual(listener, context.refreshTask, 'Use the existing refreshTask as callback');
+  if (scenario === 'main_click') {
+    listener({ type: 'click' });
+    assert.equal(refreshCount, 2, 'A click must start a fresh refresh');
+    assert.deepEqual(calls, ['find', 'listen', 'refresh', 'refresh']);
+  }
+  if (scenario === 'main_local') {
+    assert.deepEqual(Object.keys(context).sort(), before, 'Keep local variables inside main');
+  }
+}
+
+async function checkStartup(source, scenario, ids) {
+  assert.ok(['startup_initial', 'startup_click', 'startup_retry'].includes(scenario));
+  const elements = new Map(ids.map((id) => [id, new TextElement()]));
+  const button = elements.get('refresh');
+  const message = elements.get('message');
+  assert.ok(button && message, 'Refresh button and message must exist');
+  let listener;
+  let registrations = 0;
+  button.addEventListener = (event, callback) => {
+    assert.equal(event, 'click');
+    assert.equal(typeof callback, 'function');
+    registrations += 1;
+    listener = callback;
+  };
+  let requests = 0;
+  const context = vm.createContext({
+    document: { getElementById: (id) => elements.get(id) ?? null },
+    fetch: async (url) => {
+      assert.equal(url, '/api/task');
+      requests += 1;
+      const failed = scenario === 'startup_retry' && requests === 1;
+      const data = failed ? { error: 'cannot read journal or page' } : {
+        title: requests === 1 ? 'Initial task' : 'Updated task',
+        status: 'finished', event_count: requests === 1 ? 5 : 6,
+        work_runs: 1, green_work_runs: 1, reworks: 0, executor_failures: 0,
+      };
+      return { ok: !failed, status: failed ? 500 : 200, json: async () => data };
+    },
+  });
+  vm.runInContext(source, context, { timeout: 1000 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(registrations, 1, 'Register one click listener when the script starts');
+  assert.equal(requests, 1, 'Call main() to load data when the script starts');
+  assert.equal(button.disabled, false);
+  if (scenario === 'startup_retry') {
+    assert.equal(message.textContent, 'cannot read journal or page');
+  } else {
+    assert.equal(elements.get('title').textContent, 'Initial task');
+    assert.equal(elements.get('event-count').textContent, '5');
+    assert.equal(elements.get('status').textContent, '\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430');
+    assert.equal(elements.get('runs').textContent, '1 / 1');
+    assert.equal(message.textContent, '');
+  }
+  if (scenario !== 'startup_initial') {
+    await listener({ type: 'click' });
+    assert.equal(requests, 2);
+    assert.equal(registrations, 1);
+    assert.equal(elements.get('title').textContent, 'Updated task');
+    assert.equal(elements.get('event-count').textContent, '6');
+    assert.equal(message.textContent, '');
+    assert.equal(button.disabled, false);
+  }
+}
+
 async function check() {
-  const { source, scenario, ids } = JSON.parse(fs.readFileSync(0, 'utf8'));
+  let { source, scenario, ids } = JSON.parse(fs.readFileSync(0, 'utf8'));
+  if (scenario.startsWith('startup_')) {
+    await checkStartup(source, scenario, ids);
+    return;
+  }
+  // Function checks isolate the optional final page-startup call.
+  source = source.replace(/\r?\n[ \t]*main\s*\(\s*\)\s*;?[ \t]*(?:\r?\n[ \t]*)*$/, '\n');
   if (scenario.startsWith('render_')) {
     checkRender(source, scenario, ids);
+    return;
+  }
+  if (scenario.startsWith('refresh_')) {
+    await checkRefresh(source, scenario, ids);
+    return;
+  }
+  if (scenario.startsWith('main_')) {
+    checkMain(source, scenario, ids);
     return;
   }
   const summary = {

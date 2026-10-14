@@ -448,6 +448,8 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument('--session')
     start.add_argument('--title')
     start.add_argument('--track-delegations', action='store_true', help='require registered executor attempts for reviews')
+    start.add_argument('--no-dashboard', action='store_true', help='disable the automatic dashboard for this start')
+    start.add_argument('--no-browser', action='store_true', help='start/reuse the dashboard without opening a browser')
     for name in DEFAULT_LIMITS:
         start.add_argument('--' + name.replace('_', '-'), type=int, dest=name,
                             help=f'loop guard, default {DEFAULT_LIMITS[name]}')
@@ -1062,6 +1064,16 @@ class TaskMetrics:
             tmp.replace(folder/'report.md')
             return report
 
+def launch_task_dashboard(root: Path, task: str, open_browser: bool) -> dict:
+    """Launch from the CLI only; importing/using TaskMetrics stays side-effect free."""
+    if __package__:
+        from .dashboard.launcher import ensure_dashboard
+    else:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+        from kit.dashboard.launcher import ensure_dashboard
+    return ensure_dashboard(root, task, open_browser=open_browser)
+
+
 def main(argv=None) -> int:
     """
     Command line. Exit codes tell the Master Chief what to do next:
@@ -1077,6 +1089,16 @@ def main(argv=None) -> int:
         if args.action == 'start':
             limits = {name: getattr(args, name) for name in DEFAULT_LIMITS}
             event = metrics.start(args.task, args.session, args.title, limits, args.track_delegations)
+            if (not args.no_dashboard and os.environ.get('OPENCODE_KIT_DASHBOARD', '').lower() not in ('off', '0')
+                    and (metrics.root / 'opencode.jsonc').is_file() and (metrics.root / 'kit').is_dir()):
+                try:
+                    dashboard = launch_task_dashboard(metrics.root, args.task, not args.no_browser)
+                    if not args.no_browser and not dashboard['opened']:
+                        print('Dashboard browser did not open: ' + dashboard['url'], file=sys.stderr)
+                except (OSError, ValueError, RuntimeError) as error:
+                    dashboard = {'status': 'unavailable', 'error': str(error)}
+                    print('Dashboard unavailable; task journal was saved: ' + str(error), file=sys.stderr)
+                event = dict(event, dashboard=dashboard)
         elif args.action == 'review':
             event = metrics.review(args.task, args.work_item, args.result, args.checks)
         elif args.action == 'delegate':
