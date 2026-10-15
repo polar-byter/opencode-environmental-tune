@@ -25,7 +25,8 @@ else:
     from task_control_state import blocking_reason
 
 TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
-EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish'}
+EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish',
+               'attempt_session', 'attempt_admission', 'attempt_end', 'integration'}
 # failed: the executor returned no work (error, rate limit, unavailable model) and changed no files.
 REVIEW_RESULTS = {'accepted', 'rework', 'failed'}
 WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
@@ -61,6 +62,13 @@ class TaskHalted(Exception):
 
 def valid_number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0
+
+
+def pending_attempts(events, work_item=None):
+    """Select open attempts by identity rather than a global last delegation."""
+    closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
+    return [e for e in events if e['kind'] == 'delegation' and e['event_id'] not in closed
+            and (work_item is None or e['work_item'] == work_item)]
 
 
 def normalize_work_item(event: dict) -> dict:
@@ -277,7 +285,7 @@ def new_usage_row(provider: str, model: str) -> dict:
     """An empty report row for one provider/model pair."""
     if provider == 'lmstudio':
         group = 'local'
-    elif provider == 'openrouter' and model.endswith(':free'):
+    elif (provider == 'openrouter' and model.endswith(':free')) or (provider == 'opencode' and model.endswith('-free')):
         # OpenRouter marks its zero-price variants with ":free" (rate limited, no API fee).
         group = 'free'
     elif provider == 'unknown':
@@ -472,6 +480,7 @@ def build_parser() -> argparse.ArgumentParser:
     test = sub.add_parser('test')
     test.add_argument('--scope', default='full', help='work-item/module name or full for the complete suite')
     test.add_argument('--phase', choices=['work', 'baseline'], default='work')
+    test.add_argument('--attempt', help='exact isolated delegation ID for this test result')
     check = sub.add_parser('check')
     for command in (test, check):
         command.add_argument('--timeout', type=float, default=300)
@@ -592,8 +601,19 @@ class TaskMetrics:
         reason = limit_breach(events, task_limits(events))
         return self.append(task, 'halt', reason=reason) if reason else None
 
+    def attempt_root(self, task: str, attempt: dict) -> Path:
+        """Only controller-owned plain directories may hold isolated edits."""
+        if not attempt.get('workspace'):
+            return self.root
+        path = self.root / attempt['workspace']
+        base = self.task_dir(task) / 'workspaces'
+        if path.resolve() != path.absolute() or not path.resolve().is_relative_to(base.resolve()) or not path.is_dir():
+            raise ValueError('Invalid isolated workspace')
+        return path
+
     def delegate(self, task: str, work_item: str, files: list[str], scope: str | None = None,
-                 requirements: Path | None = None) -> dict:
+                 requirements: Path | None = None, *, workspace: str | None = None,
+                 worker_id: str | None = None, role: str = 'executor', contracts: list[str] | None = None) -> dict:
 
         """Log one executor attempt and save pre-execution file hashes.
 
@@ -606,7 +626,8 @@ class TaskMetrics:
             raise ValueError('Delegation needs a work item, files and a non-empty test scope')
 
         # Validate paths and remove duplicate file names.
-        allowed = sorted({source_path(self.root, name) for name in files})
+        target = self.attempt_root(task, {'workspace': workspace})
+        allowed = sorted({source_path(target, name) for name in files})
 
         # Allow exactly one unique file per attempt.
         if len(allowed) != 1:
@@ -618,13 +639,39 @@ class TaskMetrics:
                 raise ValueError('Tracked delegation requires a requirements file')
             # Any review (accepted, rework or failed) closes an attempt.
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
-            if any(e['kind'] == 'delegation' and e['event_id'] not in closed for e in events):
+            pending = pending_attempts(events)
+            details = {}
+            if workspace:
+                from .execution_policy import normalize_policy
+                from .run_opencode import load_choices
+                settings = self.task_dir(task) / 'execution-settings.json'
+                choices = json.loads(settings.read_text(encoding='utf-8')) if settings.exists() else load_choices(self.root)
+                policy = normalize_policy(choices.get('execution'))
+                if role not in ('executor', 'bug_fixer') or not worker_id:
+                    raise ValueError('Isolated attempts need a worker identity and role')
+                if (any(not e.get('workspace') or e['work_item'] == work_item or e.get('worker_id') == worker_id for e in pending)
+                        or len(pending) >= policy['maxExecutors']
+                        or any(e.get('workspace') == workspace for e in events if e['kind'] == 'delegation')):
+                    raise ValueError('Worker slot, work item or workspace is already in use')
+                accepted = {e.get('delegation_id') for e in events if e['kind'] == 'review' and e['result'] == 'accepted'}
+                integrated = {e.get('delegation_id') for e in events if e['kind'] == 'integration'}
+                reserved = pending + [e for e in events if e['kind'] == 'delegation' and e['event_id'] in accepted - integrated]
+                if any(set(e['files']) & set(allowed) for e in reserved):
+                    raise ValueError('Source file is already assigned or awaiting integration')
+                contract_paths = sorted({source_path(self.root, p) for p in (contracts or [])})
+                if policy['maxExecutors'] > 1 and not contract_paths:
+                    raise ValueError('Parallel work requires explicit shared contracts')
+                base = snapshot(self.root)
+                details = dict(workspace=workspace, worker_id=worker_id, role=role,
+                               base_hashes={p: base.get(p) for p in allowed + contract_paths},
+                               contracts=contract_paths)
+            elif pending:
                 raise ValueError('Review the pending delegation before starting another')
-            before = snapshot(self.root)
+            before = snapshot(target)
             filename = 'before-' + uuid.uuid4().hex + '.json'
             (self.task_dir(task) / filename).write_text(json.dumps(before), encoding='utf-8')
             return self.append(task, 'delegation', work_item=work_item.strip(), files=allowed,
-                               scope=(scope or work_item).strip(), snapshot=filename, requirements=frozen)
+                               scope=(scope or work_item).strip(), snapshot=filename, requirements=frozen, **details)
 
     def inspect(self, task: str, work_item: str) -> dict:
         """Save file changes for the pending attempt; refuse a second inspection.
@@ -634,14 +681,17 @@ class TaskMetrics:
         with self.lock(task):
             events = self.running(task)
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
-            attempts = [e for e in events if e['kind'] == 'delegation' and e['event_id'] not in closed]
-            if not attempts or attempts[-1]['work_item'] != work_item:
+            attempts = pending_attempts(events, work_item)
+            if len(attempts) != 1:
                 raise ValueError('Inspect must match the pending delegated work item')
             attempt = attempts[-1]
+            if attempt.get('workspace') and not any(e['kind'] == 'attempt_end' and e['delegation_id'] == attempt['event_id']
+                                                   and e.get('stopped') is True for e in events):
+                raise ValueError('Confirm that this isolated worker stopped before inspection')
             if any(e['kind'] == 'inspection' and e['delegation_id'] == attempt['event_id'] for e in events):
                 raise ValueError('Executor edits already inspected; do not overwrite the evidence')
             before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
-            after = snapshot(self.root)
+            after = snapshot(self.attempt_root(task, attempt))
             changes = compare(before, after, attempt['files'])
             filename = 'after-' + uuid.uuid4().hex + '.json'
             (self.task_dir(task) / filename).write_text(json.dumps(after), encoding='utf-8')
@@ -666,8 +716,10 @@ class TaskMetrics:
             events = self.running(task)
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             # pending delegations are those that have not been reviewed yet; we need to find the last one for this work item
-            pending = [e for e in events if e['kind'] == 'delegation' and e['event_id'] not in closed]
+            pending = pending_attempts(events, work_item)
             evidence = {}
+            if pending_attempts(events) and not pending:
+                raise ValueError('Review must match the pending delegated work item')
             # if the task is tracking delegations, we must have a pending delegation to review; otherwise, raise an error
             if events[0].get('track_delegations') and not pending:
                 raise ValueError('Register the executor attempt with delegate before reviewing')
@@ -678,7 +730,7 @@ class TaskMetrics:
                     raise ValueError('Review must match the pending delegated work item')
                 
                 before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
-                after = snapshot(self.root)
+                after = snapshot(self.attempt_root(task, attempt))
                 inspections = [e for e in events if e['kind'] == 'inspection' and
                                e['delegation_id'] == attempt['event_id']]
                 # compare function may create unexpected changes if the executor changed files that were not allowed; we need to check for that
@@ -719,7 +771,9 @@ class TaskMetrics:
                     # find all test runs after the delegation (or inspection) for this scope, ignoring baseline runs
                     runs = [e for e in events[events.index(anchor) + 1:] if e['kind'] == 'test'
                             and e.get('phase') != 'baseline'
-                            and e.get('scope', 'full') in {attempt['scope'], 'full'}]
+                            and e.get('scope', 'full') in {attempt['scope'], 'full'}
+                            and (e.get('delegation_id') == attempt['event_id'] if attempt.get('workspace')
+                                 else not e.get('delegation_id'))]
                     # check that the last test run after delegation was green; if not, the tests must be rerun before acceptance
                     if not runs or runs[-1]['status'] != 'passed':
                         raise ValueError('Acceptance needs a green test run for this scope after delegation')
@@ -791,31 +845,40 @@ class TaskMetrics:
 
     # run a test command for a task, capturing its output and return code, and optionally parsing JUnit XML reports
     def test(self, task: str, command: list[str], timeout: float = 300, junit: str | None = None,
-             junit_dir: str | None = None, scope: str = 'full', phase: str = 'work') -> dict:
+             junit_dir: str | None = None, scope: str = 'full', phase: str = 'work', attempt_id: str | None = None) -> dict:
         if not scope.strip() or phase not in {'work', 'baseline'}:
             raise ValueError('Provide a non-empty scope and work/baseline phase')
         scope = scope.strip()
-        xml, folder = self.report_source(junit, junit_dir)
         with self.lock(task):
             events = self.running(task)
+            runner, binding = self, {}
+            if attempt_id:
+                candidates = [e for e in pending_attempts(events) if e['event_id'] == attempt_id and e.get('workspace')]
+                if len(candidates) != 1 or scope != candidates[0]['scope']:
+                    raise ValueError('Tests must match one open isolated attempt and its scope')
+                runner = TaskMetrics(self.attempt_root(task, candidates[0]))
+                binding['delegation_id'] = attempt_id
+            elif any(e.get('workspace') for e in pending_attempts(events)):
+                raise ValueError('Use --attempt while isolated workers await review')
+            xml, folder = runner.report_source(junit, junit_dir)
             if phase == 'baseline' and any(
                     (e['kind'] == 'delegation' and e.get('scope') == scope) or
                     (e['kind'] == 'test' and e.get('scope', 'full') == scope) for e in events):
                 raise ValueError('Baseline is allowed only once per scope, before its delegations and tests')
             evidence = {}
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
-            if any(e['kind'] == 'delegation' and e['event_id'] not in closed for e in events):
+            if pending_attempts(events) or any(e['kind'] == 'integration' for e in events):
                 filename = 'tested-' + uuid.uuid4().hex + '.json'
-                (self.task_dir(task) / filename).write_text(json.dumps(snapshot(self.root)), encoding='utf-8')
+                (self.task_dir(task) / filename).write_text(json.dumps(snapshot(runner.root)), encoding='utf-8')
                 evidence['snapshot'] = filename
             started = time.monotonic()
-            output, code, parsed, category = self.execute(command, timeout, xml, folder)
+            output, code, parsed, category = runner.execute(command, timeout, xml, folder)
             log = 'test-' + uuid.uuid4().hex + '.log'
             (self.task_dir(task) / log).write_text(output, encoding='utf-8')
             hints = diagnose(output, code, parsed, category, bool(xml or folder))
             event = self.append(task, 'test', command=command, returncode=code, log=log, scope=scope, phase=phase,
                                 duration_seconds=time.monotonic()-started, category=category,
-                                 **({'hints': hints} if hints else {}), **evidence, **parsed)
+                                 **({'hints': hints} if hints else {}), **binding, **evidence, **parsed)
             halt = self.guard(task, events + [event])
             return dict(event, halt=halt['reason']) if halt else event
 
@@ -852,7 +915,7 @@ class TaskMetrics:
         warnings_list = []
         for sid in sessions.keys() - allowed:
             warnings_list.append(f'Посторонняя сессия исключена: {sid}')
-        rows, seen = {}, {}
+        rows, seen, session_rows = {}, {}, {}
 
         for sid in sorted(allowed):
             for export in sessions[sid]:
@@ -882,10 +945,16 @@ class TaskMetrics:
                     provider, model = message_model(info)
                     row = rows.setdefault((provider, model), new_usage_row(provider, model))
                     add_usage(row, message_tokens(info))
+                    per_session = session_rows.setdefault((sid, provider, model), dict(new_usage_row(provider, model), session=sid, cost_usd=0))
+                    add_usage(per_session, message_tokens(info))
+                    cost = info.get('cost')
+                    per_session['cost_usd'] = (per_session['cost_usd'] + cost
+                        if per_session['cost_usd'] is not None and valid_number(cost) else None)
         warnings_list.append('Учтены сообщения в интервале задачи; служебные вызовы вне экспорта могут отсутствовать.')
         if any(r['missing_usage'] for r in rows.values()):
             warnings_list.append('В части сообщений нет корректного расхода токенов; соответствующие суммы неизвестны.')
-        return dict(models=list(rows.values()), warnings=list(dict.fromkeys(warnings_list)), sessions=sorted(allowed))
+        return dict(models=list(rows.values()), warnings=list(dict.fromkeys(warnings_list)), sessions=sorted(allowed),
+                    session_usage=list(session_rows.values()))
 
     # run an OpenCode CLI command and parse its JSON output, raising an error if the command fails or returns non-JSON output
     # for instance: opencode session export ses_abc123
@@ -1034,12 +1103,26 @@ class TaskMetrics:
                       f'пропусков: {count(last["skipped"])}.', '']
         else:
             lines += ['Тесты через утилиту не запускались; успешность не подтверждена.', '']
+        bindings = [e for e in events if e['kind'] == 'attempt_session']
+        if bindings:
+            lines += ['### Расход по попыткам (часть общего итога)', '',
+                      '| Роль / worker | Попытка | Фактическая модель | Вход | Выход | Стоимость USD |',
+                      '|---|---|---|---:|---:|---:|']
+            for binding in bindings:
+                rows = [row for row in usage.get('session_usage', []) if row['session'] == binding['session']]
+                totals = {field: sum(row[field] for row in rows) if rows and all(row[field] is not None for row in rows) else None
+                          for field in ('input', 'output', 'cost_usd')}
+                models = ', '.join(row['provider'] + '/' + row['model'] for row in rows) or 'нет данных'
+                cost = 'нет данных' if totals['cost_usd'] is None else f'{totals["cost_usd"]:.6f}'
+                lines.append(f'| {label(binding["role"])} / {label(binding["worker_id"])} | {label(binding["delegation_id"])} | '
+                             f'{label(models)} | {count(totals["input"])} | {count(totals["output"])} | {cost} |')
+            lines += ['', 'Эта детализация не прибавляется повторно к общему итогу. Отсутствующий cost остаётся неизвестным.', '']
         lines += ['Время измеряется от `start` до `finish`; работа до старта не учтена.',
                   'Ревью и задания учитываются по журналу; незарегистрированные действия обнаружить нельзя.',
-                  'Все `lmstudio` — локальные без платы за API; модели OpenRouter с окончанием `:free` — бесплатные облачные; '
+                  'Все `lmstudio` — локальные без платы за API; модели OpenRouter с окончанием `:free` и OpenCode с `-free` — бесплатные облачные; '
                   'остальные провайдеры считаются платными по умолчанию.',
                   'Токены рассуждений и кэша показаны отдельно, без сложения пересекающихся счётчиков.',
-                  'Срез сделан перед итоговым ответом: его токены не включены. Стоимость и экономия не оценивались.', '']
+                  'Срез сделан перед итоговым ответом: его токены не включены. Стоимость из тарифов и экономия не вычислялись.', '']
         if usage['warnings']:
             lines += ['Примечания:', ''] + ['- '+label(w) for w in usage['warnings']] + ['']
         return '\n'.join(lines)
@@ -1052,6 +1135,22 @@ class TaskMetrics:
                 raise TaskHalted(reason)
             events = self.read(task)
             finished = next((e for e in events if e['kind'] == 'finish'), None)
+            isolated = [e for e in events if e['kind'] == 'delegation' and e.get('workspace')]
+            if isolated and not finished:
+                if pending_attempts(events):
+                    raise ValueError('Resolve all isolated attempts before finish')
+                integrated = {e['delegation_id'] for e in events if e['kind'] == 'integration'}
+                accepted = {e['delegation_id'] for e in events if e['kind'] == 'review' and e['result'] == 'accepted'}
+                if any(e['event_id'] in accepted and e['event_id'] not in integrated for e in isolated):
+                    raise ValueError('Integrate accepted isolated attempts before finish')
+                latest = {e['work_item']: e for e in isolated}
+                if any(e['event_id'] not in accepted & integrated for e in latest.values()):
+                    raise ValueError('Every isolated work item needs an accepted, integrated latest attempt')
+                runs = [e for e in events if e['kind'] == 'test' and e.get('scope') == 'full' and not e.get('delegation_id')]
+                if (not runs or runs[-1]['status'] != 'passed' or not runs[-1].get('snapshot')
+                        or compare(json.loads((self.task_dir(task)/runs[-1]['snapshot']).read_text(encoding='utf-8')),
+                                   snapshot(self.root), [])['changed']):
+                    raise ValueError('Finish needs a green full test of the integrated project')
             if finished:
                 report = self.render(task, events, finished['usage'], finished['ended'])
             else:
@@ -1135,7 +1234,7 @@ def main(argv=None) -> int:
             return EXIT_NO_RESULT
         else:
             command = args.command[1:] if args.command[:1] == ['--'] else args.command
-            event = metrics.test(args.task, command, args.timeout, args.junit, args.junit_dir, args.scope, args.phase)
+            event = metrics.test(args.task, command, args.timeout, args.junit, args.junit_dir, args.scope, args.phase, args.attempt)
             print((metrics.task_dir(args.task)/event['log']).read_text(encoding='utf-8'))
             print(json.dumps(event, ensure_ascii=False))
             return report_test(event, args.task)

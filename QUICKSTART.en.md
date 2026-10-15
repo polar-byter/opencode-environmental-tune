@@ -8,6 +8,13 @@ models and give the first task. The example is a small Java application, but
 the order is the same for any language. Five animated diagrams show each stage.
 The data in the diagrams is sample data.
 
+The new template selects DeepSeek for the Chief and Bug Fixer, and MiMo for
+executors, with one executor at a time by default. The configurator can select
+the concurrency and a separate fixer model. Isolated parallel execution uses
+the controller with the shared Desktop service, bounded attempts and separate
+metrics. See the [illustrated architecture guide (Russian)](docs/EXECUTION_GUIDE.ru.md).
+The GIFs below show the basic sequential workflow.
+
 ---
 
 ## 1. What this is and why

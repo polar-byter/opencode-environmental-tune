@@ -56,7 +56,7 @@ class CatalogTab:
         target_bar = ttk.Frame(self.page, style='Card.TFrame')
         target_bar.grid(row=3, column=0, sticky='ew', pady=(12, 8))
         ttk.Label(target_bar, text='Assign to:', style='Card.TLabel').pack(side='left', padx=(0, 12))
-        for role in ('exec', 'master_chief'):
+        for role in ('exec', 'master_chief', 'bug_fixer'):
             ttk.Radiobutton(target_bar, text=workflow.ROLE_NAMES[role], variable=self.target, value=role,
                             command=self.assign).pack(side='left', padx=(0, 20))
         ttk.Label(target_bar, textvariable=self.count, style='Hint.TLabel').pack(side='right')

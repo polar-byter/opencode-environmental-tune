@@ -398,3 +398,28 @@ class DesktopTests(unittest.TestCase):
         self.ui.receive_models('master_chief', old_generation, 'api', ['wrong-account/model'], '')
         self.assertEqual(self.ui.widgets['master_chief']['fields']['model']['values'], '')
         self.assertIn('заново', self.ui.widgets['master_chief']['activity'].get())
+
+    def test_catalog_assigns_independent_bug_fixer_and_shared_key_check(self):
+        tab = self.ui.catalog
+        tab.receive(snapshot(row()))
+        tab.tree.selection_set('author/coder')
+        for role in ('exec', 'master_chief', 'bug_fixer'):
+            tab.target.set(role)
+            tab.assign()
+        self.ui.typed_keys['exec'].set('shared-key')
+        with patch.object(desktop.api_connection, 'check', return_value={'authenticated': True}) as check:
+            self.ui.check_connection('bug_fixer')
+            self.pump_until(lambda: not self.ui.busy['bug_fixer'])
+        check.assert_called_once_with(openrouter.API_URL, 'shared-key')
+        self.assertEqual(self.ui.vars['bug_fixer_source'].get(), 'api')
+        self.assertEqual(self.ui.notebook.tab(self.ui.pages['bug_fixer'], 'text'), 'Исправитель ошибок')
+
+    def test_bug_fixer_connection_is_invalidated_by_shared_key_change(self):
+        for role in ('exec', 'bug_fixer'):
+            self.api(role)
+            self.ui.vars[role + '_key_env'].set('SHARED_KEY')
+        self.ui.typed_keys['bug_fixer'].set('')
+        generation = self.ui.generations['bug_fixer']
+        self.ui.typed_keys['exec'].set('replacement-key')
+        self.ui.receive_connection('bug_fixer', generation, {'authenticated': True}, '')
+        self.assertIn('ещё раз', self.ui.widgets['bug_fixer']['connection_status'].get())

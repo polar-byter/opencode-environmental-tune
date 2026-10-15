@@ -11,7 +11,7 @@ def navigation(window):
     size = 32 if scale <= 1.25 else 48 if scale <= 1.75 else 64
     return {name: {variant: app.tk.PhotoImage(master=window, file=str(ASSETS / f'{name}-{variant}-{size}.png'))
                    for variant in ('blue', 'white')}
-            for name in ('master_chief', 'exec', 'catalog')}
+            for name in ('master_chief', 'exec', 'bug_fixer', 'catalog')}
 
 
 def application(window):

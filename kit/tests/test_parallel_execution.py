@@ -1,0 +1,266 @@
+"""Isolated parallel attempts, acceptance, conflict detection and watchdog routing."""
+import json
+from pathlib import Path
+import sys
+import tempfile
+import threading
+import time
+import unittest
+from unittest.mock import patch
+
+from kit.execution_controller import ExecutionController
+from kit.task_metrics import TaskMetrics
+from kit.run_opencode import prepare
+from kit.dashboard.tracking import work_items
+
+
+class FakeService:
+    def __init__(self, directory):
+        self.directory = str(directory)
+        self.running = set()
+        self.sessions = {}
+        self.prompts = []
+
+    def call(self, operation, params=None, data=None):
+        if operation == 'session.create':
+            sid = 'ses_worker_' + str(len(self.sessions))
+            self.sessions[sid] = dict(data, id=sid, location={'directory': self.directory})
+            return {'data': self.sessions[sid]}
+        if operation == 'session.prompt':
+            self.running.add(params['sessionID'])
+            self.prompts.append(data['text'])
+            return {'data': {'id': data['id']}}
+        if operation == 'session.inbox.list':
+            return {'data': []}
+        if operation == 'session.get':
+            if params['sessionID'] == 'ses_root':
+                return {'data': {'id': 'ses_root', 'parentID': None, 'location': {'directory': self.directory}}}
+            return {'data': self.sessions[params['sessionID']]}
+        raise AssertionError(operation)
+
+    def active(self):
+        return set(self.running)
+
+    def interrupt(self, sid):
+        self.running.discard(sid)
+
+    def clear_inbox(self, sid):
+        pass
+
+
+class ParallelExecutionTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        (self.root / '.opencode').mkdir()
+        self.choices = {'executors': {'source': 'opencode', 'model': 'test/worker'},
+                        'bugFixer': {'source': 'opencode', 'model': 'test/fixer'},
+                        'execution': {'maxExecutors': 2, 'maxSeconds': 1}}
+        self.save_choices()
+        (self.root / 'CONTRACT.md').write_text('f returns the module number', encoding='utf-8')
+        (self.root / 'tests').mkdir()
+        for name, number in (('a', 1), ('b', 2), ('c', 3)):
+            (self.root / (name + '.py')).write_text('def f():\n    return 0\n', encoding='utf-8')
+            (self.root / 'tests' / ('test_' + name + '.py')).write_text(
+                f'import unittest\nimport {name}\nclass Test(unittest.TestCase):\n'
+                f'    def test_value(self): self.assertEqual({name}.f(), {number})\n', encoding='utf-8')
+        self.metrics = TaskMetrics(self.root)
+        self.metrics.start('demo', 'ses_root', track_delegations=True)
+        self.home = self.root / '.metrics/demo'
+        for name in ('a', 'b', 'c'):
+            (self.home / (name + '-requirements.json')).write_text(json.dumps(['Return the module number']), encoding='utf-8')
+        self.service = FakeService(self.root)
+        self.controller = ExecutionController(self.root, 'demo', self.service, watcher=lambda identifier: None)
+
+    def save_choices(self):
+        (self.root / '.opencode/kit-models.json').write_text(json.dumps(self.choices), encoding='utf-8')
+
+    def launch(self, name, **kwargs):
+        return self.controller.launch(name, name + '.py', '.metrics/demo/' + name + '-requirements.json', ['CONTRACT.md'], **kwargs)
+
+    def accept(self, attempt, number):
+        name = attempt['work_item']
+        workspace = self.metrics.attempt_root('demo', attempt)
+        (workspace / (name + '.py')).write_text(f'def f():\n    return {number}\n', encoding='utf-8')
+        self.controller.stop(attempt['event_id'], 'returned')
+        self.metrics.inspect('demo', name)
+        result = self.metrics.test('demo', [sys.executable, '-u', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_' + name + '.py'],
+                                   scope=name, attempt_id=attempt['event_id'])
+        self.assertEqual(result['status'], 'passed')
+        checks = self.home / (name + '-checks.json')
+        checks.write_text(json.dumps([{'requirement': 'Return the module number', 'code': name + '.f',
+                                       'test': 'test_value', 'verified': True}]), encoding='utf-8')
+        self.metrics.review('demo', name, 'accepted', checks)
+
+    def test_two_isolated_workers_are_checked_and_integrated_independently(self):
+        a, b = self.launch('a'), self.launch('b')
+        self.assertNotEqual(a['worker_id'], b['worker_id'])
+        for attempt, prompt in zip((a, b), self.service.prompts):
+            workspace = self.metrics.attempt_root('demo', attempt)
+            self.assertIn(str(workspace / 'CONTRACT.md'), prompt)
+            self.assertIn(str(workspace / attempt['files'][0]), prompt)
+        with self.assertRaisesRegex(ValueError, 'slot'):
+            self.launch('c')
+        with self.assertRaisesRegex(ValueError, 'stopped'):
+            self.metrics.inspect('demo', 'a')
+        self.accept(a, 1)
+        self.controller.integrate(a['event_id'])
+        self.assertIn('return 0', (self.root / 'b.py').read_text())
+        self.accept(b, 2)
+        self.controller.integrate(b['event_id'])
+        self.assertIn('return 1', (self.root / 'a.py').read_text())
+        self.assertIn('return 2', (self.root / 'b.py').read_text())
+        items = work_items(self.metrics.read('demo'))
+        self.assertTrue(all(i['attempts'][-1]['integrated'] for i in items))
+        self.assertEqual(len(items[0]['attempts'][-1]['tests']), 1)
+
+    def test_shared_contract_change_blocks_integration(self):
+        a = self.launch('a')
+        self.accept(a, 1)
+        (self.root / 'CONTRACT.md').write_text('Changed contract', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'contract'):
+            self.controller.integrate(a['event_id'])
+        self.assertIn('return 0', (self.root / 'a.py').read_text())
+
+    def test_same_source_cannot_be_assigned_under_another_work_item(self):
+        self.launch('a')
+        with self.assertRaisesRegex(ValueError, 'already assigned'):
+            self.controller.launch('other', 'a.py', '.metrics/demo/b-requirements.json', ['CONTRACT.md'])
+
+    def test_saved_new_choices_do_not_change_a_running_tasks_models_or_capacity(self):
+        self.launch('a')
+        self.choices['executors']['model'] = 'test/new-model'
+        self.choices['execution']['maxExecutors'] = 1
+        self.save_choices()
+        b = self.launch('b')
+        sid = self.controller.binding(b['event_id'])
+        self.assertEqual(self.service.sessions[sid]['model']['id'], 'worker')
+        with self.assertRaisesRegex(ValueError, 'Finish or cancel'):
+            prepare(self.root)
+
+    def test_failed_integration_journal_write_restores_main_source(self):
+        a = self.launch('a')
+        self.accept(a, 1)
+        with patch.object(self.controller.metrics, 'append', side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):
+                self.controller.integrate(a['event_id'])
+        self.assertIn('return 0', (self.root / 'a.py').read_text())
+        self.controller.integrate(a['event_id'])
+        self.assertIn('return 1', (self.root / 'a.py').read_text())
+
+    def test_public_repeat_detection_does_not_recount_exports_or_read_reasoning(self):
+        a = self.launch('a')
+        sid = self.controller.binding(a['event_id'])
+        parts = [{'type': 'reasoning', 'text': 'not a public event'}]
+        export = {'info': {'id': sid, 'parentID': 'ses_root'}, 'messages': [
+            {'id': 'm1', 'type': 'assistant', 'content': parts}]}
+        with patch.object(self.controller.metrics, 'export_session', return_value=export):
+            self.assertIsNone(self.controller.observe(a['event_id'], 0))
+            for i in range(3):
+                parts.append({'id': 'tool-' + str(i), 'type': 'tool', 'tool': 'read',
+                              'state': {'status': 'completed', 'input': {'path': 'a.py'}, 'output': 'same'}})
+                result = self.controller.observe(a['event_id'], 0)
+                if i < 2:
+                    self.assertIsNone(result)
+                    self.assertIsNone(self.controller.observe(a['event_id'], 0))
+            self.assertEqual(result, 'repeated_actions')
+        cache = (self.home / ('watch-' + a['event_id'] + '.json')).read_text()
+        self.assertNotIn('not a public event', cache)
+        self.assertNotIn('same', cache)
+
+    def test_other_attempt_and_root_test_cannot_accept_this_worker(self):
+        a, b = self.launch('a'), self.launch('b')
+        with self.assertRaisesRegex(ValueError, '--attempt'):
+            self.metrics.test('demo', [sys.executable, '-c', 'pass'])
+        with self.assertRaisesRegex(ValueError, 'scope'):
+            self.metrics.test('demo', [sys.executable, '-c', 'pass'], scope='b', attempt_id=a['event_id'])
+
+    def test_watchdog_hands_off_once_and_keeps_partial_implementation(self):
+        a = self.launch('a')
+        workspace = self.metrics.attempt_root('demo', a)
+        (workspace / 'a.py').write_text('def f():\n    return -1\n', encoding='utf-8')
+        with patch.object(self.controller, 'observe', side_effect=['step_limit', 'step_limit']):
+            result = self.controller.watch(a['event_id'], poll_seconds=0)
+            self.assertIn('handoff', result)
+            result = self.controller.watch(result['handoff'], poll_seconds=0)
+        self.assertTrue(result['stopped'])
+        self.assertFalse(self.service.active())
+        attempts = [e for e in self.metrics.read('demo') if e['kind'] == 'delegation']
+        self.assertEqual([a['role'] for a in attempts], ['executor', 'bug_fixer'])
+        self.assertIn('return -1', (self.metrics.attempt_root('demo', attempts[-1]) / 'a.py').read_text())
+        self.assertEqual(self.service.sessions[self.controller.binding(attempts[-1]['event_id'])]['model']['id'], 'fixer')
+
+    def test_rate_limit_is_not_an_automatic_paid_fallback(self):
+        a = self.launch('a')
+        with patch.object(self.controller, 'observe', return_value='rate_limit'):
+            self.controller.watch(a['event_id'], poll_seconds=0)
+        self.assertEqual(len(self.service.sessions), 1)
+
+    def test_supervisor_start_failure_prevents_input_admission(self):
+        self.controller.start_watcher = lambda identifier: (_ for _ in ()).throw(RuntimeError('supervisor unavailable'))
+        with self.assertRaisesRegex(RuntimeError, 'supervisor unavailable'):
+            self.launch('a')
+        self.assertEqual(self.service.prompts, [])
+        self.assertFalse(self.service.active())
+        self.assertTrue(self.metrics.read('demo')[-1]['stopped'])
+
+    def test_wall_clock_deadline_also_interrupts_a_stuck_observation(self):
+        self.choices.pop('bugFixer')
+        self.save_choices()
+        a = self.launch('a')
+        release = threading.Event()
+        started = time.monotonic()
+        try:
+            with patch.object(self.controller, 'observe', side_effect=lambda *args: release.wait(5)):
+                result = self.controller.watch(a['event_id'], poll_seconds=0)
+            self.assertEqual(result['reason'], 'deadline')
+            self.assertLess(time.monotonic() - started, 2)
+            self.assertFalse(self.service.active())
+        finally:
+            release.set()
+
+    def test_unconfirmed_stop_does_not_start_fixer(self):
+        a = self.launch('a')
+        self.service.interrupt = lambda sid: None
+        with patch.object(self.controller, 'observe', return_value='step_limit'), patch('kit.execution_controller.time.sleep'):
+            with self.assertRaisesRegex(ValueError, 'unconfirmed'):
+                self.controller.watch(a['event_id'], poll_seconds=0)
+        self.assertEqual(len(self.service.sessions), 1)
+
+    def test_dependency_and_finish_guards(self):
+        with self.assertRaisesRegex(ValueError, 'Dependency'):
+            self.launch('b', dependencies=['a'])
+        a = self.launch('a')
+        with self.assertRaisesRegex(ValueError, 'Resolve'):
+            self.metrics.finish('demo')
+        self.accept(a, 1)
+        with self.assertRaisesRegex(ValueError, 'Integrate'):
+            self.metrics.finish('demo')
+        self.controller.integrate(a['event_id'])
+        with self.assertRaisesRegex(ValueError, 'full test'):
+            self.metrics.finish('demo')
+
+    def test_root_session_from_a_different_project_is_never_used(self):
+        self.service.directory = str(self.root.parent)
+        with self.assertRaisesRegex(ValueError, 'exact project'):
+            self.launch('a')
+        self.assertEqual(self.service.sessions, {})
+        self.assertEqual(self.service.prompts, [])
+
+    def test_finish_requires_all_latest_items_and_full_integrated_tests(self):
+        for name, number in (('a', 1), ('b', 2), ('c', 3)):
+            attempt = self.launch(name)
+            self.accept(attempt, number)
+            self.controller.integrate(attempt['event_id'])
+        result = self.metrics.test('demo', [sys.executable, '-u', '-m', 'unittest', 'discover', '-s', 'tests'], scope='full')
+        self.assertEqual(result['status'], 'passed')
+        export = self.home / 'empty-root-export.json'
+        export.write_text(json.dumps({'info': {'id': 'ses_root'}, 'messages': []}), encoding='utf-8')
+        text = self.metrics.finish('demo', [str(export)])
+        self.assertIn('Расход по попыткам', text)
+        self.assertEqual(self.metrics.read('demo')[-1]['kind'], 'finish')
+
+
+if __name__ == '__main__':
+    unittest.main()

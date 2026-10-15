@@ -21,6 +21,7 @@ except ImportError:  # tests on other systems replace it with a fake
 
 MASTER_CHIEF_KEY_ENV = 'OCK_MASTER_CHIEF_API_KEY'
 EXECUTOR_KEY_ENV = 'OCK_EXECUTOR_API_KEY'
+BUG_FIXER_KEY_ENV = 'OCK_BUG_FIXER_API_KEY'
 ENVIRONMENT_KEY = 'Environment'  # registry path under HKEY_CURRENT_USER
 
 ENV_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*')

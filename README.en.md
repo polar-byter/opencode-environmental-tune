@@ -1,4 +1,15 @@
-# OpenCode: the Master Chief and local executors
+# OpenCode: the Master Chief and executors
+
+The configurator includes an optional Bug Fixer role, worker concurrency and
+bounded execution limits. New template defaults: OpenCode DeepSeek V4.1 Flash Free
+for the Chief/fixer and MiMo V2.6 Flash Free for executors; concurrency defaults to one.
+The controller isolates each attempt, binds tests and usage to its exact session,
+and permits one correction handoff after a code defect or an execution limit.
+API/429, setup failures and cancellation never trigger an automatic model switch.
+Existing saved choices and sequential journals remain readable.
+
+See the [developer guide with diagrams (Russian)](docs/EXECUTION_GUIDE.ru.md) and
+[readable role prompts](kit/prompts/README.ru.md).
 
 > Русская версия: [README.md](README.md) · Step-by-step start: [QUICKSTART.en.md](QUICKSTART.en.md) · [Быстрый старт (RU)](QUICKSTART.ru.md)
 
@@ -179,7 +190,7 @@ of its orchestration. In a normal task you do not type these commands.
    of the main and child OpenCode sessions. It picks completed messages within the task
    time and sums their counters per model.
 5. **Model groups.** Every `lmstudio` model goes into the local group, OpenRouter models
-   ending in `:free` into the free cloud group, other known providers into the paid
+   ending in `:free` and OpenCode models ending in `-free` into the free cloud group, other known providers into the paid
    group by default. New LM Studio models are counted without a manual list.
 6. **Report.** The script saves `.metrics/<task ID>/report.md`. The Master Chief puts it
    into the final answer. If a planner writes the answer, it uses the same file.

@@ -90,7 +90,7 @@
   <section id="live-work" class="live-work" hidden aria-labelledby="live-title">
     <div class="eyebrow muted">Текущая работа</div>
     <h2 id="live-title">Сейчас в работе</h2>
-    <p id="live-stage"></p><p id="live-actor" class="muted"></p>
+    <p id="live-stage"></p><p id="live-actor" class="muted"></p><div id="active-workers"></div>
     <p id="live-action"></p><p id="live-function"></p>
     <dl class="cards">
       <div class="card"><dt>Задания приняты</dt><dd id="live-items">—</dd></div>
@@ -246,6 +246,11 @@
     const latest = [...(live.feed || [])].filter(recent).at(-1);
     const observed = current || latest;
     element('live-actor').textContent = `${actor}: ${current?.model || (role === 'executor' ? last?.model : null) || model(role)}${last && ['executor', 'review'].includes(last.state) ? ' · задание: ' + last.id : ''}`;
+    const activeWorkers = element('active-workers'); activeWorkers.replaceChildren();
+    for (const item of items) {
+      const attempt = item.attempts?.at(-1);
+      if (attempt?.worker_id && ['executor', 'review'].includes(attempt.state)) paragraph(`${attempt.role === 'bug_fixer' ? 'Bug Fixer' : 'Исполнитель'} ${attempt.worker_id} · ${item.id} · ${attempt.model || 'фактическая модель пока неизвестна'} · ${attempt.state === 'executor' ? 'выполняет' : 'ожидает проверки'}`, activeWorkers, 'work-row');
+    }
     const tools = {read: 'Чтение файла', edit: 'Изменение файла', write: 'Запись файла', bash: 'Выполнение команды', task: 'Вызов исполнителя', apply_patch: 'Изменение кода', glob: 'Поиск файлов', grep: 'Поиск в коде'};
     let action = 'Свежих данных о действии модели пока нет.';
     if (observed) {
@@ -331,7 +336,8 @@
     element('function-count').textContent = progress.available ? `Исполнитель реализовал ${progress.implemented} из ${progress.total} функций · принято на ревью: ${progress.accepted}.` : (progress.reason || 'Реестр функций недоступен');
     element('function-progress').hidden = !progress.available;
     if (progress.available) { element('function-progress').max = progress.total; element('function-progress').value = progress.implemented; }
-    element('current-function').textContent = data.status === 'running' && progress.current ? `Работает над функцией ${progress.current.name} · ${progress.current.file}` : (data.status === 'running' ? 'Текущая функция пока не сообщена исполнителем.' : '');
+    const activeFunctions = progress.current_functions || (progress.current ? [progress.current] : []);
+    element('current-function').textContent = data.status === 'running' && activeFunctions.length ? activeFunctions.map(fn => `${fn.worker_id || 'Исполнитель'}: ${fn.name} · ${fn.file}`).join(' | ') : (data.status === 'running' ? 'Текущая функция пока не сообщена исполнителем.' : '');
     const workList = element('work-items');
     const expanded = new Set([...workList.querySelectorAll('details[open]')].map(row => row.dataset.item));
     workList.replaceChildren();
@@ -343,6 +349,11 @@
       row.append(title);
       for (const [index, attempt] of item.attempts.entries()) {
         paragraph(`Попытка ${index + 1} · ${new Date(attempt.at * 1000).toLocaleString()} · ${states[attempt.state] || attempt.state} · ${attempt.model || 'модель не установлена'}`, row);
+        if (attempt.worker_id) paragraph(`${attempt.role === 'bug_fixer' ? 'Bug Fixer' : 'Исполнитель'} · ${attempt.worker_id} · сессия ${attempt.session || 'ещё не привязана'}${attempt.integrated ? ' · изменения объединены' : ''}`, row, 'muted');
+        if (attempt.stop_reason) paragraph(`Причина возврата управления: ${attempt.stop_reason} · остановка ${attempt.stopped === true ? 'подтверждена' : 'не подтверждена'}`, row, 'muted');
+        if (Number.isFinite(attempt.duration_seconds)) paragraph(`Длительность попытки: ${Math.round(attempt.duration_seconds)} сек (включая ожидание).`, row, 'muted');
+        if (attempt.usage?.length) for (const usage of attempt.usage) paragraph(`Токены: ${formatCount(usage.input)} / ${formatCount(usage.output)} · стоимость по данным OpenCode: ${Number.isFinite(usage.cost_usd) ? '$' + usage.cost_usd.toFixed(6) : 'нет данных'}`, row, 'muted');
+        else if (attempt.worker_id) paragraph('Расход этой попытки пока неизвестен.', row, 'muted');
         paragraph('Файлы: ' + (attempt.files || []).join(', '), row, 'muted');
         for (const test of attempt.tests || []) paragraph(`Тесты (${test.scope}): ${test.status}, количество: ${test.tests ?? 'неизвестно'}`, row, 'muted');
       }

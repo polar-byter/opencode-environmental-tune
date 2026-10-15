@@ -77,6 +77,9 @@ def task_view(root: Path, task: str, reader=None) -> dict:
         if work['architecture']:
             work['architecture'] = {key: value for key, value in work['architecture'].items() if key != 'text'}
         try:
+            finished = next((e for e in reversed(events) if e['kind'] == 'finish'), None)
+            if finished and finished.get('usage', {}).get('session_usage'):
+                live = dict(live, usage=finished['usage'])
             observations.attach_models(work['items'], live)
         except (ValueError, TypeError, KeyError, AttributeError):
             work['errors'].append('Не удалось сопоставить фактические модели')

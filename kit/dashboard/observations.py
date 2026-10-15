@@ -29,7 +29,7 @@ def display_models(root: Path) -> dict:
     from ..configurator.models_choices_configurator import load_choices
     choices = load_choices(root)
     result = {}
-    for role, field in (('master_chief', 'masterChief'), ('executor', 'executors')):
+    for role, field in (('master_chief', 'masterChief'), ('executor', 'executors'), ('bug_fixer', 'bugFixer')):
         choice = choices.get(field)
         if isinstance(choice, dict) and isinstance(choice.get('model'), str):
             result[role] = choice['model']
@@ -186,6 +186,14 @@ def attach_models(items: list[dict], live: dict):
     for item in items:
         for attempt in item['attempts']:
             end = attempt.get('inspection_at', attempt.get('review_at', float('inf')))
-            child = next((call['session'] for call in live.get('calls', []) if attempt['at'] <= call['at'] <= end), None)
+            child = attempt.get('session')
+            if not child and not attempt.get('workspace'):
+                child = next((call['session'] for call in live.get('calls', []) if attempt['at'] <= call['at'] <= end), None)
             attempt['model'] = child_models.get(child)
+            usage = live.get('usage', {}).get('session_usage', [])
+            attempt['usage'] = [row for row in usage if row.get('session') == child] if child else None
+            if not attempt['model'] and attempt['usage']:
+                references = [row['provider'] + '/' + row['model'] for row in attempt['usage']
+                              if row.get('provider') not in (None, 'unknown') and row.get('model') not in (None, 'unknown')]
+                attempt['model'] = ', '.join(dict.fromkeys(references)) or None
         item['model'] = item['attempts'][-1].get('model')

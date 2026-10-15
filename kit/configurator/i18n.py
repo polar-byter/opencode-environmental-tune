@@ -9,6 +9,17 @@ PREFERENCES = Path('.metrics') / '.configurator-ui.json'
 LANGUAGES = {'English': 'en', 'Russian': 'ru'}
 
 RU = {
+    'Bug Fixer': 'Исправитель ошибок',
+    'Implement independent work items from the Master Chief architecture. One model for all executor slots.': 'Выполняют независимые поручения по архитектуре Чифа. Одна модель для всех исполнителей.',
+    'Project defaults restored. Saved Windows keys were kept.': 'Восстановлены настройки проекта. Сохранённые ключи Windows оставлены.',
+    'Corrections & recovery': 'Исправление ошибок',
+    'Disabled': 'Выключен',
+    'Concurrent executors': 'Одновременных исполнителей',
+    'Steps per attempt': 'Шагов на попытку',
+    'Seconds per attempt': 'Секунд на попытку',
+    'Repeated actions without progress': 'Повторов без прогресса',
+    'Enter valid whole-number limits: workers 1–8, steps 1–256, seconds 1–3600, repeats 2–32.': 'Введите целые числа: исполнителей 1–8, шагов 1–256, секунд 1–3600, повторов 2–32.',
+    'One correction attempt after a code error or execution limit. Never used for API failures.': 'Одна попытка исправления после ошибки кода или лимита выполнения. Ошибки API не запускают исправителя.',
     '2. Replace API key (optional)': '2. Заменить API-ключ (необязательно)',
     'New key entered': 'Введён новый ключ',
     '✓ Key found': '✓ Ключ найден',

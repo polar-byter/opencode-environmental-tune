@@ -8,8 +8,8 @@ from urllib.parse import urlsplit
 
 from . import app, keys, models_choices_configurator
 
-ROLES = ('master_chief', 'exec')
-ROLE_NAMES = {'master_chief': 'Master Chief', 'exec': 'Executors'}
+ROLES = ('master_chief', 'exec', 'bug_fixer')
+ROLE_NAMES = {'master_chief': 'Master Chief', 'exec': 'Executors', 'bug_fixer': 'Bug Fixer'}
 
 
 class FormError(ValueError):
@@ -86,7 +86,8 @@ def validate(form: dict, typed_keys: dict[str, str]) -> tuple[dict, dict[str, st
                 supplied[name] = typed
     for role in ROLES:
         source = cleaned[role + '_source']
-        allowed = ('default', 'opencode', 'api') if role == 'master_chief' else ('lmstudio', 'opencode', 'api')
+        allowed = (('default', 'opencode', 'api') if role == 'master_chief' else
+                   ('disabled', 'opencode', 'api') if role == 'bug_fixer' else ('lmstudio', 'opencode', 'api'))
         if source not in allowed:
             raise FormError(role, 'source', 'Choose a model connection type.')
         if source in ('api', 'opencode'):
@@ -105,7 +106,11 @@ def validate(form: dict, typed_keys: dict[str, str]) -> tuple[dict, dict[str, st
             name = cleaned[role + '_key_env']
             if typed:
                 to_save[name] = typed
-    return app.form_to_choices(cleaned), to_save
+    try:
+        choices = app.form_to_choices(cleaned)
+    except ValueError as error:
+        raise FormError('exec', 'limits', 'Enter valid whole-number limits: workers 1–8, steps 1–256, seconds 1–3600, repeats 2–32.') from None
+    return choices, to_save
 
 
 def save(root, form: dict, typed_keys: dict[str, str]):

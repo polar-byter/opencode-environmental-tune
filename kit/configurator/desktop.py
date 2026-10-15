@@ -39,7 +39,7 @@ class DesktopConfigurator:
         self.localize()
         self.loading = False
         for name, variable in self.vars.items():
-            role = 'master_chief' if name.startswith('master_chief_') else 'exec'
+            role = 'master_chief' if name.startswith('master_chief_') else 'bug_fixer' if name.startswith('bug_fixer_') else 'exec'
             variable.trace_add('write', lambda *args, role=role: self.changed(role))
         for role, variable in self.typed_keys.items():
             variable.trace_add('write', lambda *args, role=role: self.changed(role))
@@ -131,14 +131,16 @@ class DesktopConfigurator:
     def build_navigation(self):
         self.navigation_pages = dict(self.pages, catalog=self.catalog.page)
         self.navigation_buttons = {}
+        self.navigation_labels = {}
         self.navigation_icons = icons.navigation(self.window)
-        descriptions = {'master_chief': 'Planning & review', 'exec': 'Code implementation',
+        descriptions = {'master_chief': 'Planning & review', 'exec': 'Code implementation', 'bug_fixer': 'Corrections & recovery',
                         'catalog': 'Model catalog & prices'}
         for index, (key, page) in enumerate(self.navigation_pages.items()):
             self.navigation.columnconfigure(index, weight=1, uniform='sections')
             title = workflow.ROLE_NAMES[key] if key in workflow.ROLE_NAMES else 'OpenRouter'
             label = self.translator.var(i18n.text('{title}\n{hint}', title=i18n.text(title),
                                                 hint=i18n.text(descriptions[key])))
+            self.navigation_labels[key] = (label, title, descriptions[key])
             button = ttk.Button(self.navigation, textvariable=label, style='Navigation.TButton', width=1,
                                 image=self.navigation_icons[key]['blue'], compound='left',
                                 command=lambda page=page: self.notebook.select(page), takefocus=True)
@@ -148,7 +150,24 @@ class DesktopConfigurator:
             self.navigation_buttons[key] = button
         self.window.bind('<Control-Tab>', lambda event: self.cycle_section(1))
         self.window.bind('<Control-Shift-Tab>', lambda event: self.cycle_section(-1))
+        self.navigation.bind('<Configure>', self.layout_navigation)
         self.update_navigation()
+
+    def layout_navigation(self, event=None):
+        """Keep four role/catalog buttons readable on narrow windows."""
+        compact_catalog = self.notebook.select() == str(self.catalog.page) and self.navigation.winfo_width() < 820
+        columns = 2 if self.navigation.winfo_width() < 820 and not compact_catalog else 4
+        for label, title, hint in self.navigation_labels.values():
+            if compact_catalog:
+                label.set('{title}', title=i18n.text(title))
+            else:
+                label.set('{title}\n{hint}', title=i18n.text(title), hint=i18n.text(hint))
+        for index in range(4):
+            self.navigation.columnconfigure(index, weight=1 if index < columns else 0,
+                                            uniform='sections' if index < columns else '')
+        for index, button in enumerate(self.navigation_buttons.values()):
+            button.grid(row=index // columns, column=index % columns,
+                        padx=(0 if index % columns == 0 else 8, 0), pady=(0 if index < columns else 8, 0))
 
     def update_navigation(self):
         current = self.notebook.select()
@@ -196,6 +215,7 @@ class DesktopConfigurator:
 
     def show_active_tab(self, event=None):
         self.update_navigation()
+        self.layout_navigation()
         if self.notebook.select() == str(self.catalog.page):
             self.footer.grid_remove()
             self.header_subtitle.grid_remove()
@@ -223,20 +243,39 @@ class DesktopConfigurator:
         page.columnconfigure(0, weight=1)
         self.pages[role], self.canvases[role] = holder, canvas
         self.notebook.add(holder, text=workflow.ROLE_NAMES[role])
-        title = 'Master Chief' if role == 'master_chief' else 'Executors'
+        title = workflow.ROLE_NAMES[role]
         description = ('Plans, designs the architecture, and reviews the result.' if role == 'master_chief'
-                       else 'Implement code from the Master Chief architecture. One selection for both executors.')
+                       else 'One correction attempt after a code error or execution limit. Never used for API failures.' if role == 'bug_fixer'
+                       else 'Implement independent work items from the Master Chief architecture. One model for all executor slots.')
         ttk.Label(page, text=title, style='Heading.TLabel').grid(sticky='w')
         ttk.Label(page, text=description, style='Hint.TLabel', wraplength=650).grid(sticky='w', pady=(3, 10))
+        if role == 'exec':
+            limits = ttk.Frame(page, style='Card.TFrame')
+            limits.grid(row=5, column=0, sticky='ew', pady=(16, 0))
+            for row, (label, field, high) in enumerate((('Concurrent executors', 'max_executors', 8),
+                                                       ('Steps per attempt', 'max_steps', 256),
+                                                       ('Seconds per attempt', 'max_seconds', 3600),
+                                                       ('Repeated actions without progress', 'max_repeated_actions', 32))):
+                ttk.Label(limits, text=label, style='Card.TLabel').grid(row=row, column=0, sticky='w', padx=(0, 12))
+                ttk.Spinbox(limits, from_=1, to=high, textvariable=self.vars[field], width=8).grid(row=row, column=1, pady=3)
+        if role == 'bug_fixer':
+            description = 'One correction attempt after a code error or execution limit. Never used for API failures.'
+            limits = ttk.Frame(page, style='Card.TFrame')
+            limits.grid(row=5, column=0, sticky='ew', pady=12)
+            for row, (label, field, high) in enumerate((('Steps per attempt', 'fixer_max_steps', 256),
+                                                       ('Seconds per attempt', 'fixer_max_seconds', 3600))):
+                ttk.Label(limits, text=label, style='Card.TLabel').grid(row=row, column=0, sticky='w', padx=(0, 12))
+                ttk.Spinbox(limits, from_=1, to=high, textvariable=self.vars[field], width=8).grid(row=row, column=1, pady=3)
         source_bar = ttk.Frame(page, style='Card.TFrame')
-        source_bar.grid(sticky='ew', pady=(0, 8))
-        first = ('default', 'Project defaults') if role == 'master_chief' else ('lmstudio', 'Local · LM Studio')
+        source_bar.grid(row=2, column=0, sticky='ew', pady=(0, 8))
+        first = (('default', 'Project defaults') if role == 'master_chief' else
+                 ('disabled', 'Disabled') if role == 'bug_fixer' else ('lmstudio', 'Local · LM Studio'))
         for index, (value, text) in enumerate((first, ('opencode', 'Model from OpenCode'), ('api', 'Own API'))):
             ttk.Radiobutton(source_bar, text=text, variable=self.vars[role + '_source'], value=value).grid(
                 row=0, column=index, sticky='w', padx=(0, 22))
         panels = {}
         self.widgets[role] = {'panels': panels, 'fields': {}}
-        for source in ('default', 'lmstudio', 'opencode', 'api'):
+        for source in ('default', 'lmstudio', 'opencode', 'api', 'disabled'):
             panel = ttk.Frame(page, style='Card.TFrame')
             panel.grid(row=3, column=0, sticky='nsew')
             panel.columnconfigure(0, weight=1)
@@ -367,8 +406,19 @@ class DesktopConfigurator:
     def load(self):
         try:
             data = models_choices_configurator.load_choices(self.root)
+            if not data and (self.root / 'opencode.jsonc').is_file():
+                from ..run_opencode import strip_jsonc
+                import json
+                config = json.loads(strip_jsonc((self.root / 'opencode.jsonc').read_text(encoding='utf-8-sig')))
+                agents = config.get('agents', {})
+                executor_model = agents.get('executor', {}).get('model', '')
+                if executor_model and not executor_model.startswith('lmstudio/'):
+                    data['executors'] = {'source': 'opencode', 'model': executor_model}
+                fixer = agents.get('bug-fixer', {})
+                if fixer.get('disabled') is False:
+                    data['bugFixer'] = {'source': 'opencode', 'model': fixer['model']}
             form = app.choices_to_form(data)
-            for section in ('masterChief', 'executors'):
+            for section in ('masterChief', 'executors', 'bugFixer'):
                 if section in data:
                     allowed = ('opencode', 'api') if section == 'masterChief' else ('lmstudio', 'opencode', 'api')
                     if not isinstance(data[section], dict) or data[section].get('source') not in allowed:
@@ -392,14 +442,22 @@ class DesktopConfigurator:
         self.widgets[role]['fields']['model']['values'] = ()
         self.widgets[role]['opencode_model']['values'] = ()
         self.render(role)
-        other = 'exec' if role == 'master_chief' else 'master_chief'
-        if (self.vars[other + '_source'].get() == 'api'
-                and self.vars[role + '_key_env'].get() == self.vars[other + '_key_env'].get()):
-            self.generations[other] += 1
-            self.widgets[other]['connection_status'].set('')
-            self.widgets[other]['fields']['model']['values'] = ()
-        self.render(other)
+        for other in workflow.ROLES:
+            if (other != role and self.vars[other + '_source'].get() == 'api'
+                    and self.vars[role + '_key_env'].get() == self.vars[other + '_key_env'].get()):
+                self.generations[other] += 1
+                self.widgets[other]['connection_status'].set('')
+                self.widgets[other]['fields']['model']['values'] = ()
+                self.render(other)
         self.dirty.set('Unsaved changes' if self.snapshot() != self.saved else '')
+
+    def shared_key_role(self, role):
+        """Find an entered key for the same API variable across all three roles."""
+        matches = [other for other in workflow.ROLES if other != role
+                   and self.vars[other + '_source'].get() == 'api'
+                   and self.vars[other + '_key_env'].get() == self.vars[role + '_key_env'].get()]
+        return next((other for other in matches if self.typed_keys[other].get().strip()),
+                    matches[0] if matches else 'exec' if role == 'master_chief' else 'master_chief')
 
     def render(self, role):
         source = self.vars[role + '_source'].get()
@@ -422,7 +480,7 @@ class DesktopConfigurator:
         if present and not typed:
             self.widgets[role]['key_status'].set('Available from {name}. No need to enter it again. Enter a new key only to replace it.',
                                                 name=self.vars[role + '_key_env'].get().strip())
-        other = 'exec' if role == 'master_chief' else 'master_chief'
+        other = self.shared_key_role(role)
         if (not typed and not present and source == 'api' and self.vars[other + '_source'].get() == 'api'
                 and self.vars[role + '_key_env'].get() == self.vars[other + '_key_env'].get()
                 and self.typed_keys[other].get().strip()):
@@ -483,7 +541,7 @@ class DesktopConfigurator:
         try:
             if source == 'api':
                 typed = self.typed_keys[role].get()
-                other = 'exec' if role == 'master_chief' else 'master_chief'
+                other = self.shared_key_role(role)
                 if (not typed.strip() and form[other + '_source'] == 'api'
                         and form[role + '_key_env'] == form[other + '_key_env']):
                     typed = self.typed_keys[other].get()
@@ -524,7 +582,7 @@ class DesktopConfigurator:
             return
         form = self.form()
         typed = self.typed_keys[role].get()
-        other = 'exec' if role == 'master_chief' else 'master_chief'
+        other = self.shared_key_role(role)
         if (not typed.strip() and form[other + '_source'] == 'api'
                 and form[role + '_key_env'] == form[other + '_key_env']):
             typed = self.typed_keys[other].get()
@@ -690,7 +748,8 @@ class DesktopConfigurator:
         self.saved = self.snapshot()
         self.dirty.set('')
         self.status_label.configure(foreground=INK)
-        self.status.set('Selection reset: Master Chief from project defaults, executors from LM Studio. Saved Windows keys were kept.')
+        self.load()
+        self.status.set('Project defaults restored. Saved Windows keys were kept.')
 
     def close(self):
         self.closed = True

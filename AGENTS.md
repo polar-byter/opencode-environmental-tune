@@ -16,7 +16,7 @@ The Master Chief writes the blueprint; the executor only pours concrete.
 - Create the architecture and dependency plan yourself. Do not require the user to name files, modules or executor calls.
 - If the user authorizes the whole task and autonomous implementation, write the plan and proceed within that scope. Ask for plan approval only when it is still required by the user's request or a material unresolved decision.
 - Keep temporary scripts, logs and review evidence in `.metrics/`; keep application source and tests in the project directories.
-- Local implementation requires the selected LM Studio executor. If it is unavailable, report the blocker and leave the task unfinished. Do not implement bodies in the Master Chief or substitute a paid executor.
+- Implementation requires the project's selected executor, from LM Studio, OpenCode or an explicitly configured API. If it is unavailable, report the blocker and leave the task unfinished. Do not implement bodies in the Master Chief without user authorization or silently substitute another model.
 
 ### Master Chief (primary agent)
 1. Skeleton first: create the module with classes, functions, signatures, and every import the bodies will need (the executor may not add imports).
@@ -56,7 +56,7 @@ Loop guards (defaults; set others at `start` with `--max-reworks`, `--max-no-res
 ## Complex projects (many modules)
 1. Plan first: split the task into modules and write the checklist to the work plan resolved below. Resolve approval as described in Task intake before writing code.
 2. Interfaces first: for each module list its public functions/classes and its dependencies. Modules must fit together.
-3. One module at a time: skeleton → requirement and edge-case tests → baseline → delegate small complete classes → evidence-based review → green module tests → mark done. Do not write all future modules' tests up front and run them after every trivial edit.
+3. Sequential by default: skeleton → requirement and edge-case tests → baseline → delegate small complete classes → evidence-based review → green module tests → mark done. With an explicitly configured concurrency above one, use the isolated controller protocol below for independent modules. Never remove the legacy guard to run several editors in the main checkout.
 4. Track progress in that work plan (`- [ ]` / `- [x]`). Read it at session start, update it after each module.
 5. Never pass more than one module's context to a single executor call.
 6. Done means green per module; the project is done when all modules and the unfiltered full suite are green.
@@ -65,8 +65,50 @@ Loop guards (defaults; set others at `start` with `--max-reworks`, `--max-no-res
 
 ## Rules
 - One subagent — one small complete class or cohesive source file; a function is appropriate for an isolated correction or a justified split.
-- Keep the Master Chief for planning, architecture, marketing, and review. Routine code goes local.
+- Keep the Master Chief for planning, architecture, marketing, and review. Routine code goes to the selected executor.
 - Code, comments, and identifiers: English. Human-facing docs: Russian is fine.
+
+## Isolated workers and bounded correction
+
+This section refines the sequential snapshot protocol only for attempts created
+by `python -m kit.execution_controller`. The ordinary delegate/subagent path stays
+sequential. Setting a number in the configurator does not isolate direct edits.
+
+- Freeze applicable public contracts first: interfaces, `.h`/`.hpp`, shared types,
+  API/database formats, units, errors, ownership and threading rules. Record each
+  module's dependencies. Publish the complete named function plan before workers start.
+- Read the selected policy and models. Launch each ready work item with
+  `python -m kit.execution_controller --task <ID> launch --work-item <item> --file <file> --requirements .metrics/<ID>/<item>-requirements.json --contracts <shared-contract-file> --dependencies <accepted-item> ...`.
+  Omit dependencies when none. The controller registers the delegation, copies a
+  plain isolated source snapshot, creates the exact child session with restricted
+  file permissions, and verifies its bounded watcher is ready before admitting
+  model input. This requires the shared Desktop service; never rebind a private
+  standalone session. Do not also call a subagent for
+  that same attempt. Its exact session/worker/attempt identities go into the journal.
+- The controller owns `.metrics/<ID>/workspaces/`; workers never edit the main
+  project. Their prompts authorize one exact source file and one progress file.
+  Shared contracts remain read-only. Do not edit a contract while dependent work
+  is active. No file-by-file merging by executors.
+- Before inspection require an `attempt_end` with `stopped: true`. Read/inspect
+  the attempt's workspace, add review tests there if needed, and run the wrapper
+  with `--attempt <delegation-ID> --scope <item>`. Root tests or another attempt's
+  green result cannot satisfy acceptance. Review evidence remains task-local.
+- After accepted review run `python -m kit.execution_controller --task <ID> integrate --attempt <ID>`.
+  It checks original source/shared-contract hashes and applies one accepted file
+  sequentially. A conflicting main file is a decision to rebase/review, not a
+  reason to overwrite user work. Run final unfiltered tests on the integrated root.
+- A selected Bug Fixer has its own model/API and one bounded attempt. After a
+  reviewed code defect use the same launch command with `--role bug_fixer
+  --previous <rejected-attempt-ID>`, preserving the frozen requirements/contracts.
+  A watchdog step/repetition/deadline signal can trigger that one handoff after
+  confirmed interruption and rework. Read events before dispatching a duplicate.
+- Do not escalate API errors, 429, setup errors, pause or cancel to a different
+  model. Missing progress alone is not a loop. Never inspect private reasoning.
+  If stop is unconfirmed, block replacement. The fixer cannot delegate back.
+  Global STOP guards remain in force; do not reset them automatically.
+- Canonical role text is in `kit/prompts/*.md`; `prepare` loads only the four
+  named role documents. Russian human explanations live in `kit/prompts/README.ru.md`.
+  HTML comments inside a prompt are still visible to a model.
 
 ## Kit utilities (independent of the project's language)
 Before using a local executor, select an already loaded LM Studio instance. Start OpenCode through `py kit/run_opencode.py`. At task startup inspect the launcher environment: `OPENCODE_KIT_ROOT`, `OPENCODE_KIT_INSTANCE`, and `OPENCODE_KIT_SERVER_MODE`. If the root matches this project and the mode is `standalone`, the launcher selected the instance and wrote the overlay before this private server started. Verify the loaded instance and connection with `check_env.py`; do not run `--reload` or restart that session. Reloading the background service does not reload a private server. For an existing desktop/background-service session without these launch facts, run `py kit/run_opencode.py --prepare-only --reload` before the first executor call. See LOCAL_MODELS.ru.md. Never load/unload a model or change its load settings automatically. If selection is ambiguous, show the loaded instance IDs and ask the user to choose; if none is loaded, ask them to load one. Both executor roles use the selected instance. Rerun preparation before a new task after the user changes the loaded model. If `OPENCODE_KIT_EXECUTORS` is `opencode` or `api`, the executors use a model that OpenCode already knows (for example a model connected with `/connect`) or an own API chosen in `.opencode/kit-models.json`: skip the LM Studio checks and do not ask the user to load a model.
@@ -99,7 +141,7 @@ Commands in this file are written with `py`; on macOS and Linux replace `py` wit
 - The runner recognizes unittest summaries and JUnit XML. `--junit <file>`: one report file; it must not exist before the run, so use a new name for every run (run-01.xml, run-02.xml, ...). `--junit-dir <folder>`: a folder where the tool writes one file per test class or project (Maven `target/surefire-reports`, Gradle `build/test-results/test`); only files written during the run are read. Unknown output, zero tests and skipped tests do not count as fully successful.
 - Do not claim completion with pending delegated attempts or a missing/failing full suite. Resolve the warning first.
 - At the end, after all executors have returned, run `py kit/task_metrics.py finish --task <ID>`. Insert its Markdown statistics in the final answer. If another agent writes the final answer, give it `.metrics/<ID>/report.md`; it must not invent or recompute counters.
-- All `lmstudio` providers are local/free of API fees; `openrouter` models ending in `:free` are free cloud models; every other known provider is paid by default. Missing usage must remain unknown. Token counts are a snapshot before the final answer, not a billing statement.
+- All `lmstudio` providers are local/free of API fees; `openrouter` models ending in `:free` and `opencode` models ending in `-free` are free cloud models; every other known provider is paid by default. Missing usage must remain unknown. Token counts are a snapshot before the final answer, not a billing statement.
 - These commands are required for ordinary text requests too, not only `/module`. Logging is instruction-driven, not an automatic plugin. Planning-only tasks may have no tests; never describe that as a successful test run.
 
 ## Project stack  # EDIT: language, build tool, test command

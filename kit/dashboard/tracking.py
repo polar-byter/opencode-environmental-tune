@@ -137,9 +137,21 @@ def work_items(events: list[dict]) -> list[dict]:
         if kind == 'delegation':
             item = rows.setdefault(event['work_item'], {'id': event['work_item'], 'attempts': []})
             attempt = {key: event.get(key) for key in ('event_id', 'at', 'files', 'scope')}
+            for key in ('worker_id', 'role', 'workspace'):
+                if key in event:
+                    attempt[key] = event[key]
             attempt.update(state='executor', tests=[])
             item['attempts'].append(attempt)
             attempts[event['event_id']] = attempt
+        elif kind == 'attempt_session' and event.get('delegation_id') in attempts:
+            attempts[event['delegation_id']].update(session=event['session'], role=event['role'],
+                                                  worker_id=event['worker_id'])
+        elif kind == 'attempt_end' and event.get('delegation_id') in attempts:
+            attempt = attempts[event['delegation_id']]
+            attempt.update(state='review', stop_reason=event['reason'], stopped=event.get('stopped'),
+                           duration_seconds=max(0, event['at'] - attempt['at']))
+        elif kind == 'integration' and event.get('delegation_id') in attempts:
+            attempts[event['delegation_id']]['integrated'] = True
         elif kind in ('inspection', 'review'):
             attempt = attempts.get(event.get('delegation_id'))
             if attempt:
@@ -150,7 +162,9 @@ def work_items(events: list[dict]) -> list[dict]:
         elif kind == 'test' and event.get('phase') != 'baseline':
             for item in rows.values():
                 latest = item['attempts'][-1]
-                if latest['state'] in ('executor', 'review') and event.get('scope', 'full') in (latest['scope'], 'full'):
+                if (latest['state'] in ('executor', 'review') and event.get('scope', 'full') in (latest['scope'], 'full')
+                        and (event.get('delegation_id') == latest['event_id'] if latest.get('workspace')
+                             else not event.get('delegation_id'))):
                     latest['tests'].append({key: event.get(key) for key in ('at', 'scope', 'status', 'tests', 'failures', 'errors')})
     for item in rows.values():
         item['state'] = item['attempts'][-1]['state']
@@ -171,6 +185,7 @@ def function_progress(root: Path, task: str, events: list[dict], now: float | No
     timestamp = time.time() if now is None else now
     finished = any(event['kind'] == 'finish' for event in events)
     current = None
+    current_functions = []
     implemented = accepted = 0
     for function in functions:
         function['state'] = 'planned'
@@ -207,8 +222,11 @@ def function_progress(root: Path, task: str, events: list[dict], now: float | No
                         and valid_number(updated) and 0 <= timestamp - updated <= 90):
                     function['state'] = 'working'
                     current = dict(function, updated_at=updated)
+                    current_functions.append(dict(current, delegation_id=attempt['event_id'],
+                                                  worker_id=attempt.get('worker_id'), role=attempt.get('role')))
     return {'available': True, 'revision': plan.get('revision'), 'total': len(functions),
-            'implemented': implemented, 'accepted': accepted, 'functions': functions, 'current': current}
+            'implemented': implemented, 'accepted': accepted, 'functions': functions, 'current': current,
+            'current_functions': current_functions}
 
 
 def main(argv=None) -> int:

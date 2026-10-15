@@ -24,7 +24,7 @@ class NavigationTests(unittest.TestCase):
     def test_buttons_switch_content_and_exactly_one_section_is_highlighted(self):
         self.window.update()
         self.assertEqual(self.selected(), ['master_chief'])
-        for key in ('exec', 'catalog', 'master_chief'):
+        for key in ('exec', 'bug_fixer', 'catalog', 'master_chief'):
             self.ui.navigation_buttons[key].invoke()
             self.window.update()
             self.assertEqual(self.ui.notebook.select(), str(self.ui.navigation_pages[key]))
@@ -66,15 +66,20 @@ class NavigationTests(unittest.TestCase):
         self.assertEqual(label(), 'Мастер Чиф\nАрхитектура и ревью')
         self.assertEqual(self.ui.snapshot(), before)
 
-    def test_small_window_has_three_large_non_overlapping_buttons(self):
+    def test_small_window_has_four_large_non_overlapping_buttons(self):
         self.window.deiconify()
         self.window.geometry('760x720')
         self.window.update()
         buttons = list(self.ui.navigation_buttons.values())
+        self.assertEqual(len(buttons), 4)
         for index, button in enumerate(buttons):
             self.assertGreaterEqual(button.winfo_height(), 50)
             self.assertGreaterEqual(button.winfo_width(), 200)
             self.assertLessEqual(button.winfo_rootx() + button.winfo_width(),
                                  self.window.winfo_rootx() + self.window.winfo_width())
-            if index:
-                self.assertGreater(button.winfo_rootx(), buttons[index-1].winfo_rootx() + buttons[index-1].winfo_width())
+            for other in buttons[:index]:
+                overlap_x = max(button.winfo_rootx(), other.winfo_rootx()) < min(
+                    button.winfo_rootx() + button.winfo_width(), other.winfo_rootx() + other.winfo_width())
+                overlap_y = max(button.winfo_rooty(), other.winfo_rooty()) < min(
+                    button.winfo_rooty() + button.winfo_height(), other.winfo_rooty() + other.winfo_height())
+                self.assertFalse(overlap_x and overlap_y)

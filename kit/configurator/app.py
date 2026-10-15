@@ -48,7 +48,17 @@ EMPTY_FORM = {
     'exec_instance': '',
     'exec_model': '',
     'exec_url': '',
-    'exec_key_env': keys.EXECUTOR_KEY_ENV
+    'exec_key_env': keys.EXECUTOR_KEY_ENV,
+    'bug_fixer_source': 'disabled',
+    'bug_fixer_model': 'opencode/deepseek-v4.1-flash-free',
+    'bug_fixer_url': '',
+    'bug_fixer_key_env': keys.BUG_FIXER_KEY_ENV,
+    'max_executors': '1',
+    'max_steps': '24',
+    'max_seconds': '600',
+    'max_repeated_actions': '3',
+    'fixer_max_steps': '32',
+    'fixer_max_seconds': '600',
 }
 
 # Step 7. Pure (independent from the window for our tests) Form -> choices (no window needed)
@@ -86,7 +96,27 @@ def form_to_choices(form: dict) -> dict:
         executors = models_choices_configurator.api_choice(form['exec_url'], form['exec_model'], form['exec_key_env'])
     else:
         raise ValueError(f'unknown executor_source: {exec_source}')
-    return models_choices_configurator.build_choices(master_chief, executors)
+    result = models_choices_configurator.build_choices(master_chief, executors)
+    source = form.get('bug_fixer_source', 'disabled')
+    if source == 'opencode':
+        result['bugFixer'] = models_choices_configurator.executors_from_opencode(form['bug_fixer_model'])
+    elif source == 'api':
+        result['bugFixer'] = models_choices_configurator.api_choice(form['bug_fixer_url'], form['bug_fixer_model'], form['bug_fixer_key_env'])
+    elif source != 'disabled':
+        raise ValueError('Unknown bug fixer source')
+    from ..execution_policy import normalize_policy
+    values = {}
+    for field, key, default in (('max_executors', 'maxExecutors', '1'), ('max_steps', 'maxSteps', '24'),
+                                ('max_seconds', 'maxSeconds', '600'), ('max_repeated_actions', 'maxRepeatedActions', '3'),
+                                ('fixer_max_steps', 'fixerMaxSteps', '32'), ('fixer_max_seconds', 'fixerMaxSeconds', '600')):
+        value = form.get(field, default)
+        if not isinstance(value, str) or not value.isascii() or not value.isdecimal():
+            raise ValueError('Execution limits must be whole numbers')
+        values[key] = int(value)
+    policy = normalize_policy(values)
+    if policy != normalize_policy():
+        result['execution'] = policy
+    return result
 
 
 def choices_to_form(data: dict) -> dict:
@@ -121,6 +151,17 @@ def choices_to_form(data: dict) -> dict:
             result_form['exec_url'] = executors['baseURL']
             result_form['exec_key_env'] = executors['keyEnv']
        
+    fixer = data.get('bugFixer')
+    if fixer is not None:
+        for field, key in (('source', 'source'), ('model', 'model'), ('url', 'baseURL'), ('key_env', 'keyEnv')):
+            if key in fixer:
+                result_form['bug_fixer_' + field] = fixer[key]
+    from ..execution_policy import normalize_policy
+    policy = normalize_policy(data.get('execution'))
+    for field, key in (('max_executors', 'maxExecutors'), ('max_steps', 'maxSteps'), ('max_seconds', 'maxSeconds'),
+                       ('max_repeated_actions', 'maxRepeatedActions'), ('fixer_max_steps', 'fixerMaxSteps'),
+                       ('fixer_max_seconds', 'fixerMaxSeconds')):
+        result_form[field] = str(policy[key])
     return result_form
     
 

@@ -99,6 +99,12 @@ def load_choices(root: Path) -> dict:
     path = root / '.opencode' / CHOICES_FILE
     result = {'masterChief': None, 'executors': None}
     if not path.exists():
+        config_path = root / 'opencode.jsonc'
+        if config_path.is_file():
+            config = json.loads(strip_jsonc(config_path.read_text(encoding='utf-8-sig')))
+            fixer = config.get('agents', {}).get('bug-fixer', {})
+            if fixer.get('disabled') is False and isinstance(fixer.get('model'), str):
+                result['bugFixer'] = {'source': 'opencode', 'model': fixer['model']}
         return result
     try:
         data = json.loads(path.read_text(encoding='utf-8-sig'))
@@ -106,6 +112,17 @@ def load_choices(root: Path) -> dict:
         raise ValueError(f'{CHOICES_FILE} is not valid JSON: {error}') from error
     if not isinstance(data, dict):
         raise ValueError(f'{CHOICES_FILE} must contain a JSON object')
+    if 'execution' in data:
+        if __package__:
+            from .execution_policy import normalize_policy
+        else:
+            from execution_policy import normalize_policy
+        result['execution'] = normalize_policy(data['execution'])
+    if data.get('bugFixer') is not None:
+        fixer = data['bugFixer']
+        if not isinstance(fixer, dict) or fixer.get('source') not in ('opencode', 'api'):
+            raise ValueError('bugFixer must select an OpenCode model or own API')
+        result['bugFixer'] = _opencode(fixer, 'bugFixer') if fixer['source'] == 'opencode' else _api(fixer, 'bugFixer')
 
     master_chief = data.get('masterChief')
     if master_chief is not None:
@@ -155,9 +172,24 @@ def prepare(root: Path, explicit: str | None = None):
     Returns the selected LM Studio instance, or None when the executors use a model
     from OpenCode or an own API.
     """
+    if __package__:
+        from .task_metrics import TaskMetrics, pending_attempts
+        from .task_control_state import read_state
+    else:
+        from task_metrics import TaskMetrics, pending_attempts
+        from task_control_state import read_state
+    for journal in (root / '.metrics').glob('*/events.jsonl'):
+        task = journal.parent.name
+        events = TaskMetrics(root).read(task)
+        if (not any(e['kind'] == 'finish' for e in events)
+                and any(e.get('workspace') for e in pending_attempts(events))
+                and read_state(root, task).get('status') != 'cancelled'):
+            raise ValueError('Finish or cancel isolated work before preparing new model settings; saving a draft is allowed')
     config = json.loads(strip_jsonc((root / 'opencode.jsonc').read_text(encoding='utf-8-sig')))
     choices = load_choices(root)
-    executors = choices['executors'] or {'source': 'lmstudio', 'instance': None}
+    default_executor = config.get('agents', {}).get('executor', {}).get('model', '')
+    executors = choices['executors'] or ({'source': 'opencode', 'model': default_executor}
+                  if default_executor and not default_executor.startswith('lmstudio/') else {'source': 'lmstudio', 'instance': None})
     if executors['source'] != 'lmstudio' and explicit:
         raise ValueError('--model selects an LM Studio instance, but the executors are not set to LM Studio in ' + CHOICES_FILE)
     if executors['source'] == 'lmstudio':
@@ -173,6 +205,14 @@ def prepare(root: Path, explicit: str | None = None):
         raise ValueError('Existing .opencode/opencode.jsonc belongs to you; it will not be overwritten. Move its settings into the project config first.')
 
     patch = {'providers': {}, 'agents': {}}
+    prompt_names = {'build': 'master-chief.md', 'executor': 'executor.md',
+                    'executor-fast': 'executor-fast.md', 'bug-fixer': 'bug-fixer.md'}
+    for agent, filename in prompt_names.items():
+        prompt = root / 'kit' / 'prompts' / filename
+        if prompt.is_file():
+            if prompt.resolve() != prompt.absolute():
+                raise ValueError('Role prompts must be regular project files')
+            patch['agents'][agent] = {'system': prompt.read_text(encoding='utf-8')}
     model = None
     if executors['source'] == 'lmstudio':
         # Default path: the already loaded instance; --model wins over the saved instance.
@@ -186,7 +226,21 @@ def prepare(root: Path, explicit: str | None = None):
         patch['providers'][EXECUTOR_PROVIDER] = api_provider(executors, 'Executor API (kit)')
         executor_ref = f"{EXECUTOR_PROVIDER}/{executors['model']}"
     for name in EXECUTOR_AGENTS:
-        patch['agents'][name] = {'model': executor_ref}
+        patch['agents'].setdefault(name, {}).update(model=executor_ref)
+    if choices.get('execution'):
+        for name in EXECUTOR_AGENTS:
+            patch['agents'][name]['steps'] = choices['execution']['maxSteps']
+    if choices.get('bugFixer'):
+        fixer = choices['bugFixer']
+        if fixer['source'] == 'api':
+            patch['providers']['kit-bug-fixer-api'] = api_provider(fixer, 'Bug Fixer API (kit)')
+            reference = 'kit-bug-fixer-api/' + fixer['model']
+        else:
+            reference = fixer['model']
+        patch['agents'].setdefault('bug-fixer', {}).update(model=reference, disabled=False,
+            steps=choices.get('execution', {}).get('fixerMaxSteps', 32))
+    elif 'bug-fixer' in config.get('agents', {}):
+        patch['agents'].setdefault('bug-fixer', {}).update(disabled=True)
 
     master_chief = choices['masterChief']
     if master_chief:
@@ -196,7 +250,7 @@ def prepare(root: Path, explicit: str | None = None):
         else:
             master_chief_ref = master_chief['model']
         for name in MASTER_CHIEF_AGENTS:
-            patch['agents'][name] = {'model': master_chief_ref}
+            patch['agents'].setdefault(name, {}).update(model=master_chief_ref)
         # The main session ("opencode run", a new Desktop chat) starts on the top-level
         # model, not on agents.build.model (checked on OpenCode 2.0.26), so set both.
         patch['model'] = master_chief_ref
@@ -216,6 +270,9 @@ def describe(root: Path, model) -> str:
         lines.append(f'Already loaded: {model.name}\nInstance: {model.id}\nBoth executors use this instance; load settings are unchanged.')
     else:
         executors = choices['executors']
+        if executors is None:
+            config = json.loads(strip_jsonc((root / 'opencode.jsonc').read_text(encoding='utf-8-sig')))
+            executors = {'source': 'opencode', 'model': config['agents']['executor']['model']}
         if executors['source'] == 'opencode':
             lines.append(f"Executors: {executors['model']} (model from OpenCode)")
         else:
