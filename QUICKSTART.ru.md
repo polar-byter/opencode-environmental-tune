@@ -3,6 +3,11 @@
 > Инструкция «с нуля»: как подключить кит к своему проекту и начать работать в OpenCode.
 > English version: [QUICKSTART.en.md](QUICKSTART.en.md)
 
+Для повторного опыта из уже установленного OpenCode Desktop открой
+[короткую инструкцию](DESKTOP_EXPERIMENT.ru.md). Ниже — первоначальное подключение
+кита на примере Java и LM Studio; свой API настраивается в
+[конфигураторе](kit/configurator/UX.ru.md).
+
 ---
 
 ## 1. Что это такое
