@@ -22,3 +22,5 @@ currentsteps.md
 .opencode/opencode.jsonc.tmp
 # Model choice saved by the model configurator on this computer
 .opencode/kit-models.json
+# Local drafts of Habr articles (published separately)
+habr_raw_docs/

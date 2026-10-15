@@ -360,3 +360,7 @@ short method.
 
 You do not type these commands; the Master Chief runs them. A detailed null example and
 the statistics explanation: [how executor review works](PIPELINE.ru.md) (Russian).
+
+## License
+
+[MIT](LICENSE).
