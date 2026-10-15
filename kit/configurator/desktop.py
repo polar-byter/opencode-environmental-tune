@@ -5,7 +5,7 @@ from pathlib import Path
 import queue
 import threading
 
-from . import app, catalog, i18n, icons, keys, models_choices_configurator, openrouter, sources, workflow
+from . import api_connection, app, catalog, i18n, icons, keys, models_choices_configurator, openrouter, sources, workflow
 
 tk, ttk = app.tk, app.ttk
 BG, INK, MUTED, BLUE = '#f2f5fa', '#17243b', '#52627a', '#2563eb'
@@ -268,30 +268,54 @@ class DesktopConfigurator:
 
     def build_api(self, role, panel):
         fields = self.widgets[role]['fields']
-        ttk.Label(panel, text='1. API address', style='Card.TLabel').grid(sticky='w', pady=(5, 4))
+        address_header = ttk.Frame(panel, style='Card.TFrame')
+        address_header.grid(sticky='ew', pady=(5, 4))
+        address_header.columnconfigure(0, weight=1)
+        ttk.Label(address_header, text='1. API address', style='Card.TLabel').grid(row=0, column=0, sticky='w')
+        button = ttk.Button(address_header, text='Check connection', command=lambda: self.check_connection(role))
+        button.grid(row=0, column=1, sticky='e')
+        self.widgets[role]['connection_button'] = button
         fields['url'] = ttk.Entry(panel, textvariable=self.vars[role + '_url'])
         fields['url'].grid(sticky='ew')
         ttk.Label(panel, text='Example: https://api.example.com/v1 — without /chat/completions or /models.',
                   style='Hint.TLabel').grid(sticky='w', pady=(3, 9))
-        ttk.Label(panel, text='2. API key', style='Card.TLabel').grid(sticky='w', pady=(0, 4))
+        key_title = self.translator.var('2. API key')
+        self.widgets[role]['key_title'] = key_title
+        ttk.Label(panel, textvariable=key_title, style='Card.TLabel').grid(sticky='w', pady=(0, 4))
+        key_badge = self.translator.var()
+        self.widgets[role]['key_badge'] = key_badge
+        badge = ttk.Label(panel, textvariable=key_badge, style='Card.TLabel')
+        badge.grid(sticky='w', pady=(0, 5))
+        self.widgets[role]['key_badge_label'] = badge
         key_row = ttk.Frame(panel, style='Card.TFrame')
         key_row.grid(sticky='ew')
         key_row.columnconfigure(0, weight=1)
         fields['key'] = ttk.Entry(key_row, textvariable=self.typed_keys[role], show='•')
         fields['key'].grid(row=0, column=0, sticky='ew')
+        hint = ttk.Label(key_row, text='Saved key will be used', style='Hint.TLabel')
+        self.widgets[role]['key_hint'] = hint
+        hint.grid(row=0, column=0, sticky='w', padx=(12, 0))
+        hint.bind('<Button-1>', lambda event: (hint.grid_remove(), fields['key'].focus_set()))
+        fields['key'].bind('<FocusIn>', lambda event: hint.grid_remove(), add='+')
+        fields['key'].bind('<FocusOut>', lambda event, role=role: self.render(role), add='+')
         ttk.Checkbutton(key_row, text='Show', variable=self.revealed[role],
                         command=lambda: fields['key'].configure(show='' if self.revealed[role].get() else '•')).grid(
                             row=0, column=1, padx=(12, 0))
         key_status = self.translator.var()
         self.widgets[role]['key_status'] = key_status
-        ttk.Label(panel, textvariable=key_status, style='Hint.TLabel').grid(sticky='w', pady=(3, 9))
+        ttk.Label(panel, textvariable=key_status, style='Hint.TLabel', wraplength=640).grid(sticky='w', pady=(3, 9))
+        connection_status = self.translator.var()
+        self.widgets[role]['connection_status'] = connection_status
+        ttk.Label(panel, textvariable=connection_status, style='Hint.TLabel', wraplength=640).grid(sticky='w', pady=(0, 9))
         ttk.Label(panel, text='3. Model', style='Card.TLabel').grid(sticky='w', pady=(0, 4))
         model_row = ttk.Frame(panel, style='Card.TFrame')
         model_row.grid(sticky='ew')
         model_row.columnconfigure(0, weight=1)
         fields['model'] = ttk.Combobox(model_row, textvariable=self.vars[role + '_model'])
         fields['model'].grid(row=0, column=0, sticky='ew')
-        ttk.Button(model_row, text='Get models', command=lambda: self.fetch(role)).grid(row=0, column=1, padx=(10, 0))
+        models_button = ttk.Button(model_row, text='Get models', command=lambda: self.fetch(role))
+        models_button.grid(row=0, column=1, padx=(10, 0))
+        self.widgets[role]['models_button'] = models_button
         ttk.Label(panel, text='Select a model or enter its exact ID at your service.',
                   style='Hint.TLabel').grid(sticky='w', pady=(3, 9))
         ttk.Checkbutton(panel, text='Advanced', variable=self.advanced[role],
@@ -305,7 +329,7 @@ class DesktopConfigurator:
         self.widgets[role]['advanced'] = advanced
         advanced.grid_remove()
         for widget in fields.values():
-            widget.bind('<FocusIn>', lambda event, role=role: self.ensure_visible(role, event.widget))
+            widget.bind('<FocusIn>', lambda event, role=role: self.ensure_visible(role, event.widget), add='+')
 
     def scroll_mouse(self, event):
         role = next((role for role, page in self.pages.items() if str(page) == self.notebook.select()), None)
@@ -362,6 +386,7 @@ class DesktopConfigurator:
         if self.loading:
             return
         self.generations[role] += 1
+        self.widgets[role]['connection_status'].set('')
         if not self.busy[role]:
             self.widgets[role]['activity'].set('')
         self.widgets[role]['fields']['model']['values'] = ()
@@ -371,6 +396,7 @@ class DesktopConfigurator:
         if (self.vars[other + '_source'].get() == 'api'
                 and self.vars[role + '_key_env'].get() == self.vars[other + '_key_env'].get()):
             self.generations[other] += 1
+            self.widgets[other]['connection_status'].set('')
             self.widgets[other]['fields']['model']['values'] = ()
         self.render(other)
         self.dirty.set('Unsaved changes' if self.snapshot() != self.saved else '')
@@ -381,15 +407,27 @@ class DesktopConfigurator:
             panel.grid() if name == source else panel.grid_remove()
         typed = self.typed_keys[role].get().strip()
         present = workflow.existing_key(self.vars[role + '_key_env'].get().strip())
+        self.widgets[role]['key_title'].set('2. Replace API key (optional)' if present and not typed else '2. API key')
+        self.widgets[role]['key_badge'].set('New key entered' if typed else '✓ Key found' if present else 'No saved key found')
+        self.widgets[role]['key_badge_label'].configure(foreground='#187047' if present and not typed else MUTED)
+        hint = self.widgets[role]['key_hint']
+        if present and not typed and self.window.focus_get() is not self.widgets[role]['fields']['key']:
+            hint.grid()
+        else:
+            hint.grid_remove()
         note = ('New key entered; it will be saved with the settings.' if typed else
                 'A key is already saved on this computer. Leave blank to keep it.' if present else
                 'Paste your service key. The key itself is not written to the project file.')
         self.widgets[role]['key_status'].set(note)
+        if present and not typed:
+            self.widgets[role]['key_status'].set('Available from {name}. No need to enter it again. Enter a new key only to replace it.',
+                                                name=self.vars[role + '_key_env'].get().strip())
         other = 'exec' if role == 'master_chief' else 'master_chief'
         if (not typed and not present and source == 'api' and self.vars[other + '_source'].get() == 'api'
                 and self.vars[role + '_key_env'].get() == self.vars[other + '_key_env'].get()
                 and self.typed_keys[other].get().strip()):
             self.widgets[role]['key_status'].set('A shared key has already been entered for the other role and will be used here too.')
+            self.widgets[role]['key_badge'].set('Shared key entered for the other role')
 
     def choose_openrouter(self, model_id, role):
         """Fill one role's draft only; never send or persist a key on a catalog click."""
@@ -461,7 +499,7 @@ class DesktopConfigurator:
             self.show_error(error)
             return
         generation = self.generations[role]
-        self.busy[role] = True
+        self.set_request_busy(role, True)
         self.widgets[role]['activity'].set('Fetching models… You can keep using this window.')
         self.status_label.configure(foreground=INK)
         self.status.set('{role}: {message}', role=i18n.text(workflow.ROLE_NAMES[role]),
@@ -476,6 +514,58 @@ class DesktopConfigurator:
 
         threading.Thread(target=work, daemon=True).start()
 
+    def set_request_busy(self, role, busy):
+        self.busy[role] = busy
+        for name in ('connection_button', 'models_button'):
+            self.widgets[role][name].state(['disabled'] if busy else ['!disabled'])
+
+    def check_connection(self, role):
+        if self.busy[role] or self.vars[role + '_source'].get() != 'api':
+            return
+        form = self.form()
+        typed = self.typed_keys[role].get()
+        other = 'exec' if role == 'master_chief' else 'master_chief'
+        if (not typed.strip() and form[other + '_source'] == 'api'
+                and form[role + '_key_env'] == form[other + '_key_env']):
+            typed = self.typed_keys[other].get()
+        try:
+            arguments = workflow.connection(form, role, typed)
+        except workflow.FormError as error:
+            self.widgets[role]['connection_status'].set(i18n.text(str(error)))
+            self.show_error(error)
+            return
+        generation = self.generations[role]
+        self.set_request_busy(role, True)
+        self.render(role)
+        self.widgets[role]['connection_status'].set('Checking connection… No generation requests are sent.')
+        self.status_label.configure(foreground=INK)
+        self.status.set('{role}: {message}', role=i18n.text(workflow.ROLE_NAMES[role]),
+                        message=i18n.text('Checking connection… No generation requests are sent.'))
+
+        def work():
+            try:
+                result, failed = api_connection.check(*arguments), ''
+            except Exception as error:
+                result, failed = {}, api_connection.error_message(error)
+            self.results.put(('connection', role, generation, result, failed))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def receive_connection(self, role, generation, result, failed):
+        self.set_request_busy(role, False)
+        activity = self.widgets[role]['connection_status']
+        if generation != self.generations[role]:
+            activity.set('Settings changed during the check. Check connection again.')
+        elif failed:
+            activity.set(failed)
+        elif result.get('authenticated') is True:
+            activity.set('Connected. OpenRouter accepted the key. Model generation and tools were not tested.')
+        else:
+            activity.set('API reachable: {count} models listed. This endpoint may be public; key acceptance and generation are not confirmed.',
+                         count=result.get('models', 0))
+        self.status_label.configure(foreground='#b42338' if failed else INK)
+        self.status.set('{role}: {message}', role=i18n.text(workflow.ROLE_NAMES[role]), message=activity.message)
+
     def poll(self):
         if self.closed:
             return
@@ -484,6 +574,8 @@ class DesktopConfigurator:
                 result = self.results.get_nowait()
                 if result[0] == 'models':
                     self.receive_models(*result[1:])
+                elif result[0] == 'connection':
+                    self.receive_connection(*result[1:])
                 elif result[0] == 'catalog':
                     self.catalog.receive(*result[1:])
                 else:
@@ -493,7 +585,7 @@ class DesktopConfigurator:
         self.poll_id = self.window.after(70, self.poll)
 
     def receive_models(self, role, generation, source, models, failed):
-        self.busy[role] = False
+        self.set_request_busy(role, False)
         activity = self.widgets[role]['activity']
         if generation != self.generations[role]:
             activity.set('Settings changed during the request. Fetch the list again.')

@@ -49,6 +49,89 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(self.ui.typed_keys['exec'].get(), 'secret-for-tests')
         self.assertEqual(panels['api'].winfo_manager(), 'grid')
 
+    def test_new_project_shows_existing_key_without_putting_it_in_entry(self):
+        self.ui.vars['exec_source'].set('api')
+        self.ui.vars['exec_key_env'].set('OPENROUTER_API_KEY')
+        with patch.object(desktop.workflow,'existing_key',return_value='private-registry-key'):
+            self.ui.render('exec')
+        widgets=self.ui.widgets['exec']
+        self.assertIn('Ключ найден',widgets['key_badge'].get())
+        self.assertIn('OPENROUTER_API_KEY',widgets['key_status'].get())
+        self.assertIn('Повторно вводить не нужно',widgets['key_status'].get())
+        self.assertIn('необязательно',widgets['key_title'].get())
+        self.assertEqual(widgets['key_hint'].winfo_manager(),'grid')
+        self.assertEqual(self.ui.typed_keys['exec'].get(),'')
+        self.assertNotIn('private-registry-key',widgets['key_status'].get())
+        self.assertFalse((self.root/'.opencode').exists())
+
+    def test_typed_replacement_hides_saved_placeholder_and_clear_restores_it(self):
+        self.ui.vars['exec_source'].set('api')
+        with patch.object(desktop.workflow,'existing_key',return_value='saved-private'):
+            self.ui.typed_keys['exec'].set('replacement-private')
+            self.assertEqual(self.ui.widgets['exec']['key_hint'].winfo_manager(),'')
+            self.assertIn('новый ключ',self.ui.widgets['exec']['key_badge'].get())
+            self.ui.typed_keys['exec'].set('')
+            self.assertEqual(self.ui.widgets['exec']['key_hint'].winfo_manager(),'grid')
+
+    def test_connection_check_uses_saved_key_without_model_or_saving(self):
+        self.ui.vars['exec_source'].set('api');self.ui.vars['exec_url'].set(openrouter.API_URL)
+        with patch.object(desktop.workflow,'existing_key',return_value='registry-private'), \
+             patch.object(desktop.api_connection,'check',return_value={'authenticated':True}) as check, \
+             patch.object(desktop.workflow,'save') as save:
+            self.ui.widgets['exec']['connection_button'].invoke()
+            self.pump_until(lambda:not self.ui.busy['exec'])
+            check.assert_called_once_with(openrouter.API_URL,'registry-private');save.assert_not_called()
+        self.assertIn('принял ключ',self.ui.widgets['exec']['connection_status'].get())
+        self.assertEqual(self.ui.vars['exec_model'].get(),'')
+        self.assertEqual(self.ui.typed_keys['exec'].get(),'')
+        self.assertNotIn('disabled',self.ui.widgets['exec']['connection_button'].state())
+
+    def test_connection_check_is_nonblocking_and_stale_result_is_rejected(self):
+        self.api();release,started=threading.Event(),threading.Event()
+        def slow(*args):started.set();release.wait(2);return {'authenticated':True}
+        try:
+            with patch.object(desktop.api_connection,'check',side_effect=slow) as check:
+                self.ui.check_connection('exec');self.assertTrue(started.wait(1))
+                self.ui.check_connection('exec');self.assertEqual(check.call_count,1)
+                self.assertIn('disabled',self.ui.widgets['exec']['connection_button'].state())
+                heartbeat=[];self.window.after(0,lambda:heartbeat.append(True));self.window.update();self.assertTrue(heartbeat)
+                self.ui.vars['exec_url'].set('https://new-api.example/v1')
+                release.set();self.pump_until(lambda:not self.ui.busy['exec'])
+            self.assertIn('изменились',self.ui.widgets['exec']['connection_status'].get())
+            self.assertNotIn('принял ключ',self.ui.widgets['exec']['connection_status'].get())
+        finally:release.set()
+
+    def test_connection_feedback_distinguishes_public_models_and_hides_errors(self):
+        self.api()
+        with patch.object(desktop.api_connection,'check',return_value={'authenticated':False,'models':12}):
+            self.ui.check_connection('exec');self.pump_until(lambda:not self.ui.busy['exec'])
+        self.assertIn('не подтверждены',self.ui.widgets['exec']['connection_status'].get())
+        with patch.object(desktop.api_connection,'check',side_effect=ValueError('secret-for-tests')):
+            self.ui.check_connection('exec');self.pump_until(lambda:not self.ui.busy['exec'])
+        self.assertNotIn('secret-for-tests',self.ui.widgets['exec']['connection_status'].get())
+
+    def test_connection_shared_draft_and_language_switch_keep_values(self):
+        for role in desktop.workflow.ROLES:
+            self.ui.vars[role+'_source'].set('api');self.ui.vars[role+'_url'].set(openrouter.API_URL)
+            self.ui.vars[role+'_key_env'].set('COMMON_KEY')
+        self.ui.typed_keys['exec'].set('shared-private')
+        with patch.object(desktop.api_connection,'check',return_value={'authenticated':True}) as check:
+            self.ui.check_connection('master_chief');self.pump_until(lambda:not self.ui.busy['master_chief'])
+        check.assert_called_once_with(openrouter.API_URL,'shared-private')
+        self.ui.translator.switch('en');self.ui.localize()
+        self.assertEqual(self.ui.widgets['exec']['connection_button'].cget('text'),'Check connection')
+        self.assertIn('accepted',self.ui.widgets['master_chief']['connection_status'].get())
+        self.assertEqual(self.ui.typed_keys['exec'].get(),'shared-private')
+
+    def test_connection_button_is_visible_in_small_window_without_scrolling(self):
+        self.window.deiconify();self.window.geometry('760x720')
+        self.ui.notebook.select(self.ui.pages['exec']);self.api()
+        self.ui.canvases['exec'].yview_moveto(0);self.window.update()
+        button=self.ui.widgets['exec']['connection_button'];canvas=self.ui.canvases['exec']
+        self.assertTrue(button.winfo_ismapped())
+        self.assertGreaterEqual(button.winfo_rooty(),canvas.winfo_rooty())
+        self.assertLessEqual(button.winfo_rooty()+button.winfo_height(),canvas.winfo_rooty()+canvas.winfo_height())
+
     def test_save_reopen_manual_model_and_key_is_cleared_from_entry(self):
         self.api()
         with patch.object(desktop.workflow.keys, 'save_user_variable') as save:

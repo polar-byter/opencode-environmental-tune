@@ -9,6 +9,21 @@ PREFERENCES = Path('.metrics') / '.configurator-ui.json'
 LANGUAGES = {'English': 'en', 'Russian': 'ru'}
 
 RU = {
+    '2. Replace API key (optional)': '2. Заменить API-ключ (необязательно)',
+    'New key entered': 'Введён новый ключ',
+    '✓ Key found': '✓ Ключ найден',
+    'No saved key found': 'Сохранённого ключа нет',
+    'Shared key entered for the other role': 'Общий ключ введён для другой роли',
+    'Saved key will be used': 'Будет использован сохранённый ключ',
+    'Available from {name}. No need to enter it again. Enter a new key only to replace it.': 'Доступен из {name}. Повторно вводить не нужно. Введите новый ключ только для замены.',
+    'Check connection': 'Проверить связь',
+    'Checking connection… No generation requests are sent.': 'Проверяем связь… Запросы генерации не отправляются.',
+    'Settings changed during the check. Check connection again.': 'Настройки изменились во время проверки. Проверьте связь ещё раз.',
+    'Connected. OpenRouter accepted the key. Model generation and tools were not tested.': 'Связь установлена. OpenRouter принял ключ. Генерация модели и инструменты не проверялись.',
+    'API reachable: {count} models listed. This endpoint may be public; key acceptance and generation are not confirmed.': 'API доступен, моделей в списке: {count}. Этот адрес может быть публичным; принятие ключа и генерация не подтверждены.',
+    'Connection check endpoint not found. Check the API base URL.': 'Адрес проверки связи не найден. Проверьте базовый адрес API.',
+    'Connection check failed. The service returned an error; try again later.': 'Проверка связи не удалась: сервис вернул ошибку. Повторите позже.',
+    'The service returned an unreadable connection-check response.': 'Сервис вернул непонятный ответ на проверку связи.',
     'Choose a role and connection type.': 'Выберите роль и способ подключения.',
     'Project models — OpenCode Kit': 'Модели проекта — OpenCode Kit',
     'Project models': 'Модели проекта',
