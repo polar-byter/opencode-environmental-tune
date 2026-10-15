@@ -89,12 +89,6 @@ def check_config() -> bool:
 
 
 
-def http_get_json(url: str):
-    req = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
 def http_post_json(url: str, payload: dict, timeout: float = 180):
     body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
