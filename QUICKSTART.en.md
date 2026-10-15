@@ -3,6 +3,13 @@
 > A from-scratch guide: how to plug this kit into your project and start working in OpenCode.
 > Русская версия: [QUICKSTART.ru.md](QUICKSTART.ru.md)
 
+For an installed OpenCode Desktop, see the [Desktop workflow](DESKTOP_EXPERIMENT.ru.md).
+This guide uses Java and LM Studio as an initial setup example. Executors can also
+use OpenCode models or an own API; see [model settings](kit/configurator/UX.ru.md).
+You can give requirements in chat or use TASK.md. The dashboard provides pause,
+resume, cancel and delete controls. API settings show existing keys and provide
+an explicit connection check. See the [animated guides](readme_gif/README.md).
+
 ---
 
 ## 1. What this is
@@ -19,8 +26,8 @@ you:  Build a task-list API. Show me the plan first.
 Master Chief: proposes a plan and explains the module order
 you:  The plan looks good. Implement the whole plan.
 Master Chief: skeleton + specs + tests (tests are red for now — that is normal)
-       └─ delegates to the executor, one method at a time
-executor: fills in the body per spec
+       └─ delegates a small complete class or cohesive source file
+executor: fills in the bodies per spec
 Master Chief: reviews code and tests → marks the module done → starts the next module
        at the end — results and statistics for the whole task
 ```
