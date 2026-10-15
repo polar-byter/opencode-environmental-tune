@@ -92,7 +92,7 @@ def dash_state(s, p):
     if s == 4:
         st['impl'] = min(3, int(seg(p, 0.15, 0.95) * 3.999))
         names = ['add', 'add', 'total_for_week', 'remaining']
-        st['now'] = 'исполнитель · ExpenseService · ' + names[min(3, int(seg(p, 0.1, 0.95) * 3.999))]
+        st['now'] = tr('исполнитель · ExpenseService · ') + names[min(3, int(seg(p, 0.1, 0.95) * 3.999))]
     if s >= 5:
         st['impl'] = 3
         st['now'] = 'Мастер Чиф · ревью ExpenseService'
@@ -130,7 +130,7 @@ def draw_dash(c, s, p):
         c.glow(x, y, w, h, CYAN, 0.6)
     c.rr(x, y, w, h, PANEL, CYAN if active else BORDER, 2, 12)
     c.t(x + 16, y + 10, 'Дашборд', 16, 'b', CYAN, bg=PANEL)
-    c.t(x + 100, y + 12, '127.0.0.1 · expenses-20261015 · обновление каждые 2 с', 13, 'r', MUTED, bg=PANEL)
+    c.t(x + 30 + c.tlen('Дашборд', 16, 'b'), y + 12, '127.0.0.1 · expenses-20261015 · обновление каждые 2 с', 13, 'r', MUTED, bg=PANEL)
     sw = c.tlen(st['status'], 13, 's') + 20
     c.rr(x + w - sw - 16, y + 9, sw, 24, mix(st['scol'], 0.25, PANEL), st['scol'], 1, 12, bg=PANEL)
     c.t(x + w - 16 - sw / 2, y + 21, st['status'], 13, 's', st['scol'], anchor='mm',
@@ -149,7 +149,7 @@ def draw_dash(c, s, p):
     c.rr(fx, y + 42, fw, 56, PANEL2, None, 0, 8, bg=PANEL)
     c.t(fx + 12, y + 48, 'Функции: заявлено / принято', 12, 'r', MUTED, bg=PANEL2)
     if st['total']:
-        c.t(fx + fw - 12, y + 48, f"{st['impl']} / {st['accd']} из {st['total']}", 12, 's', TEXT,
+        c.t(fx + fw - 12, y + 48, tr("{a} / {b} из {c}").format(a=st['impl'], b=st['accd'], c=st['total']), 12, 's', TEXT,
             anchor='ra', bg=PANEL2)
         c.bar(fx + 12, y + 74, fw - 24, 12, st['accd'] / 3, GREEN, 1, PANEL2, st['impl'] / 3, mix(BLUE, 0.6, PANEL2))
     else:
@@ -174,7 +174,7 @@ def draw(c, s, p):
         a = appear(s, 1, p)
         if s < 6:
             card(c, LC, 'GameService…  →  ExpenseService-requirements.json'[0:0] + 'requirements.json',
-                 [('[', MUTED, 13)] + [('  "' + r + '",', YELLOW, 13) for r in REQS] + [(']', MUTED, 13)],
+                 [('[', MUTED, 13)] + [('  "' + tr(r) + '",', YELLOW, 13) for r in REQS] + [(']', MUTED, 13)],
                  a, YELLOW, active=s == 1,
                  reveal=(lambda i: seg(p, 0.1 + i * 0.12, 0.25 + i * 0.12)) if s == 1 else None)
         else:
@@ -187,11 +187,11 @@ def draw(c, s, p):
                 title, acc = ('checks.json — все verified', GREEN) if ok else ('checks.json — ревью', RED)
             lines = []
             for (m, col), r in zip(marks, REQS):
-                lines.append((m + '  ' + r, col, 14))
+                lines.append((m + '  ' + tr(r), col, 14))
                 if col == RED:
                     lines.append(('     код: нет проверки category', MUTED, 13))
                 else:
-                    lines.append(('     код: add() · тест: test_' + ('amount' if 'amount' in r else 'id'), MUTED, 13))
+                    lines.append((tr('     код: add() · тест: test_') + ('amount' if 'amount' in r else 'id'), MUTED, 13))
             lines = lines[:6]
             card(c, LC, title, lines, 1, acc, active=s in (6, 8),
                  reveal=(lambda i: seg(p, 0.2 + i * 0.1, 0.3 + i * 0.1)) if s == 6 else None)

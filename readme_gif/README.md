@@ -1,36 +1,33 @@
-# Поясняющие GIF для README
+# Поясняющие GIF / Explainer GIFs
 
-| Файл | О чём | Длительность |
-| --- | --- | --- |
-| [01_master_chief_planning.gif](01_master_chief_planning.gif) | Как Мастер Чиф читает TASK.md / AGENTS.md / currentsteps.md / README, принимает решения, пишет каркас и красные тесты | ~60 с |
-| [02_delegation_review_dashboard.gif](02_delegation_review_dashboard.gif) | requirements → delegate → исполнитель → inspect → ревью и возврат → accepted; лимиты STOP; что видно в дашборде; finish и отчёт | ~61 с |
-| [03_project_setup.gif](03_project_setup.gif) | Кит в новом проекте, разделы `# EDIT` и `check`, источники моделей, конфигуратор (OpenCode-модель, свой API), сохранение и подготовка, два способа поставить задачу | ~57 с |
-| [04_lmstudio_openrouter.gif](04_lmstudio_openrouter.gif) | LM Studio: загруженный экземпляр, выбор, надстройка, check_env; OpenRouter: каталог, фильтры, подстановка `:free`, ключ, `/connect`; группы токенов | ~66 с |
-| [05_dashboard_controls.gif](05_dashboard_controls.gif) | Вкладки дашборда, «Сейчас в работе», настройки моделей, пауза / продолжение / остановка / удаление, итог после finish | ~72 с |
+Русские схемы лежат в этой папке, английские — в [`en/`](en/). Имена файлов совпадают.
+Russian diagrams live here, English ones in [`en/`](en/). File names match.
 
-Размер кадра 1200×675, GIF зациклены. Данные в таблицах и счётчиках — примеры. Все пять GIF подключены к основному
-[README проекта](../README.md) в раскрывающихся разделах «Как пользоваться».
-Актуальные поля ключа и проверка связи описаны в
-[руководстве конфигуратора](../kit/configurator/UX.ru.md).
+| Файл / File | О чём | What it shows | ~ |
+| --- | --- | --- | --- |
+| `01_master_chief_planning.gif` | Мастер Чиф читает TASK.md, AGENTS.md, currentsteps.md, README; решения, каркас, красные тесты | The Master Chief reads TASK.md, AGENTS.md, currentsteps.md, README; decisions, skeleton, red tests | 60 s |
+| `02_delegation_review_dashboard.gif` | требования → delegate → исполнитель → inspect → ревью и возврат → accepted; STOP; дашборд; finish | requirements → delegate → executor → inspect → review and rework → accepted; STOP; dashboard; finish | 61 s |
+| `03_project_setup.gif` | кит в проекте, `# EDIT` и `check`, источники моделей, конфигуратор, «Проверить связь», сохранение, два способа поставить задачу | kit in the project, `# EDIT` and `check`, model sources, configurator, Check connection, saving, two ways to give a task | 60 s |
+| `04_lmstudio_openrouter.gif` | LM Studio: загруженная модель, выбор, надстройка; OpenRouter: каталог, фильтры, `:free`, «Ключ найден», `/connect`; группы токенов | LM Studio: loaded model, selection, overlay; OpenRouter: catalog, filters, `:free`, Key found, `/connect`; token groups | 67 s |
+| `05_dashboard_controls.gif` | вкладки, «Сейчас в работе», настройки, пауза / продолжение / остановка / удаление, итог | tabs, Working now, settings, pause / resume / stop / delete, summary | 72 s |
 
-## Вставка в README
+Кадр 1200×675, GIF зациклены, данные — примеры. Подключены в
+[README.md](../README.md), [README.en.md](../README.en.md),
+[QUICKSTART.ru.md](../QUICKSTART.ru.md) и [QUICKSTART.en.md](../QUICKSTART.en.md).
+Страница дашборда сейчас только на русском; в английских схемах её подписи переведены.
 
-```markdown
-![Как Мастер Чиф планирует](readme_gif/01_master_chief_planning.gif)
-![Передача исполнителю, ревью и дашборд](readme_gif/02_delegation_review_dashboard.gif)
-![Настройка проекта под новую задачу](readme_gif/03_project_setup.gif)
-![LM Studio и OpenRouter](readme_gif/04_lmstudio_openrouter.gif)
-![Управление дашбордом](readme_gif/05_dashboard_controls.gif)
-```
-
-## Пересборка
+## Пересборка / Rebuild
 
 Нужны Python и Pillow; шрифты Segoe UI / Consolas берутся из Windows.
 
 ```powershell
 cd readme_gif/source
-py gif1_planning.py; py gif2_delegation.py; py gif3_setup.py; py gif4_models.py; py gif5_dashboard.py
+foreach ($f in 'gif1_planning','gif2_delegation','gif3_setup','gif4_models','gif5_dashboard') {
+  py "$f.py"; $env:GIF_LANG = 'en'; py "$f.py"; Remove-Item Env:GIF_LANG
+}
 ```
 
-`gifkit.py` — общие примитивы (карточки, стрелки, подписи шагов, сборка GIF с общей палитрой).
-Текст каждого шага задаётся в списке `STEPS` соответствующего скрипта.
+- `gifkit.py` — общие примитивы и сборка GIF; при `GIF_LANG=en` строки переводятся
+  через `i18n_en.py`, а файлы пишутся в `en/`.
+- Текст шагов задаётся в `STEPS` каждого скрипта; новые русские строки добавь
+  в `i18n_en.py`. `py collect.py` перечисляет строки без перевода (должно быть 0).

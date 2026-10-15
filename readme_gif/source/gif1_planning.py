@@ -72,6 +72,7 @@ def draw(c, s, p):
         c.rr(bx, by, bw, bh, PANEL2, GREEN if s == 1 else BORDER, 2, 14, a)
         c.t(bx + 14, by + 10, 'Пользователь', 14, 's', GREEN, a, bg=PANEL2)
         msg = '«Добавь учёт расходов: сумма, категория, дата. Отрицательную сумму не принимать.»'
+        msg = tr(msg)
         n = len(msg) if s > 1 else int(len(msg) * seg(p, 0.1, 0.75))
         c.para(bx + 14, by + 32, msg[:n], bw - 28, 14, 'r', TEXT, a, lh=1.3, bg=PANEL2)
         if s >= 1:

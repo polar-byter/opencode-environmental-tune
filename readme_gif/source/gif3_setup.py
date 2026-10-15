@@ -10,8 +10,8 @@ STEPS = [
              'или любой OpenAI-совместимый API.', T=18, hold=4400),
     dict(cap='Конфигуратор (кнопка «Настройки моделей» в дашборде). Мастер Чиф → «Модель из OpenCode»: '
              'подключения, уже известные OpenCode через /connect.', T=22, hold=4200),
-    dict(cap='Исполнители → «Свой API»: адрес …/v1, ключ, модель. «Получить модели» проверяет '
-             'только /models — без генерации и инструментов.', T=40, hold=4400),
+    dict(cap='Исполнители → «Свой API»: адрес …/v1, ключ, модель. «Проверить связь» и «Получить '
+             'модели» ничего не генерируют и не сохраняют.', T=48, hold=4600),
     dict(cap='«Сохранить настройки» → .opencode/kit-models.json для этой папки. Сам ключ — '
              'в переменной пользователя Windows, не в файле проекта.', T=24, hold=4400),
     dict(cap='«Подготовить OpenCode» собирает надстройку .opencode/opencode.jsonc. Текущая сессия '
@@ -204,33 +204,38 @@ def scene_mc(c, s, p):
 def scene_exec(c, s, p):
     fy, by = config_window(c, 1, 3)
     url = 'https://api.example.com/v1'
-    field(c, 60, fy, 636, '1. Адрес API', url[:int(len(url) * seg(p, 0.05, 0.3))], active=p < 0.32)
-    field(c, 60, fy + 64, 636, '2. API-ключ', '•' * int(24 * seg(p, 0.32, 0.45)),
-          active=0.32 <= p < 0.47)
-    model = 'coder-model-large' if p > 0.85 else ''
-    field(c, 60, fy + 128, 470, '3. Модель', model, active=p >= 0.5)
-    c.button(546, fy + 148, 150, 32, 'Получить модели', BLUE, 1, size=13, active=0.5 <= p < 0.75)
-    if 0.6 < p < 0.88:
-        a = seg(p, 0.6, 0.66)
+    field(c, 60, fy, 470, '1. Адрес API', url[:int(len(url) * seg(p, 0.05, 0.25))], active=p < 0.27)
+    c.button(546, fy + 20, 150, 32, 'Проверить связь', GREEN, 1, size=13, active=0.42 <= p < 0.56)
+    field(c, 60, fy + 64, 636, '2. API-ключ', '•' * int(24 * seg(p, 0.27, 0.4)),
+          active=0.27 <= p < 0.42)
+    model = 'coder-model-large' if p > 0.9 else ''
+    field(c, 60, fy + 128, 470, '3. Модель', model, active=p >= 0.58)
+    c.button(546, fy + 148, 150, 32, 'Получить модели', BLUE, 1, size=13, active=0.58 <= p < 0.8)
+    if 0.66 < p < 0.92:
+        a = seg(p, 0.66, 0.7)
         c.rr(60, fy + 182, 470, 96, PANEL2, BLUE, 2, 6, a, bg=PANEL)
         for i, m in enumerate(['coder-model-small', 'coder-model-large', 'general-model']):
-            hl = i == 1 and p > 0.76
-            if hl:
+            if i == 1 and p > 0.8:
                 c.rr(64, fy + 186 + i * 30, 462, 28, mix(BLUE, 0.35, PANEL2), None, 0, 4, a, bg=PANEL2)
             c.t(76, fy + 200 + i * 30, m, 14, 'm', TEXT, a, anchor='lm', bg=PANEL2)
-    if p > 0.88:
-        c.t(60, fy + 196, 'Получено моделей: 3. Проверен только /models;', 14, 'r', GREEN, bg=PANEL)
-        c.t(60, fy + 216, 'генерация и инструменты не проверялись.', 14, 'r', GREEN, bg=PANEL)
-    cx = 620 if p < 0.5 else 620 - 300 * seg(p, 0.75, 0.8)
-    cy = fy + 164 if p < 0.76 else fy + 164 + 60 * seg(p, 0.76, 0.8)
-    c.cursor((cx, cy), seg(p, 0.45, 0.5) * (1 - seg(p, 0.88, 0.92)),
-             click=seg(p, 0.55, 0.62) if p < 0.7 else seg(p, 0.8, 0.86))
+    if p > 0.92:
+        c.t(60, fy + 196, 'Получено моделей: 3. Выбери модель из списка.', 14, 'r', GREEN, bg=PANEL)
+    if p < 0.58:
+        cx, cy = 620, fy + 36
+    elif p < 0.8:
+        cx, cy = 620, fy + 36 + 128 * seg(p, 0.56, 0.6)
+    else:
+        cx, cy = 620 - 300 * seg(p, 0.78, 0.82), fy + 164 + 60 * seg(p, 0.78, 0.82)
+    click = seg(p, 0.44, 0.52) if p < 0.56 else (seg(p, 0.6, 0.66) if p < 0.8 else seg(p, 0.83, 0.88))
+    c.cursor((cx, cy), seg(p, 0.38, 0.42) * (1 - seg(p, 0.92, 0.95)), click=click)
     bottom_buttons(c, by)
     side_note(c, 'Исполнители', [
         ('Адрес — базовый, без /chat/completions и /models.', seg(p, 0.1, 0.25)),
-        ('Ключ скрыт маской; пустое поле сохраняет уже записанный ключ. Имя переменной — '
-         'в «Дополнительно».', seg(p, 0.35, 0.5)),
-        ('Если сервис не отдаёт /models, имя модели вводится вручную.', seg(p, 0.6, 0.8)),
+        ('Ключ скрыт маской. Если он уже сохранён, окно пишет «Ключ найден» — вводить заново не нужно.',
+         seg(p, 0.3, 0.42)),
+        ('«Проверить связь»: API доступен. Генерация не запускается, ничего не сохраняется.',
+         seg(p, 0.5, 0.58)),
+        ('«Получить модели» заполняет список; имя можно ввести и вручную.', seg(p, 0.7, 0.85)),
     ], ORANGE)
 
 
@@ -282,6 +287,7 @@ def scene_two_ways(c, s, p):
     a = seg(p, 0.0, 0.15)
     c.rr(ax, ay, aw, ah, PANEL2, GREEN, 2, 14, a)
     msg = '«Добавь учёт расходов: сумма, категория и дата. Отрицательную сумму принимать нельзя. Сначала покажи план.»'
+    msg = tr(msg)
     c.para(ax + 18, ay + 16, msg[:int(len(msg) * seg(p, 0.05, 0.45))], aw - 36, 16, 'r', TEXT, a, bg=PANEL2)
     # lane B
     c.t(40, 310, 'Способ Б · TASK.md + «Начинай»', 17, 'b', YELLOW)

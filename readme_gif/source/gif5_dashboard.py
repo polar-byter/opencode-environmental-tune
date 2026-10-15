@@ -95,7 +95,7 @@ def now_block(c, s, p, hl=False):
     if hl:
         c.glow(x, y, w, h, col)
     c.rr(x, y, w, h, PANEL2, col if hl else BORDER, 2, 10, bg=PANEL)
-    title = 'Сейчас в работе' + (' · пауза' if paused else '')
+    title = tr('Сейчас в работе') + (tr(' · пауза') if paused else '')
     c.t(x + 16, y + 10, title, 15, 's', col, bg=PANEL2)
     k = seg(p, 0.1, 0.9) if s == 2 else 1.0
     func = ['add', 'total_for_week', 'remaining'][min(2, int(k * 2.99))] if s == 2 else 'total_for_week'

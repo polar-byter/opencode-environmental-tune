@@ -1,5 +1,26 @@
 """Small drawing toolkit for the README explainer GIFs (Pillow only)."""
+import os
+import re
 from PIL import Image, ImageDraw, ImageFont
+
+LANG = os.environ.get('GIF_LANG', 'ru')
+_CYR = re.compile('[А-Яа-яЁё]')
+MISSES = set()
+try:
+    from i18n_en import EN as _EN
+except ImportError:
+    _EN = {}
+
+
+def tr(s):
+    """Translate a Russian UI string when rendering the English GIF set."""
+    if LANG == 'ru' or not s:
+        return s
+    if s in _EN:
+        return _EN[s]
+    if _CYR.search(s):
+        MISSES.add(s)
+    return s
 
 W, H = 1200, 675
 
@@ -96,6 +117,7 @@ class Cv:
     def t(self, x, y, s, size=18, w='r', fill=TEXT, a=1.0, anchor='la', bg=BG):
         if a <= 0 or not s:
             return
+        s = tr(s)
         col = mix(fill, a, bg)
         if not any(ch in SYMBOLS for ch in s):
             self.d.text((x, y), s, font=F(size, w), fill=col, anchor=anchor)
@@ -112,16 +134,20 @@ class Cv:
             x += self.d.textlength(text, font=font)
 
     def tlen(self, s, size=18, w='r'):
+        return self._tlen(tr(s), size, w)
+
+    def _tlen(self, s, size=18, w='r'):
         return sum(self.d.textlength(t, font=F(size, 'sym') if sym else F(size, w))
                    for t, sym in _runs(s))
 
     def wrap(self, s, size, w, maxw):
+        s = tr(s)
         lines = []
         for para in s.split('\n'):
             cur = ''
             for word in para.split(' '):
                 cand = (cur + ' ' + word).strip()
-                if self.tlen(cand, size, w) <= maxw or not cur:
+                if self._tlen(cand, size, w) <= maxw or not cur:
                     cur = cand
                 else:
                     lines.append(cur)
@@ -321,7 +347,8 @@ def chrome(c, num, title, s, steps, p):
         c.d.ellipse([cx - r, 30 - r, cx + r, 30 + r], fill=col)
     c.d.line([(30, 62), (W - 30, 62)], fill=BORDER, width=1)
 
-    cap = steps[s]['cap']
+    cap = tr(steps[s]['cap'])
+    num, title = tr(num), tr(title)
     a = seg(p, 0.0, 0.35)
     y0 = H - 88
     c.rr(20, y0, W - 40, 72, (17, 23, 31), BORDER, 1, 12)
@@ -340,6 +367,9 @@ def chrome(c, num, title, s, steps, p):
 
 def build(path, steps, draw, num, title, fps_ms=70):
     """Render all steps into an optimized looping GIF."""
+    if LANG != 'ru':
+        path = os.path.join(os.path.dirname(path), LANG, os.path.basename(path))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
     frames, durations = [], []
     for s, st in enumerate(steps):
         n = st.get('T', 8)

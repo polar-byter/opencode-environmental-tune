@@ -18,8 +18,8 @@ STEPS = [
              'Таблица ниже — условные данные для примера.', T=24, hold=4400),
     dict(cap='Выбери роль в «Подставить в:» и щёлкни строку: роль получает «Свой API», адрес '
              'https://openrouter.ai/api/v1 и точный ID модели с окончанием :free.', T=26, hold=4600),
-    dict(cap='«К настройкам роли»: один ключ OPENROUTER_API_KEY можно использовать для обеих ролей. '
-             'Затем «Сохранить настройки» и «Подготовить OpenCode».', T=24, hold=4400),
+    dict(cap='«К настройкам роли»: сохранённый ключ OPENROUTER_API_KEY виден как «Ключ найден». '
+             '«Проверить связь» → OpenRouter принял ключ. Затем сохранить и подготовить.', T=30, hold=4800),
     dict(cap='Другой путь: подключить OpenRouter в OpenCode через /connect и выбрать '
              '«Модель из OpenCode», например openrouter/…:free. LM Studio тогда не опрашивается.',
          T=18, hold=4400),
@@ -170,13 +170,13 @@ def catalog(c, x, y, w, h, s, p, filt=0.0, pick=0.0, assign_hl=False):
     for lab, on in fl:
         fw = c.tlen(lab, 13, 's') + 34
         c.rr(fx, fy, fw, 28, mix(PURPLE, 0.3, PANEL) if on else PANEL2, PURPLE if on else BORDER, 2, 14, bg=PANEL)
-        c.t(fx + 12, fy + 14, ('✓ ' if on else '') + lab, 13, 's', TEXT if on else MUTED, anchor='lm',
+        c.t(fx + 12, fy + 14, ('✓ ' if on else '') + tr(lab), 13, 's', TEXT if on else MUTED, anchor='lm',
             bg=mix(PURPLE, 0.3, PANEL) if on else PANEL2)
         fx += fw + 8
     c.t(x + w - 16, fy + 14, 'Подставить в:', 13, 'r', MUTED, anchor='rm', bg=PANEL)
     c.rr(x + w - 220, fy + 34, 204, 28, mix(ORANGE, 0.3, PANEL) if assign_hl else PANEL2,
          ORANGE if assign_hl else BORDER, 2, 6, bg=PANEL)
-    c.t(x + w - 208, fy + 48, 'Исполнители  ▾'.replace('▾', 'v'), 13, 's', TEXT, anchor='lm', bg=PANEL2)
+    c.t(x + w - 208, fy + 48, tr('Исполнители  ▾').replace('▾', 'v'), 13, 's', TEXT, anchor='lm', bg=PANEL2)
     hy = fy + 72
     cols = [(x + 20, 'Модель · API ID'), (x + 330, 'Контекст'), (x + 420, 'Инструменты'),
             (x + 530, 'Вход $/1M'), (x + 620, 'Выход $/1M')]
@@ -250,24 +250,37 @@ def scene_pick(c, s, p):
 
 def scene_key(c, s, p):
     top = c.window(40, 120, 720, 458, 'Модели проекта — OpenCode Kit · Исполнители', 1)
-    fields = [('1. Адрес API', 'https://openrouter.ai/api/v1'), ('2. API-ключ', '•' * int(26 * seg(p, 0.1, 0.35))),
-              ('3. Модель', 'vendor-e/agent-coder:free')]
-    for i, (lab, val) in enumerate(fields):
-        y = top + 10 + i * 70
-        c.t(60, y, lab, 13, 's', MUTED, bg=PANEL)
-        c.rr(60, y + 20, 636, 34, PANEL2, BLUE if i == 1 and p < 0.4 else BORDER, 2, 6, bg=PANEL)
-        c.t(72, y + 37, val, 14, 'm', TEXT, anchor='lm', bg=PANEL2)
-    c.t(60, top + 222, 'Дополнительно → Переменная ключа: OPENROUTER_API_KEY', 14, 'm', YELLOW, seg(p, 0.35, 0.5), bg=PANEL)
-    c.t(60, top + 250, 'Общий ключ уже введён для другой роли; будет использован и здесь.', 14, 'r', GREEN,
-        seg(p, 0.45, 0.6), bg=PANEL)
+    c.t(60, top + 10, '1. Адрес API', 13, 's', MUTED, bg=PANEL)
+    c.rr(60, top + 30, 470, 34, PANEL2, BORDER, 2, 6, bg=PANEL)
+    c.t(72, top + 47, 'https://openrouter.ai/api/v1', 14, 'm', TEXT, anchor='lm', bg=PANEL2)
+    c.button(546, top + 30, 150, 34, 'Проверить связь', GREEN, 1, size=13, active=0.3 < p < 0.5)
+    c.t(60, top + 80, '✓ Ключ найден', 14, 's', GREEN, bg=PANEL)
+    c.t(74 + c.tlen('✓ Ключ найден', 14, 's'), top + 81, 'OPENROUTER_API_KEY · повторно вводить не нужно', 13, 'm', MUTED, bg=PANEL)
+    c.t(60, top + 106, '2. Заменить API-ключ (необязательно)', 13, 's', MUTED, bg=PANEL)
+    c.rr(60, top + 126, 636, 34, PANEL2, BORDER, 2, 6, bg=PANEL)
+    c.t(72, top + 143, 'будет использован сохранённый ключ', 14, 'r', DIM, anchor='lm', bg=PANEL2)
+    c.t(60, top + 176, '3. Модель', 13, 's', MUTED, bg=PANEL)
+    c.rr(60, top + 196, 470, 34, PANEL2, BORDER, 2, 6, bg=PANEL)
+    c.t(72, top + 213, 'vendor-e/agent-coder:free', 14, 'm', TEXT, anchor='lm', bg=PANEL2)
+    a = seg(p, 0.45, 0.55)
+    c.t(60, top + 250, 'Связь установлена. OpenRouter принял ключ.', 14, 's', GREEN, a, bg=PANEL)
+    c.t(60, top + 272, 'Генерация модели и инструменты не проверялись.', 14, 'r', MUTED, a, bg=PANEL)
     by = 120 + 458 - 52
     c.button(56, by, 190, 34, 'Сохранить настройки', BLUE, 1, True, active=0.6 < p < 0.75, size=14)
     c.button(258, by, 200, 34, 'Подготовить OpenCode', BLUE, 1, active=p > 0.78, size=14)
-    cx = 150 if p < 0.76 else 150 + 208 * seg(p, 0.76, 0.8)
-    c.cursor((cx, by + 18), seg(p, 0.55, 0.6), click=seg(p, 0.62, 0.72) if p < 0.76 else seg(p, 0.82, 0.92))
+    if p < 0.55:
+        cx, cy = 620, top + 47
+    elif p < 0.76:
+        cx, cy = 620 - 470 * seg(p, 0.55, 0.6), top + 47 + (by + 18 - top - 47) * seg(p, 0.55, 0.6)
+    else:
+        cx, cy = 150 + 208 * seg(p, 0.76, 0.8), by + 18
+    click = seg(p, 0.33, 0.45) if p < 0.55 else (seg(p, 0.62, 0.72) if p < 0.76 else seg(p, 0.82, 0.92))
+    c.cursor((cx, cy), seg(p, 0.2, 0.3), click=click)
     c.node(800, 120, 360, 130, 'Ключ — в Windows', 'переменная пользователя; в kit-models.json только её имя',
-           YELLOW, seg(p, 0.35, 0.5), tsize=16, ssize=13)
-    c.node(800, 266, 360, 130, 'Новый ключ?', 'полностью перезапусти Desktop, чтобы он увидел новое окружение',
+           YELLOW, seg(p, 0.05, 0.2), tsize=16, ssize=13)
+    c.node(800, 266, 360, 130, 'Один ключ на две роли', 'OPENROUTER_API_KEY подходит и Мастер Чифу, и исполнителям',
+           GREEN, seg(p, 0.2, 0.35), tsize=16, ssize=13)
+    c.node(800, 412, 360, 130, 'Новый ключ?', 'полностью перезапусти Desktop, чтобы он увидел новое окружение',
            ORANGE, seg(p, 0.85, 1), tsize=16, ssize=13)
 
 
