@@ -1,4 +1,4 @@
-"""Read-only operational dashboard for a project's registered metrics tasks."""
+"""Operational task viewer with authenticated, project-scoped user controls."""
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,8 @@ from . import journal
 from . import tracking, observations, delivery
 from .launcher import SERVICE, VERSION, project_id, read_state, runtime_folder, write_state
 from ..task_metrics import TaskMetrics
+from .. import task_control_state
+from .controls import TaskControls
 
 PAGE = Path(__file__).resolve().parent / 'static' / 'runtime.html'
 
@@ -37,29 +39,56 @@ def task_view(root: Path, task: str, reader=None) -> dict:
     events = journal.read_events(task_directory(root, task) / 'events.jsonl')
     result = journal.brief_summary(events)
     result.update(task=task, started_at=events[0]['at'], session=events[0].get('session'))
+    try:
+        control = task_control_state.read_state(root, task)
+        result['control'] = control
+        if control.get('status') and control['status'] != 'running':
+            result['status'] = control['status']
+    except (OSError, ValueError):
+        result['control'] = {'status': 'error', 'error': 'Не удалось прочитать состояние управления задачей'}
+        result['status'] = 'error'
     result['activity'] = [
         {key: event[key] for key in ('kind', 'at', 'work_item', 'result', 'scope', 'status', 'reason')
          if key in event}
         for event in events[-30:]
     ]
     if reader is not None:
-        live = reader.view(root, events)
+        try:
+            live = reader.view(root, events)
+        except (OSError, ValueError, TypeError, KeyError):
+            live = {'available': False, 'reason': 'Сведения сессии временно недоступны'}
         try:
             result['tokens'] = observations.token_view(events, live)
         except (ValueError, TypeError):
             result['tokens'] = {'available': False, 'reason': 'Не удалось прочитать детализацию токенов'}
-        result['completion'] = delivery.completion(root, task, events)
+        work = {'items': [], 'progress': {'available': False}, 'sessions': live,
+                'configured_models': {}, 'architecture': None, 'errors': []}
+        sources = (
+            ('items', lambda: tracking.work_items(events), 'Не удалось прочитать задания'),
+            ('architecture', lambda: tracking.architecture(root, task), 'Не удалось прочитать архитектуру'),
+            ('progress', lambda: tracking.function_progress(root, task, events), 'Не удалось прочитать реестр функций'),
+            ('configured_models', lambda: observations.display_models(root), 'Не удалось прочитать настройки моделей'),
+        )
+        for field, read, error in sources:
+            try:
+                work[field] = read()
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                work['errors'].append(error)
+        if work['architecture']:
+            work['architecture'] = {key: value for key, value in work['architecture'].items() if key != 'text'}
         try:
-            items = tracking.work_items(events)
-            observations.attach_models(items, live)
-            plan = tracking.architecture(root, task)
-            progress = tracking.function_progress(root, task, events)
-            result['work'] = {'items': items, 'progress': progress, 'sessions': live,
-                              'configured_models': observations.display_models(root),
-                              'architecture': {key: value for key, value in plan.items() if key != 'text'} if plan else None}
-        except (OSError, ValueError, TypeError, KeyError) as error:
-            result['work'] = {'error': 'Не удалось прочитать дополнительные сведения задачи',
-                              'items': [], 'progress': {'available': False}, 'sessions': {'available': False}}
+            observations.attach_models(work['items'], live)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            work['errors'].append('Не удалось сопоставить фактические модели')
+        if work['errors']:
+            work['error'] = '. '.join(work['errors'])
+        result['work'] = work
+        try:
+            result['completion'] = delivery.completion(root, task, events)
+        except (OSError, ValueError, TypeError, KeyError):
+            result['completion'] = {'finished': False}
+        if result['status'] in ('cancelled', 'deleting', 'error'):
+            result['completion'] = {'finished': False}
     return result
 
 
@@ -88,6 +117,7 @@ class DashboardServer(ThreadingHTTPServer):
         self.control_token = secrets.token_urlsafe(32)
         self.ui_token = secrets.token_urlsafe(32)
         self.reader = observations.SessionReader()
+        self.controls = TaskControls(self.root)
         self.configurator = None
         self.configurator_lock = threading.Lock()
         super().__init__(('127.0.0.1', port), Handler)
@@ -186,11 +216,16 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.dumps(task_list(self.server.root), ensure_ascii=False).encode('utf-8')
                 status, content_type = 200, 'application/json; charset=utf-8'
             elif parts.path == '/api/task':
-                data = task_view(self.server.root, self.selected_task(query), self.server.reader)
+                task = self.selected_task(query)
+                self.server.controls.view(task)
+                data = task_view(self.server.root, task, self.server.reader)
                 body = json.dumps(data, ensure_ascii=False, allow_nan=False).encode('utf-8')
                 status, content_type = 200, 'application/json; charset=utf-8'
             elif parts.path == '/api/ui':
                 body = json.dumps({'token': self.server.ui_token}).encode('utf-8')
+                status, content_type = 200, 'application/json; charset=utf-8'
+            elif parts.path == '/api/task/control':
+                body = json.dumps(self.server.controls.view(self.selected_task(query)), ensure_ascii=False).encode('utf-8')
                 status, content_type = 200, 'application/json; charset=utf-8'
             elif parts.path in ('/architecture', '/launch-file'):
                 task = self.selected_task(query)
@@ -237,6 +272,28 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.host_allowed():
             self.send_json(403, {'error': 'Forbidden Host'})
+            return
+        if urlsplit(self.path).path == '/api/task/control':
+            origin = self.headers.get('Origin', '')
+            allowed = (f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}')
+            token = self.headers.get('X-Dashboard-UI-Token', '')
+            if origin not in allowed or not token or not secrets.compare_digest(token, self.server.ui_token):
+                self.send_json(403, {'error': 'Forbidden task control request'})
+                return
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 1024 or self.headers.get('Transfer-Encoding') or urlsplit(self.path).query:
+                    raise ValueError('Invalid task control request')
+                if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                    raise ValueError('JSON required')
+                data = json.loads(self.rfile.read(length))
+                if not isinstance(data, dict) or set(data) != {'task', 'action'} or not all(isinstance(v, str) for v in data.values()):
+                    raise ValueError('Only task and action are accepted')
+                self.send_json(202, self.server.controls.request(data['task'], data['action']))
+            except (ValueError, UnicodeError) as error:
+                self.send_json(400, {'error': str(error)})
+            except OSError:
+                self.send_json(503, {'error': 'Не удалось сохранить действие управления задачей'})
             return
         if urlsplit(self.path).path in ('/api/models/open', '/api/project/open'):
             origin = self.headers.get('Origin', '')

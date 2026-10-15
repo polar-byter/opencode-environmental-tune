@@ -26,12 +26,12 @@ class ObservedMetrics(TaskMetrics):
 
 def display_models(root: Path) -> dict:
     """Configured references only, not proof of what a session actually used."""
-    from ..run_opencode import load_choices
+    from ..configurator.models_choices_configurator import load_choices
     choices = load_choices(root)
     result = {}
     for role, field in (('master_chief', 'masterChief'), ('executor', 'executors')):
         choice = choices.get(field)
-        if choice and isinstance(choice.get('model'), str):
+        if isinstance(choice, dict) and isinstance(choice.get('model'), str):
             result[role] = choice['model']
     return result
 

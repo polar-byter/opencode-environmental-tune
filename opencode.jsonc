@@ -5,6 +5,7 @@
   //It is gotta be resp. for planning, architecture, marketing, build mode .
   "model": "opencode-go/deepseek-v4.1-flash",
   "default_agent": "build",
+  "instructions": ["TASK.md"],
 
   // PROVIDERS
   "providers": {

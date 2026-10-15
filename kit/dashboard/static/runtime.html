@@ -79,6 +79,13 @@
     <button id="model-settings" type="button">Настройки моделей</button>
   </div>
   <p id="settings-message" class="muted" role="status" aria-live="polite"></p>
+  <div class="toolbar" aria-label="Управление выбранной задачей">
+    <button id="pause-task" type="button" disabled>⏸ Приостановить</button>
+    <button id="resume-task" type="button" disabled>▶ Продолжить</button>
+    <button id="cancel-task" type="button" disabled>■ Остановить</button>
+    <button id="delete-task" type="button" disabled>Удалить задачу…</button>
+  </div>
+  <p id="control-message" class="muted" role="status" aria-live="polite"></p>
   <p id="message" role="status" aria-live="polite"></p>
   <section id="live-work" class="live-work" hidden aria-labelledby="live-title">
     <div class="eyebrow muted">Текущая работа</div>
@@ -159,7 +166,46 @@
   let busy = false;
   let latestTasks = [];
   let liveStarted = null;
-  const labels = { running: 'В работе', halted: 'Остановлена', finished: 'Завершена' };
+  const labels = { running: 'В работе', halted: 'Защитная остановка', finished: 'Завершена',
+    pausing: 'Приостанавливается…', paused: 'Приостановлена', resuming: 'Продолжается…',
+    cancelling: 'Останавливается…', cancelled: 'Отменена', deleting: 'Удаляется…', deleted: 'Удалена', error: 'Действие не подтверждено' };
+  let controlPending = false;
+  let selectedData = null;
+  let controlFailure = '';
+  function renderControls(data) {
+    selectedData = data;
+    const state = data?.status, session = !!data?.session;
+    const pending = controlPending || ['pausing', 'resuming', 'cancelling', 'deleting'].includes(state);
+    element('pause-task').disabled = pending || !session || !['running', 'halted'].includes(state);
+    element('resume-task').disabled = pending || !session || state !== 'paused';
+    element('cancel-task').disabled = pending || !session || !['running', 'halted', 'paused', 'error'].includes(state);
+    element('delete-task').disabled = pending || !data || state === 'deleted' || (!session && state !== 'finished');
+    element('control-message').textContent = data?.control?.error || controlFailure || (pending ?
+      (['pausing', 'resuming', 'cancelling', 'deleting'].includes(state) ? labels[state] : 'Передаём действие…') : data?.control?.message || '');
+  }
+  async function controlTask(action) {
+    const task = activeTask;
+    if (!task || controlPending || selectedData?.task !== task) return;
+    if (action === 'delete' && !window.confirm('Удалить выбранную задачу, её сессии и метрики? Все её модели будут остановлены. Файлы приложения останутся.')) return;
+    if (action === 'cancel' && !window.confirm('Остановить выбранную задачу и всех её исполнителей? Код и история сохранятся.')) return;
+    controlPending = true; controlFailure = ''; renderControls(selectedData);
+    let failure = '';
+    try {
+      const ui = await readJSON('/api/ui');
+      const response = await fetch('/api/task/control', {method: 'POST', headers: {
+        'Content-Type': 'application/json', 'X-Dashboard-UI-Token': ui.token}, body: JSON.stringify({task, action})});
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || response.statusText);
+      if (task === activeTask) renderControls({...selectedData, status: result.status, control: result});
+    } catch (error) {
+      failure = error.message;
+      if (task === activeTask) controlFailure = failure;
+    } finally { controlPending = false; if (task === activeTask) {
+      renderControls(selectedData);
+      if (failure) element('control-message').textContent = failure;
+      else refreshTask();
+    } else renderControls(selectedData); }
+  }
   const kinds = { start: 'Начало задачи', delegation: 'Задание исполнителю', inspection: 'Проверка изменений', review: 'Ревью', test: 'Тесты', halt: 'Остановка', resume: 'Продолжение', finish: 'Завершение задачи' };
   const states = {executor: 'Исполнитель работает', review: 'На ревью', accepted: 'Принято', rework: 'Возвращено на доработку', failed: 'Сбой исполнителя', planned: 'Запланирована', working: 'В работе', implemented: 'Реализована, ожидает ревью'};
   const element = id => document.getElementById(id);
@@ -274,8 +320,9 @@
     }
     if (data.status === 'finished') stage = `Работа завершена. Принято заданий: ${items.filter(item => item.state === 'accepted').length} из ${items.length}.`;
     if (data.status === 'halted') stage = 'Задача остановлена. Продолжение ожидает решения пользователя.';
+    if (['pausing', 'paused', 'resuming', 'cancelling', 'cancelled', 'deleting', 'error'].includes(data.status)) stage = labels[data.status] + '. ' + (data.control?.error || data.control?.message || '');
     if (last && work.architecture?.registered) stage = 'Master Chief подготовил архитектуру. ' + stage;
-    element('stage').textContent = work.error || stage;
+    element('stage').textContent = stage + (work.error ? ' ' + work.error : '');
     renderLive(data, work, live, items, last, stage, model);
     const architecture = element('architecture');
     architecture.hidden = !work.architecture;
@@ -317,6 +364,7 @@
   }
 
   function render(data) {
+    renderControls(data);
     renderTokens(data); renderCompletion(data);
     renderWork(data);
     document.getElementById('title').textContent = data.title;
@@ -365,10 +413,27 @@
       const selector = document.getElementById('task-select');
       selector.replaceChildren();
       for (const task of tasks) selector.add(new Option(`${labels[task.status] || task.status} · ${task.title}`, task.task));
-      if (activeTask && !tasks.some(task => task.task === activeTask)) selector.add(new Option(activeTask, activeTask));
+      if (activeTask && !tasks.some(task => task.task === activeTask)) {
+        const control = await readJSON('/api/task/control?' + new URLSearchParams({task: activeTask}));
+        if (control.status === 'deleted') {
+          element('control-message').textContent = control.message;
+          activeTask = tasks[0]?.task || '';
+          parameters.delete('task');
+          if (activeTask) parameters.set('task', activeTask);
+          window.history.replaceState(null, '', '?' + parameters.toString());
+        } else selector.add(new Option(activeTask, activeTask));
+      }
       selector.value = activeTask;
       if (!activeTask) {
         document.getElementById('title').textContent = 'Пока нет задач';
+        renderControls(null); element('control-message').textContent = 'Выберите задачу или начните новую в OpenCode.';
+        element('live-work').hidden = true; element('completion').hidden = true;
+        element('stage').textContent = 'Список задач пуст. Файлы приложения сохранены.';
+        for (const id of ['status', 'event-count', 'runs', 'reworks', 'failures', 'updated', 'task-id']) element(id).textContent = '—';
+        for (const id of ['models', 'function-count', 'current-function']) element(id).textContent = '';
+        element('architecture').hidden = true; element('function-progress').hidden = true; element('report').hidden = true;
+        element('token-status').textContent = 'Задача не выбрана';
+        for (const id of ['work-items', 'functions', 'session-feed', 'events', 'token-totals', 'token-models', 'token-warnings']) element(id).replaceChildren();
       } else {
         const selected = activeTask;
         const data = await readJSON('/api/task?' + new URLSearchParams({ task: selected, project: metadata.project.id }));
@@ -389,6 +454,7 @@
   }
 
   function main() {
+    for (const action of ['pause', 'resume', 'cancel', 'delete']) element(action + '-task').addEventListener('click', () => controlTask(action));
     element('live-details').addEventListener('click', () => showTab('details'));
     element('ongoing-tasks').addEventListener('click', () => {
       const task = latestTasks.find(task => task.status === 'running');
@@ -424,6 +490,8 @@
     document.getElementById('refresh').addEventListener('click', refreshTask);
     document.getElementById('task-select').addEventListener('change', event => {
       activeTask = event.target.value;
+      controlFailure = '';
+      renderControls(null);
       parameters.set('task', activeTask);
       window.history.replaceState(null, '', '?' + parameters.toString());
       element('stage').textContent = 'Читаем выбранную задачу…';

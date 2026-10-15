@@ -6,6 +6,7 @@ agent: build
 Plan the project `$ARGUMENTS`. Do NOT write any code and do NOT call any subagent.
 
 Steps:
+0. Resolve requirements using Task intake in AGENTS.md: use the user's chat description or read TASK.md yourself when the request refers to it. Do not require a file for a task already described in chat. Discover relevant project docs yourself.
 1. Resolve and read the work plan using the **Work plan (memory)** section of AGENTS.md. Create it if missing; use the same resolved file throughout this task.
 2. Break the task into modules. For each module give: name, responsibility, public interface (functions/classes), and dependencies on other modules.
 3. Write the module checklist into that work plan as `- [ ]` items.

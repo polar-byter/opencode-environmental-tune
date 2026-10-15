@@ -18,9 +18,11 @@ import xml.etree.ElementTree as ET
 if __package__:
     from .delegation_guard import compare, read_requirements, review_checks, snapshot, source_path
     from .opencode_cli import locate_opencode
+    from .task_control_state import blocking_reason
 else:
     from delegation_guard import compare, read_requirements, review_checks, snapshot, source_path
     from opencode_cli import locate_opencode
+    from task_control_state import blocking_reason
 
 TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
 EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish'}
@@ -561,8 +563,11 @@ class TaskMetrics:
         with self.lock(task):
             # session=session puts the value into append's **data as the "session" key;
             # session_id(session) above has already validated it.
+            server = {}
+            if os.environ.get('OPENCODE_KIT_ROOT') and Path(os.environ['OPENCODE_KIT_ROOT']).resolve() == self.root:
+                server['server_mode'] = os.environ.get('OPENCODE_KIT_SERVER_MODE', 'unknown')
             return self.append(task, 'start', session=session, title=title or task, limits=limits,
-                               track_delegations=track_delegations)
+                               track_delegations=track_delegations, **server)
 
     # check if the task is active (not finished) and return its events
     def active(self, task):
@@ -574,6 +579,9 @@ class TaskMetrics:
     def running(self, task):
         """Events of an active task that is not stopped by a loop guard; raises TaskHalted otherwise."""
         events = self.active(task)
+        reason = blocking_reason(self.root, task)
+        if reason:
+            raise TaskHalted(reason)
         halt = is_halted(events)
         if halt:
             raise TaskHalted(halt['reason'])
@@ -1039,6 +1047,9 @@ class TaskMetrics:
     # it is our final step to finish a task, collect exports, parse usage, and write a Markdown report to report.md in the task directory
     def finish(self, task: str, export_paths: list[str] | None = None, executable: str = 'opencode') -> str:
         with self.lock(task):
+            reason = blocking_reason(self.root, task)
+            if reason:
+                raise TaskHalted(reason)
             events = self.read(task)
             finished = next((e for e in events if e['kind'] == 'finish'), None)
             if finished:
