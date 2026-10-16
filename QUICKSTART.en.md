@@ -378,10 +378,13 @@ task. Moving between parts needs no further approval.
 
 ![The finish](readme_gif/en/06_final.gif)
 
-When every part is accepted and integrated, the Master Chief runs the application and
-walks through normal scenarios when the tools allow it. It notes what is inconvenient
-and fixes the interface as a separate phase — logic and contracts stay the same. If
-the interface could not be checked, the report notes it.
+When every part is accepted and integrated, the UI/UX improvement stage begins. The
+Master Chief runs the application and walks through normal scenarios: opens forms,
+fills them in, saves, checks error messages. It notes what is inconvenient and fixes
+the interface — logic and contracts stay the same. The outcome is recorded in the
+journal, and the task cannot be finished without that record. The report shows "UI/UX
+improvement stage completed…", "…skipped due to …" (for example, no browser) or
+"…not required" (the application has no interface).
 
 Then it always runs **all** project tests and shows the outcome and statistics:
 

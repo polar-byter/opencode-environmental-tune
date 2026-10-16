@@ -26,7 +26,12 @@ else:
 
 TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
 EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish',
-               'attempt_session', 'attempt_admission', 'attempt_end', 'integration', 'attempt_reclassification'}
+               'attempt_session', 'attempt_admission', 'attempt_end', 'integration', 'attempt_reclassification',
+               'ux_review'}
+# Final UI/UX improvement stage of the Master Chief: done with evidence, skipped with a reason,
+# or not applicable because the product has no user interface.
+UX_OUTCOMES = ('completed', 'skipped', 'not_applicable')
+UX_REASON_LIMIT = 300
 # failed: the executor returned no work (error, rate limit, unavailable model) and changed no files.
 REVIEW_RESULTS = {'accepted', 'rework', 'failed', 'blocked'}
 WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
@@ -529,6 +534,13 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument('--work-item', '--piece', dest='work_item', required=True)
     resume = sub.add_parser('resume')
     resume.add_argument('--reason', required=True)
+    ux = sub.add_parser('ux-review', help='record the final UI/UX improvement stage before finish')
+    ux_outcome = ux.add_mutually_exclusive_group(required=True)
+    ux_outcome.add_argument('--checks', type=Path,
+                            help='JSON list of performed scenarios: scenario, actions, result, optional fixed')
+    ux_outcome.add_argument('--skipped', help='why the stage could not be performed, e.g. no browser available')
+    ux_outcome.add_argument('--not-applicable', dest='not_applicable',
+                            help='why the product has no user interface to improve')
     test = sub.add_parser('test')
     test.add_argument('--scope', default='full', help='work-item/module name or full for the complete suite')
     test.add_argument('--phase', choices=['work', 'baseline'], default='work')
@@ -543,7 +555,7 @@ def build_parser() -> argparse.ArgumentParser:
     finish.add_argument('--language', choices=('en', 'ru'), help='report language; otherwise saved UI preference or system language')
     finish.add_argument('--export', action='append', dest='exports')
     finish.add_argument('--opencode', default='opencode')
-    for command in (start, delegation, inspect, review, resume, test, finish):
+    for command in (start, delegation, inspect, review, resume, ux, test, finish):
         command.add_argument('--task', required=True)
     return parser
 
@@ -629,7 +641,8 @@ class TaskMetrics:
             if os.environ.get('OPENCODE_KIT_ROOT') and Path(os.environ['OPENCODE_KIT_ROOT']).resolve() == self.root:
                 server['server_mode'] = os.environ.get('OPENCODE_KIT_SERVER_MODE', 'unknown')
             return self.append(task, 'start', session=session, title=title or task, limits=limits,
-                               track_delegations=track_delegations, **server)
+                               track_delegations=track_delegations, ux_review_required=track_delegations,
+                               **server)
 
     # check if the task is active (not finished) and return its events
     def active(self, task):
@@ -866,6 +879,65 @@ class TaskMetrics:
             if not is_halted(events):
                 raise ValueError('Task is not stopped; nothing to resume')
             return self.append(task, 'resume', reason=reason.strip())
+
+    def ux_review(self, task: str, checks: Path | None = None, skipped: str | None = None,
+                  not_applicable: str | None = None) -> dict:
+        """Record the final UI/UX improvement stage of the Master Chief.
+
+        Exactly one outcome is required:
+        - checks: a JSON list of interactive scenarios that were really performed, each
+          {"scenario": ..., "actions": ..., "result": ...} with an optional "fixed"
+          description of an interface change made because of it;
+        - skipped: why the stage could not be performed (no browser, no display, ...);
+        - not_applicable: why the product has no user interface to improve.
+        All executor attempts must already have a recorded review. The latest event
+        counts; an earlier skip can be replaced by a later completed review.
+        """
+        given = [value for value in (checks, skipped, not_applicable) if value is not None]
+        if len(given) != 1:
+            raise ValueError('ux-review needs exactly one of --checks, --skipped or --not-applicable')
+        data = {}
+        if checks is not None:
+            try:
+                rows = json.loads((self.root / checks).read_text(encoding='utf-8-sig'))
+            except (OSError, ValueError) as error:
+                raise ValueError(f'Cannot read UI/UX checks {checks}: {error}') from error
+            if not isinstance(rows, list) or not rows:
+                raise ValueError('UI/UX checks must be a non-empty JSON list of scenarios')
+            clean = []
+            for index, row in enumerate(rows, 1):
+                if not isinstance(row, dict):
+                    raise ValueError(f'UI/UX check {index} must be an object')
+                item = {}
+                for key in ('scenario', 'actions', 'result'):
+                    value = row.get(key)
+                    if not isinstance(value, str) or not value.strip():
+                        raise ValueError(f'UI/UX check {index} needs a non-empty "{key}"')
+                    item[key] = value.strip()
+                fixed = row.get('fixed')
+                if fixed is not None:
+                    if not isinstance(fixed, str):
+                        raise ValueError(f'UI/UX check {index}: "fixed" must be text')
+                    if fixed.strip():
+                        item['fixed'] = fixed.strip()
+                clean.append(item)
+            data = dict(outcome='completed', checks=clean, scenarios=len(clean),
+                        fixed=sum('fixed' in item for item in clean))
+        else:
+            reason = (skipped if skipped is not None else not_applicable).strip()
+            if not reason:
+                raise ValueError('A skipped or not applicable UI/UX stage needs a reason')
+            if len(reason) > UX_REASON_LIMIT:
+                raise ValueError(f'The UI/UX reason is longer than {UX_REASON_LIMIT} characters')
+            data = dict(outcome='skipped' if skipped is not None else 'not_applicable', reason=reason)
+        with self.lock(task):
+            reason = blocking_reason(self.root, task)
+            if reason:
+                raise TaskHalted(reason)
+            events = self.active(task)
+            if pending_attempts(events):
+                raise ValueError('Record a review for every executor attempt before the UI/UX stage')
+            return self.append(task, 'ux_review', **data)
 
     # parse the output of a test run, optionally using JUnit XML reports to extract test results
     def parse_tests(self, output: str, returncode: int, junit: Path | list[Path] | None = None) -> dict:
@@ -1147,6 +1219,20 @@ class TaskMetrics:
             lines += [t('Initial checks before implementation (baseline): **{count}**; excluded from successful work runs.', count=len(tests) - len(work_tests)), '']
         full = [e for e in tests if e.get('scope', 'full') == 'full' and e.get('phase') != 'baseline']
         lines += [t('Full suite: **{passed} of {total}**. Other runs may cover a selected class or module.', passed=sum(e['status'] == 'passed' for e in full), total=len(full)), '']
+        ux = next((e for e in reversed(events) if e['kind'] == 'ux_review'), None)
+        if ux and ux.get('outcome') == 'completed':
+            lines += [t('🎨 UI/UX improvement stage completed: {scenarios} scenarios checked, {fixed} issues fixed.',
+                        scenarios=ux.get('scenarios', 0), fixed=ux.get('fixed', 0)), '']
+            for item in ux.get('checks', []):
+                line = '- ' + label(item['scenario']) + ' — ' + label(item['result'])
+                if item.get('fixed'):
+                    line += ' ' + t('(fixed: {change})', change=label(item['fixed']))
+                lines.append(line)
+            lines.append('')
+        elif ux and ux.get('outcome') == 'skipped':
+            lines += [t('🎨 UI/UX improvement stage skipped due to {reason}.', reason=label(ux['reason'])), '']
+        elif ux and ux.get('outcome') == 'not_applicable':
+            lines += [t('🎨 UI/UX improvement stage not required: {reason}.', reason=label(ux['reason'])), '']
         attempts = [e for e in events if e['kind'] == 'delegation']
         if attempts or events[0].get('track_delegations'):
             closed = {e.get('delegation_id') for e in reviews}
@@ -1231,6 +1317,10 @@ class TaskMetrics:
                         or compare(json.loads((self.task_dir(task)/runs[-1]['snapshot']).read_text(encoding='utf-8')),
                                    snapshot(self.root), [])['changed']):
                     raise ValueError('Finish needs a green full test of the integrated project')
+            if (not finished and events[0].get('ux_review_required')
+                    and not any(e['kind'] == 'ux_review' for e in events)):
+                raise ValueError('Record the UI/UX improvement stage with ux-review before finish: '
+                                 '--checks <file>, --skipped "<reason>" or --not-applicable "<reason>"')
             if finished:
                 report = self.render(task, events, finished['usage'], finished['ended'], language)
             else:
@@ -1297,6 +1387,8 @@ def main(argv=None) -> int:
             event = metrics.inspect(args.task, args.work_item)
         elif args.action == 'resume':
             event = metrics.resume(args.task, args.reason)
+        elif args.action == 'ux-review':
+            event = metrics.ux_review(args.task, args.checks, args.skipped, args.not_applicable)
         elif args.action == 'finish':
             print(metrics.finish(args.task, args.exports, args.opencode, args.language))
             return EXIT_OK

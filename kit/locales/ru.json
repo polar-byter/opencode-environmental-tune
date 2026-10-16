@@ -362,5 +362,13 @@
   "OpenCode did not confirm the selected model. The task remains paused.": "OpenCode не подтвердил выбор модели. Задача остаётся на паузе.",
   "Model settings changed. Prepare OpenCode again before continuing.": "Настройки моделей изменились. Перед продолжением снова подготовьте OpenCode.",
   "An API key is missing. Save it in Model settings and prepare again.": "Не найден API-ключ. Сохраните его в настройках моделей и повторите подготовку.",
-  "The selected API integration is unavailable. The task remains paused.": "Выбранная API-интеграция недоступна. Задача остаётся на паузе."
+  "The selected API integration is unavailable. The task remains paused.": "Выбранная API-интеграция недоступна. Задача остаётся на паузе.",
+  "🎨 UI/UX improvement stage completed: {scenarios} scenarios checked, {fixed} issues fixed.": "🎨 Этап улучшения UI/UX выполнен: проверено сценариев — {scenarios}, исправлено замечаний — {fixed}.",
+  "(fixed: {change})": "(исправлено: {change})",
+  "🎨 UI/UX improvement stage skipped due to {reason}.": "🎨 Этап улучшения UI/UX пропущен ввиду {reason}.",
+  "🎨 UI/UX improvement stage not required: {reason}.": "🎨 Этап улучшения UI/UX не требуется: {reason}.",
+  "UI/UX improvement stage": "Этап улучшения UI/UX",
+  "UI/UX improvement stage completed: {0} scenarios checked, {1} issues fixed.": "Этап улучшения UI/UX выполнен: проверено сценариев — {0}, исправлено замечаний — {1}.",
+  "UI/UX improvement stage skipped due to {0}.": "Этап улучшения UI/UX пропущен ввиду {0}.",
+  "UI/UX improvement stage not required: {0}.": "Этап улучшения UI/UX не требуется: {0}."
 }

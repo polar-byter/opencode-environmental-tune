@@ -220,8 +220,11 @@ class PipelineControls(unittest.TestCase):
         self.assertEqual(cli('review', '--task', 'cli', '--work-item', 'App', '--result', 'accepted',
                              '--checks', '.metrics/cli/checks.json'), 0)
         self.assertEqual(cli('test', '--task', 'cli', '--scope', 'full', '--', *self.command), 0)
+        self.assertEqual(cli('finish', '--task', 'cli', '--language', 'ru'), 2)  # UI/UX stage missing
+        self.assertEqual(cli('ux-review', '--task', 'cli', '--not-applicable', 'у модуля нет интерфейса'), 0)
         self.assertEqual(cli('finish', '--task', 'cli', '--language', 'ru'), 0)
         report = (folder / 'report.md').read_text(encoding='utf-8')
+        self.assertIn('Этап улучшения UI/UX не требуется: у модуля нет интерфейса.', report)
         self.assertIn('без записанного ревью: **0**', report)
         self.assertIn('Полный набор тестов: **1 из 1**', report)
 

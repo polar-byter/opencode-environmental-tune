@@ -92,11 +92,19 @@ are applied consistently; the raw journal preserves original records.
 ## Completion
 
 Continue through ready dependencies without separate module requests. After
-functional acceptance and integration, review visible UX/UI through real scenarios
-when the available tools support it. Report usability findings or the inspection
-limitation; never claim visual review from code alone. User-authorized final UI
+functional acceptance and integration comes the UI/UX improvement stage. Run the
+real application and perform the main user scenarios interactively: open each
+form, fill it in, submit it and check the visible result, including a deliberate
+input error. Static screenshots alone do not cover forms, clicks or validation
+messages; never claim visual review from code alone. User-authorized final UI
 corrections are a distinct work phase and must preserve the business contracts.
-Do not finalize accounting before this phase is complete or explicitly deferred.
-Then run the unfiltered full suite on the integrated main project, finish one
-journal and include its generated report. Unknown usage stays unknown. Give a
+Record the stage before finish with exactly one command:
+`task_metrics.py ux-review --task <ID> --checks .metrics/<ID>/ux-checks.json`
+(a JSON list of {"scenario", "actions", "result", optional "fixed"}), or
+`--skipped "<reason>"` when no browser or display is available, or
+`--not-applicable "<reason>"` when the product has no user interface. Write the
+reason so it reads after "skipped due to" (for example "no browser available").
+finish refuses an implementation task without this record. Then run the
+unfiltered full suite on the integrated main project, finish one journal and
+include its generated report. Unknown usage stays unknown. Give a
 real launch file. Any subsequent implementation change needs repeat validation.

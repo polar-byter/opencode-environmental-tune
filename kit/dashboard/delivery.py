@@ -51,7 +51,10 @@ def completion(root: Path, task: str, events: list[dict]) -> dict:
             'ended_at': ended, 'duration_seconds': max(0, int(ended - events[0]['at'])),
             'project_path': str(root.resolve()), 'pending': pending,
             'full_tests': {key: last.get(key) for key in ('at', 'status', 'tests')} if last else None,
-            'launcher': None}
+            'launcher': None, 'ux': None}
+    ux = next((event for event in reversed(events) if event['kind'] == 'ux_review'), None)
+    if ux and ux.get('outcome') in ('completed', 'skipped', 'not_applicable'):
+        data['ux'] = {key: ux[key] for key in ('outcome', 'reason', 'scenarios', 'fixed') if key in ux}
     try:
         target = launch_file(root, task)
         if target:

@@ -112,6 +112,7 @@
     <div class="eyebrow muted" data-i18n="Task outcome">Task outcome</div>
     <h2 id="completion-title" data-i18n="✓ Work completed">✓ Work completed</h2>
     <p id="completion-text"></p>
+    <p id="completion-ux" class="muted" hidden></p>
     <p id="completion-path" class="muted"></p>
     <div class="actions">
       <button id="open-project" type="button" data-i18n="Open project folder">Open project folder</button>
@@ -220,7 +221,7 @@
       else refreshTask();
     } else renderControls(selectedData); }
   }
-  const kinds = () => ({ start: t("Task started"), delegation: t("Executor assignment"), inspection: t("Change inspection"), review: t("Review"), test: t("Tests"), halt: t("Stop"), resume: t("Resume"), finish: t("Task finished"), attempt_session: t('Worker session bound'), attempt_admission: t('Worker input admitted'), attempt_end: t('Worker stopped'), attempt_reclassification: t('Stop classification corrected'), integration: t('Changes integrated') });
+  const kinds = () => ({ start: t("Task started"), delegation: t("Executor assignment"), inspection: t("Change inspection"), review: t("Review"), test: t("Tests"), halt: t("Stop"), resume: t("Resume"), finish: t("Task finished"), attempt_session: t('Worker session bound'), attempt_admission: t('Worker input admitted'), attempt_end: t('Worker stopped'), attempt_reclassification: t('Stop classification corrected'), integration: t('Changes integrated'), ux_review: t('UI/UX improvement stage') });
   const states = () => ({executor: t("Executor working"), review: t("Under review"), accepted: t("Accepted"), rework: t("Rework requested"), failed: t("Executor failure"), blocked: t("Infrastructure interruption"), planned: t("Planned"), working: t("In progress"), implemented: t("Implemented, awaiting review")});
   const workerState = attempt => attempt?.state === 'executor' && attempt.role === 'bug_fixer' ? t('Bug Fixer working') : states()[attempt?.state] || attempt?.state;
   const element = id => document.getElementById(id);
@@ -358,6 +359,10 @@
     const duration = Math.floor(completion.duration_seconds / 60) + t(" min ") + (completion.duration_seconds % 60) + t(" sec");
     const checked = completion.verified ? tr`Final full validation: ${formatCount(completion.full_tests?.tests)} tests passed.` : t("A successful full validation is unconfirmed") + (completion.pending ? t("; some work items have no review.") : '.');
     element('completion-text').textContent = tr`Elapsed time: ${duration}. ${checked}`;
+    const ux = completion.ux, uxLine = element('completion-ux');
+    uxLine.hidden = !ux;
+    if (ux) uxLine.textContent = ux.outcome === 'completed' ? tr`UI/UX improvement stage completed: ${ux.scenarios ?? 0} scenarios checked, ${ux.fixed ?? 0} issues fixed.`
+      : ux.outcome === 'skipped' ? tr`UI/UX improvement stage skipped due to ${ux.reason}.` : tr`UI/UX improvement stage not required: ${ux.reason}.`;
     element('completion-path').textContent = completion.project_path;
     element('completion-report').href = '/api/report?' + new URLSearchParams({task: data.task, lang: localization.language});
     const launcher = element('launch-file'); launcher.hidden = !completion.launcher;

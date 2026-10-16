@@ -92,12 +92,17 @@ API and setup interruptions do not spend these budgets. Change the limits in mod
 
 ### 6. The finish: interface, tests, report
 
-When every part is accepted and integrated, the Master Chief runs the application and
-walks through normal scenarios: add a record, edit it, delete it. It notes what gets in
-the user's way — faint text, an unlabeled button, a cryptic error message — and fixes
-the interface as a separate phase without touching the logic. Then the full test suite,
-the final report and a launch file. If the interface could not be checked, the
-report notes it.
+When every part is accepted and integrated, the UI/UX improvement stage begins. The
+Master Chief runs the application and walks through normal scenarios by hand: opens
+forms, fills them in, saves, enters a deliberate error. It notes what gets in the
+user's way — faint text, an unlabeled button, a cryptic error message — and fixes the
+interface without touching the logic. Then the full test suite, the final report and a
+launch file.
+
+The stage is recorded in the task journal, and the kit will not finish the task without
+that record. The report and dashboard show one line: "UI/UX improvement stage completed:
+5 scenarios checked, 3 issues fixed", "UI/UX improvement stage skipped due to no browser
+available" or "UI/UX improvement stage not required: the application has no interface".
 
 ![The finish](readme_gif/en/06_final.gif)
 
