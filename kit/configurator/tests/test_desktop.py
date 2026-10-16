@@ -14,6 +14,16 @@ from kit import run_opencode
 
 
 class DesktopTests(unittest.TestCase):
+    def test_prepared_callback_fires_only_after_success(self):
+        results = []
+        self.ui.on_prepared = lambda: results.append(self.ui.preparing)
+        self.ui.preparing = True
+        self.ui.receive_preparation(False)
+        self.assertEqual(results, [])
+        self.ui.preparing = True
+        self.ui.receive_preparation(True)
+        self.assertEqual(results, [False])
+
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)

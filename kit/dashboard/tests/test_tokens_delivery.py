@@ -60,6 +60,37 @@ class TokenData(unittest.TestCase):
         self.live['models']['executor'] = ['provider/master']
         self.assertEqual(observations.token_view(self.events, self.live)['models'][0]['roles'], ['master_chief', 'executor'])
 
+    def test_partial_subtotal_combines_complete_and_incomplete_models(self):
+        partial = usage_row('executor', input=None, messages=3, missing_usage=1,
+                            known={'input': 42}, known_messages={'input': 2})
+        self.live['usage']['models'].append(partial)
+        view = observations.token_view(self.events, self.live)
+        self.assertIsNone(view['totals']['input'])
+        self.assertEqual(view['known']['input'], 52)
+        self.assertEqual(view['known_messages']['input'], 4)
+        self.assertEqual(view['missing_counts']['input'], 1)
+        self.assertEqual(view['missing_usage'], 1)
+        self.assertEqual(view['totals']['output'], 20)
+
+    def test_all_unknown_and_legacy_unknown_never_become_known_zero(self):
+        for metadata in ({}, {'known': {'input': 0}, 'known_messages': {'input': 0}},
+                         {'known': {'input': True}, 'known_messages': {'input': 1}},
+                         {'known': {'input': 12}, 'known_messages': {'input': 99}}):
+            self.live['usage']['models'] = [usage_row(input=None, **metadata)]
+            view = observations.token_view(self.events, self.live)
+            self.assertIsNone(view['totals']['input'])
+            self.assertIsNone(view['known']['input'])
+
+    def test_frozen_partial_snapshot_is_read_without_mutating_journal(self):
+        row = usage_row(input=None, known={'input': 0}, known_messages={'input': 1})
+        self.events.append({'kind': 'finish', 'at': 130, 'usage': {'models': [row]}})
+        before = json.dumps(self.events, sort_keys=True)
+        view = observations.token_view(self.events, self.live)
+        self.assertEqual(view['known']['input'], 0)
+        self.assertEqual(view['missing_counts']['input'], 1)
+        self.assertIsNone(view['totals']['input'])
+        self.assertEqual(json.dumps(self.events, sort_keys=True), before)
+
     def test_worker_uses_kit_deduplication_and_excludes_unfinished_messages(self):
         completed = {'id': 'one', 'type': 'assistant', 'time': {'created': 110000, 'completed': 120000},
                      'model': {'providerID': 'provider', 'id': 'master'}, 'tokens': {'input': 12, 'output': 4, 'reasoning': 2, 'cache': {'read': 7, 'write': 0}}, 'content': []}

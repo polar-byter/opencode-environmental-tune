@@ -39,7 +39,8 @@ def display_models(root: Path) -> dict:
 def token_view(events: list[dict], live: dict) -> dict:
     """Prefer the finish journal snapshot; otherwise use the background export snapshot.
 
-    Never sum overlapping categories. A missing counter makes that column unknown.
+    Never sum overlapping categories. Exact totals stay unknown if incomplete;
+    known subtotals and per-column coverage are separate presentation facts.
     Roles describe actual observed models, not configured model choices.
     """
     finished = next((event for event in events if event['kind'] == 'finish'), None)
@@ -50,6 +51,8 @@ def token_view(events: list[dict], live: dict) -> dict:
     source = 'finish' if finished else 'session'
     empty = {'available': False, 'source': source, 'snapshot_at': snapshot_at,
              'models': [], 'totals': dict.fromkeys(TOKEN_FIELDS), 'sessions': None,
+             'known': dict.fromkeys(TOKEN_FIELDS), 'known_messages': dict.fromkeys(TOKEN_FIELDS),
+             'missing_counts': dict.fromkeys(TOKEN_FIELDS), 'missing_usage': None,
              'warnings': [], 'reason': 'Данные о токенах пока недоступны'}
     if not isinstance(raw, dict) or not isinstance(raw.get('models'), list):
         return empty
@@ -66,12 +69,38 @@ def token_view(events: list[dict], live: dict) -> dict:
         for field in (*TOKEN_FIELDS, 'messages', 'missing_usage'):
             value = row.get(field)
             result[field] = value if type(value) is int and value >= 0 else None
+        result['known'], result['known_messages'], result['missing_counts'] = {}, {}, {}
+        for field in TOKEN_FIELDS:
+            known = row.get('known', {}).get(field) if isinstance(row.get('known'), dict) else None
+            covered = row.get('known_messages', {}).get(field) if isinstance(row.get('known_messages'), dict) else None
+            messages = result['messages']
+            valid = (type(known) is int and known >= 0 and type(covered) is int and
+                     covered >= 0 and messages is not None and covered < messages and
+                     (covered > 0 or known == 0))
+            # Old snapshots with an exact sum still provide a known subtotal.
+            # An old unknown sum cannot be reconstructed from a message count.
+            if result[field] is not None:
+                known, covered = result[field], messages
+            elif not valid:
+                known, covered = None, None
+            elif covered == 0:
+                known = None
+            result['known'][field] = known
+            result['known_messages'][field] = covered
+            result['missing_counts'][field] = messages - covered if messages is not None and covered is not None else None
         rows.append(result)
     totals = {field: sum(row[field] for row in rows) if rows and all(row[field] is not None for row in rows) else None for field in TOKEN_FIELDS}
     sessions = raw.get('sessions')
     warnings = raw.get('warnings', [])
     warnings = [item[:500] for item in warnings[:20] if isinstance(item, str)] if isinstance(warnings, list) else []
-    return dict(empty, available=bool(rows), models=rows, totals=totals,
+    known = {field: sum(row['known'][field] for row in rows if row['known'][field] is not None)
+             if any(row['known'][field] is not None for row in rows) else None for field in TOKEN_FIELDS}
+    covered = {field: sum(row['known_messages'][field] or 0 for row in rows) for field in TOKEN_FIELDS}
+    missing = {field: sum(row['missing_counts'][field] for row in rows)
+               if rows and all(row['missing_counts'][field] is not None for row in rows) else None for field in TOKEN_FIELDS}
+    return dict(empty, available=bool(rows), models=rows, totals=totals, known=known, known_messages=covered,
+                missing_counts=missing,
+                missing_usage=sum(row['missing_usage'] for row in rows) if rows and all(row['missing_usage'] is not None for row in rows) else None,
                 sessions=len(set(sessions)) if isinstance(sessions, list) and all(isinstance(item, str) for item in sessions) else None,
                 warnings=warnings)
 

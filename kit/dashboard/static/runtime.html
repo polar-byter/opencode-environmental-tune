@@ -51,6 +51,7 @@
     .live-work.paused { border-color: #796443; background: #302a20; }
     .live-work .cards { margin: 18px 0; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); }
     .live-work dd { font-size: 20px; }
+    .card dd .muted { font-size: 12px; font-weight: 400; line-height: 1.5; margin: 8px 0 0; }
     .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
     .actions a { display: inline-block; border: 1px solid #496956; border-radius: 8px; padding: 10px 12px; text-decoration: none; }
     .table-wrap { overflow-x: auto; }
@@ -241,6 +242,17 @@
 
   const tokenFields = () => ({input: t("Input"), output: t("Output"), reasoning: t("Reasoning"), cache_read: t("Cache: read"), cache_write: t("Cache: write")});
   const formatCount = value => Number.isInteger(value) && value >= 0 ? value.toLocaleString(localization.locale) : t("No data");
+  function tokenCount(usage, field, exact = usage.totals?.[field]) {
+    if (Number.isInteger(exact) && exact >= 0) return formatCount(exact);
+    return Number.isInteger(usage.known?.[field]) && usage.known_messages?.[field] > 0
+      ? '≥ ' + formatCount(usage.known[field]) : t('No data');
+  }
+  function tokenNote(usage, field, exact = usage.totals?.[field]) {
+    if (Number.isInteger(exact) && exact >= 0 || !(usage.known_messages?.[field] > 0)) return '';
+    const missing = usage.missing_counts?.[field];
+    return Number.isInteger(missing) && missing > 0
+      ? tr`Incomplete data: messages without counters: ${formatCount(missing)}` : t('Incomplete data');
+  }
   function updateElapsed() {
     if (liveStarted == null) return;
     const elapsed = Math.max(0, Math.floor(Date.now() / 1000 - liveStarted));
@@ -283,7 +295,13 @@
     element('live-items').textContent = items.length ? `${items.filter(item => item.state === 'accepted').length} / ${items.length}` : t("No work items yet");
     element('live-functions').textContent = progress.available ? `${progress.implemented} / ${progress.total}` : t("Registry not published");
     const tokens = data.tokens || {};
-    element('live-tokens').textContent = tokens.available ? `${formatCount(tokens.totals?.input)} / ${formatCount(tokens.totals?.output)}` : t("No data");
+    const tokenCard = element('live-tokens');
+    tokenCard.textContent = tokens.available ? `${tokenCount(tokens, 'input')} / ${tokenCount(tokens, 'output')}` : t("No data");
+    if (tokens.available && (tokenNote(tokens, 'input') || tokenNote(tokens, 'output'))) {
+      const note = Number.isInteger(tokens.missing_usage) && tokens.missing_usage > 0
+        ? tr`Incomplete data: messages without counters: ${formatCount(tokens.missing_usage)}` : t('Incomplete data');
+      paragraph(note, tokenCard, 'muted');
+    }
     const message = [...(live.feed || [])].filter(event => recent(event) && event.kind === 'text').at(-1);
     element('live-last-message').textContent = message ? t("Last message: ") + message.text : '';
     element('live-data-status').textContent = live.available ? tr`Sessions read at ${live.updated_at ? new Date(live.updated_at * 1000).toLocaleTimeString(localization.locale) : ''}. Journal refreshes every 2 seconds; sessions every 15 seconds.` : (live.reason || t("OpenCode session unavailable; showing the stage from the task journal."));
@@ -298,7 +316,9 @@
       for (const [field, label] of Object.entries(tokenFields())) {
         const card = document.createElement('div'); card.className = 'card';
         const title = document.createElement('dt'); title.textContent = label;
-        const value = document.createElement('dd'); value.textContent = formatCount(usage.totals?.[field]);
+        const value = document.createElement('dd'); value.textContent = tokenCount(usage, field);
+        const note = tokenNote(usage, field);
+        if (note) paragraph(note, value, 'muted');
         card.append(title, value); totals.append(card);
       }
       for (const model of usage.models || []) {
@@ -308,7 +328,12 @@
         const roles = (model.roles || []).map(value => value === 'master_chief' ? 'Master Chief' : t("Executor"));
         role.textContent = tr`${roles.join(' / ') || t("Role unknown")} · messages: ${formatCount(model.messages)}`;
         name.append(role); row.append(name);
-        for (const field of Object.keys(tokenFields())) { const cell = document.createElement('td'); cell.textContent = formatCount(model[field]); row.append(cell); }
+        for (const field of Object.keys(tokenFields())) {
+          const cell = document.createElement('td'); cell.textContent = tokenCount(model, field, model[field]);
+          const note = tokenNote(model, field, model[field]);
+          if (note) paragraph(note, cell, 'muted');
+          row.append(cell);
+        }
         models.append(row);
       }
     }

@@ -90,6 +90,17 @@ const run = code => vm.runInContext(code, context);
             {role:'executor',session:'ses_other',at:now,kind:'text',text:'Another worker message'}]}}};
   for (const language of ['en','ru']) {
     run(`localization=KitLocalization.create(roleCatalog, '${language}');`);
+    const children = [];
+    elements.get('live-tokens').append = child => children.push(child);
+    context.roleData.tokens = {available:true, totals:{input:null,output:10}, known:{input:42},
+      known_messages:{input:67}, missing_counts:{input:2}, missing_usage:2};
+    run('renderWork(roleData)');
+    assert.equal(elements.get('live-tokens').textContent, '≥ 42 / 10');
+    assert.equal(children.at(-1).textContent, language === 'ru'
+      ? 'Неполные данные: сообщений без счётчиков — 2' : 'Incomplete data: messages without counters: 2');
+    assert.equal(run("tokenCount({totals:{input:null},known:{input:0},known_messages:{input:0}},'input')"), language === 'ru' ? 'Нет данных' : 'No data');
+    assert.equal(run("tokenCount({totals:{input:0}},'input')"), '0');
+    assert.equal(run("tokenCount({totals:{input:null},known:{input:0},known_messages:{input:1}},'input')"), '≥ 0');
     for (const role of ['bug_fixer','executor']) {
       for (const state of ['executor','review','accepted','rework','failed']) {
         context.roleData.work.items[0].state = state;

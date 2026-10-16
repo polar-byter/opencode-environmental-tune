@@ -1,5 +1,13 @@
 # OpenCode: the Master Chief and executors
 
+**First setup without manual copying:** install [OpenCode Desktop](https://opencode.ai/download)
+and [Python with Tk](https://www.python.org/downloads/windows/), download and extract
+this repository's ZIP, then double-click **install.cmd**. The wizard creates your
+project folder, installs the kit, opens model/API settings, and launches Desktop
+with a request to open the project. Follow the [beginner guide and sample prompt](OPENCODE_KIT.en.md)
+for each step, model roles, and the manual folder-selection fallback.
+[Installer architecture with diagrams (Russian)](docs/INSTALLER.ru.md).
+
 The configurator includes an optional Bug Fixer role, worker concurrency and
 bounded execution limits. New template defaults: OpenCode DeepSeek V4.1 Flash Free
 for the Chief/fixer and MiMo V2.6 Flash Free for executors; concurrency defaults to one.

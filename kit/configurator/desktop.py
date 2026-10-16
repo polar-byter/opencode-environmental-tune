@@ -14,8 +14,9 @@ BG, INK, MUTED, BLUE = '#f2f5fa', '#17243b', '#52627a', '#2563eb'
 class DesktopConfigurator:
     """Keep Tk on its owning thread; workers only put plain results in a queue."""
 
-    def __init__(self, window, root: Path = app.PROJECT_ROOT, *, language=None):
+    def __init__(self, window, root: Path = app.PROJECT_ROOT, *, language=None, on_prepared=None):
         self.window, self.root = window, Path(root)
+        self.on_prepared = on_prepared
         self.translator = i18n.Translator(language if language is not None else i18n.load_language(self.root))
         self.tr = self.translator.tr
         self.vars = {name: tk.StringVar(value=value) for name, value in app.EMPTY_FORM.items()}
@@ -723,6 +724,8 @@ class DesktopConfigurator:
         self.status_label.configure(foreground='#187047' if successful else '#b42338')
         self.status.set('Saved settings prepared. A new kit session will use this selection.' if successful else
                         'Selection saved, but preparation failed. Check OpenCode, API keys, or the loaded LM Studio model. The current session was not changed.')
+        if successful and self.on_prepared:
+            self.on_prepared()
 
     def on_reset(self):
         if self.preparing:

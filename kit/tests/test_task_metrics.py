@@ -142,6 +142,29 @@ class MetricsCase(unittest.TestCase):
         self.assertIsNone(row['input'])
         self.assertEqual(row['missing_usage'], 1)
 
+    def test_partial_usage_keeps_known_sums_after_missing_and_duplicate_messages(self):
+        complete = export(message='good')
+        missing = export(tokens={}, message='interrupted')
+        later = export(message='later')
+        usage = self.metrics.parse_exports([complete, missing, later, complete], 's1', 1, 3)
+        row = usage['models'][0]
+        self.assertEqual(row['messages'], 3)
+        self.assertIsNone(row['input'])
+        self.assertEqual(row['known']['input'], 20)
+        self.assertEqual(row['known_messages']['input'], 2)
+        self.assertEqual(row['missing_usage'], 1)
+        session = usage['session_usage'][0]
+        self.assertEqual(session['known'], row['known'])
+
+    def test_partial_coverage_is_per_counter_and_known_zero_is_preserved(self):
+        data = export(tokens={'input': 0, 'output': 0, 'cache': {'read': 0, 'write': 0}})
+        row = self.metrics.parse_exports([data], 's1', 1, 3)['models'][0]
+        self.assertEqual(row['input'], 0)
+        self.assertEqual(row['known']['input'], 0)
+        self.assertEqual(row['known_messages']['input'], 1)
+        self.assertEqual(row['known_messages']['reasoning'], 0)
+        self.assertIsNone(row['reasoning'])
+
     def test_invalid_tokens_and_missing_child_warn(self):
         data = export(tokens={'input': True, 'output': -1})
         data['messages'][0]['parts'] = [{'type':'tool','tool':'subagent','state':{'metadata':{'sessionId':'s2'}}}]

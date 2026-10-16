@@ -293,6 +293,7 @@ def new_usage_row(provider: str, model: str) -> dict:
     else:
         group = 'paid'
     return dict(provider=provider, model=model, group=group, messages=0, missing_usage=0,
+                known=dict.fromkeys(TOKEN_FIELDS, 0), known_messages=dict.fromkeys(TOKEN_FIELDS, 0),
                 **dict.fromkeys(TOKEN_FIELDS, 0))
 
 
@@ -310,6 +311,9 @@ def add_usage(row: dict, values: dict) -> None:
     row['messages'] += 1
     row['missing_usage'] += int(values['input'] is None or values['output'] is None)
     for field, value in values.items():
+        if value is not None:
+            row['known'][field] += value
+            row['known_messages'][field] += 1
         row[field] = None if value is None or row[field] is None else row[field] + value
 
 
