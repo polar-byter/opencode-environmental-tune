@@ -76,5 +76,35 @@ const run = code => vm.runInContext(code, context);
   assert.equal(elements.get('task-select').options[0].textContent, 'Finished · Не переводить');
   assert.equal(elements.get('connection').textContent, 'Connected');
   assert.equal(elements.get('ongoing-tasks').textContent, 'In progress: 1');
+  const node = () => ({dataset:{}, append() {}, querySelectorAll() {return [];}});
+  context.document.createElement = node;
+  for (const element of elements.values()) element.append = () => {};
+  context.roleCatalog = JSON.parse(fs.readFileSync(require('path').join(__dirname, '../../locales/ru.json'), 'utf8'));
+  const now = Date.now() / 1000;
+  context.roleData = {task:'first',status:'running',started_at:now-20,work:{
+    items:[{id:'db',state:'executor',model:'provider/same-model',attempts:[{at:now-10,state:'executor',role:'bug_fixer',session:'ses_fixer'}]}],
+    sessions:{available:true,updated_at:now,current:[
+      {role:'executor',session:'ses_fixer',at:now-1,model:'provider/same-model',kind:'thinking'},
+      {role:'executor',session:'ses_other',at:now,model:'wrong/concurrent-worker',kind:'thinking'}],
+      feed:[{role:'executor',session:'ses_fixer',at:now-1,kind:'text',text:'Own message'},
+            {role:'executor',session:'ses_other',at:now,kind:'text',text:'Another worker message'}]}}};
+  for (const language of ['en','ru']) {
+    run(`localization=KitLocalization.create(roleCatalog, '${language}');`);
+    for (const role of ['bug_fixer','executor']) {
+      for (const state of ['executor','review','accepted','rework','failed']) {
+        context.roleData.work.items[0].state = state;
+        context.roleData.work.items[0].attempts[0].state = state;
+        context.roleData.work.items[0].attempts[0].role = role;
+        run('renderWork(roleData)');
+        const stage = elements.get('live-stage').textContent;
+        assert.equal(stage.includes('Bug Fixer'), role === 'bug_fixer', [language, role, state, stage].join(' '));
+        if (state === 'executor') {
+          assert(elements.get('live-actor').textContent.startsWith(role === 'bug_fixer' ? 'Bug Fixer:' : language === 'ru' ? 'Исполнитель:' : 'Executor:'));
+          assert(!elements.get('live-actor').textContent.includes('wrong/concurrent-worker'));
+          assert.equal(elements.get('live-last-message').textContent, (language === 'ru' ? 'Последнее сообщение: ' : 'Last message: ') + 'Own message');
+        }
+      }
+    }
+  }
   console.log('Page controls: requests, confirmation, failures, stale replies, empty state OK');
 })().catch(error=>{console.error(error);process.exitCode=1;});

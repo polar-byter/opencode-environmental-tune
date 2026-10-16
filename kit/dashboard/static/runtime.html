@@ -255,15 +255,17 @@
     element('live-title').textContent = running ? t("Working now") : t("Work paused");
     element('live-stage').textContent = work.error || stage;
     const role = last?.state === 'executor' ? 'executor' : 'master_chief';
-    const actor = role === 'executor' ? t("Executor") : 'Master Chief';
+    const attempt = last?.attempts?.at(-1);
+    const workerRole = attempt?.role === 'bug_fixer' ? 'bug_fixer' : 'executor';
+    const actor = role === 'executor' ? (workerRole === 'bug_fixer' ? 'Bug Fixer' : t("Executor")) : 'Master Chief';
     const now = Date.now() / 1000;
     const cutoff = role === 'executor' && last ? last.attempts.at(-1).at : data.started_at;
-    const recent = event => event.role === role && Number.isFinite(event.at) && event.at >= cutoff && event.at <= now;
+    const recent = event => event.role === role && (role !== 'executor' || !attempt?.session || event.session === attempt.session) && Number.isFinite(event.at) && event.at >= cutoff && event.at <= now;
     const cacheFresh = Number.isFinite(live.updated_at) && now - live.updated_at >= 0 && now - live.updated_at <= 30;
     const current = running && cacheFresh ? [...(live.current || [])].filter(event => recent(event) && now - event.at <= 90).at(-1) : null;
     const latest = [...(live.feed || [])].filter(recent).at(-1);
     const observed = current || latest;
-    element('live-actor').textContent = `${actor}: ${current?.model || (role === 'executor' ? last?.model : null) || model(role)}${last && ['executor', 'review'].includes(last.state) ? t(" · work item: ") + last.id : ''}`;
+    element('live-actor').textContent = `${actor}: ${current?.model || (role === 'executor' ? last?.model : null) || model(role === 'executor' ? workerRole : role)}${last && ['executor', 'review'].includes(last.state) ? t(" · work item: ") + last.id : ''}`;
     const activeWorkers = element('active-workers'); activeWorkers.replaceChildren();
     for (const item of items) {
       const attempt = item.attempts?.at(-1);
@@ -341,8 +343,9 @@
     let stage = t("Master Chief is preparing the plan and architecture.");
     if (work.architecture && work.architecture.registered) stage = t("Master Chief published the code architecture.");
     if (last) {
-      const executor = last.model || model('executor');
-      stage = {executor: tr`Master Chief assigned “${last.id}” to executor ${executor}.`, review: tr`Executor ${executor} submitted “${last.id}” for Master Chief review.`, accepted: tr`Master Chief accepted “${last.id}” from ${executor}.`, rework: tr`Master Chief returned “${last.id}” to executor ${executor} for rework.`, failed: tr`The executor attempt for “${last.id}” failed.`}[last.state] || stage;
+      const fixer = last.attempts.at(-1).role === 'bug_fixer';
+      const executor = last.model || model(fixer ? 'bug_fixer' : 'executor');
+      stage = (fixer ? {executor: tr`Bug Fixer ${executor} is working on “${last.id}”.`, review: tr`Bug Fixer ${executor} submitted “${last.id}” for Master Chief review.`, accepted: tr`Master Chief accepted “${last.id}” from Bug Fixer ${executor}.`, rework: tr`Master Chief returned “${last.id}” to Bug Fixer ${executor} for rework.`, failed: tr`The Bug Fixer attempt for “${last.id}” failed.`} : {executor: tr`Master Chief assigned “${last.id}” to executor ${executor}.`, review: tr`Executor ${executor} submitted “${last.id}” for Master Chief review.`, accepted: tr`Master Chief accepted “${last.id}” from ${executor}.`, rework: tr`Master Chief returned “${last.id}” to executor ${executor} for rework.`, failed: tr`The executor attempt for “${last.id}” failed.`})[last.state] || stage;
     }
     if (data.status === 'finished') stage = tr`Work completed. Work items accepted: ${items.filter(item => item.state === 'accepted').length} of ${items.length}.`;
     if (data.status === 'halted') stage = t("Task stopped. A user decision is required to continue.");
