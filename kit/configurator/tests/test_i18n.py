@@ -16,15 +16,15 @@ CYRILLIC = re.compile('[\u0400-\u04ff]')
 
 
 class LanguagePreferencesTests(unittest.TestCase):
-    def test_missing_invalid_or_unknown_preference_uses_english(self):
-        with tempfile.TemporaryDirectory() as folder:
+    def test_missing_invalid_or_unknown_preference_uses_system_language(self):
+        with tempfile.TemporaryDirectory() as folder, patch('kit.localization.system_language', return_value='ru'):
             root = Path(folder)
-            self.assertEqual(i18n.load_language(root), 'en')
+            self.assertEqual(i18n.load_language(root), 'ru')
             path = root / i18n.PREFERENCES
             path.parent.mkdir()
             for value in ('broken', 'null', '{"language":"de"}', '{"language":[]}', ' ' * 4097):
                 path.write_text(value)
-                self.assertEqual(i18n.load_language(root), 'en')
+                self.assertEqual(i18n.load_language(root), 'ru')
 
     def test_language_is_saved_separately_from_model_choices(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -62,7 +62,7 @@ class DesktopLanguageTests(unittest.TestCase):
         self.addCleanup(self.saved_key.stop)
         self.window = app.tk.Tk()
         self.window.withdraw()
-        self.ui = desktop.DesktopConfigurator(self.window, self.root)
+        self.ui = desktop.DesktopConfigurator(self.window, self.root, language='en')
         self.addCleanup(lambda: self.ui.close() if not self.ui.closed else None)
 
     def switch(self, language):
@@ -85,7 +85,7 @@ class DesktopLanguageTests(unittest.TestCase):
             output.extend(self.labels(child))
         return output
 
-    def test_default_interface_and_errors_are_english_without_system_language_detection(self):
+    def test_explicit_english_interface_and_errors_override_system_language(self):
         self.assertEqual(self.ui.translator.language, 'en')
         self.assertEqual(self.ui.save_button.cget('text'), 'Save settings')
         self.assertEqual(self.window.title(), 'Project models — OpenCode Kit')

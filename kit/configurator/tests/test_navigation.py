@@ -14,7 +14,7 @@ class NavigationTests(unittest.TestCase):
         self.root = Path(self.folder.name)
         self.window = app.tk.Tk()
         self.window.withdraw()
-        self.ui = desktop.DesktopConfigurator(self.window, self.root)
+        self.ui = desktop.DesktopConfigurator(self.window, self.root, language='en')
         self.addCleanup(self.ui.close)
         self.ui.catalog.loaded = True
 

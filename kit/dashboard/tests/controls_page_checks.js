@@ -9,6 +9,7 @@ const context = {
   document: {getElementById: id => {assert(elements.has(id), id); return elements.get(id);}},
   window: {location: {search:'?task=first'}, history: {replaceState() {}}, confirm: () => true},
   URLSearchParams, Option: function() {}, setInterval() {}, console,
+  KitLocalization: require('../static/localization.js'),
   refreshCount: 0, requests: []
 };
 vm.createContext(context);
@@ -62,6 +63,6 @@ const run = code => vm.runInContext(code, context);
   assert.equal(run('activeTask'),'');
   assert.equal(elements.get('models').textContent,'');
   assert(elements.get('architecture').hidden);
-  assert.equal(elements.get('title').textContent,'Пока нет задач');
+  assert.equal(elements.get('title').textContent,'No tasks yet');
   console.log('Page controls: requests, confirmation, failures, stale replies, empty state OK');
 })().catch(error=>{console.error(error);process.exitCode=1;});

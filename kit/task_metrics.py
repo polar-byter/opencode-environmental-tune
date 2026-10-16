@@ -488,6 +488,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument('--junit-dir')
         command.add_argument('command', nargs=argparse.REMAINDER)
     finish = sub.add_parser('finish')
+    finish.add_argument('--language', choices=('en', 'ru'), help='report language; otherwise saved UI preference or system language')
     finish.add_argument('--export', action='append', dest='exports')
     finish.add_argument('--opencode', default='opencode')
     for command in (start, delegation, inspect, review, resume, test, finish):
@@ -1034,101 +1035,110 @@ class TaskMetrics:
 
     # We print a Markdown report for a task, summarizing its events, usage statistics, and test results
     # The report includes sections for paid models, local models, and unknown providers, as well as counts of reviews and test outcomes.
-    def render(self, task: str, events: list[dict], usage: dict, ended: float) -> str:
+    def render(self, task: str, events: list[dict], usage: dict, ended: float, language: str = 'ru') -> str:
+        """Render frozen facts in one language; never translate task or worker text."""
+        if __package__:
+            from . import localization
+        else:
+            import localization
+        def t(key, **values):
+            return localization.text(key, language, **values)
         def label(value):
             return str(value).replace('|', '\\|').replace('\r', ' ').replace('\n', ' ').replace('<', '&lt;').replace('>', '&gt;')
         def count(value):
-            return 'нет данных' if value is None else f'{value:,}'.replace(',', ' ')
-        duration = max(0, int(ended-events[0]['at']))
+            return t('no data') if value is None else f'{value:,}'.replace(',', ' ' if language == 'ru' else ',')
+        duration = max(0, int(ended - events[0]['at']))
         reviews = [e for e in events if e['kind'] == 'review']
         tests = [e for e in events if e['kind'] == 'test']
-        lines = [f'## 📊 Итоги задачи · {label(events[0]["title"])}', '',
-                 f'⏱ Время: **{duration//60} мин {duration%60} сек**', '']
-        for group, heading in [('paid', 'Платные модели'), ('local', 'Бесплатные / локальные · LM Studio'),
-                               ('free', 'Бесплатные облачные · OpenRouter `:free`'),
-                               ('unknown', 'Неизвестный провайдер')]:
+        lines = [t('## 📊 Task report · {title}', title=label(events[0]['title'])), '',
+                 t('⏱ Time: **{minutes} min {seconds} sec**', minutes=duration // 60, seconds=duration % 60), '']
+        for group, heading in [('paid', 'Paid models'), ('local', 'Free / local · LM Studio'),
+                               ('free', 'Free cloud · OpenRouter / OpenCode'), ('unknown', 'Unknown provider')]:
             rows = [r for r in usage['models'] if r['group'] == group]
             if group in ('free', 'unknown') and not rows:
                 continue
-            lines += [f'### {heading}', '']
+            lines += ['### ' + t(heading), '']
             if not rows:
-                lines += ['Нет данных о вызовах этой группы в выбранном интервале.', '']
+                lines += [t('No calls recorded for this group in the selected interval.'), '']
                 continue
-            lines += ['| Модель | Вход | Выход | Рассуждения | Кэш: чтение | Кэш: запись |',
-                      '|---|---:|---:|---:|---:|---:|']
+            lines += [t('| Model | Input | Output | Reasoning | Cache: read | Cache: write |'), '|---|---:|---:|---:|---:|---:|']
             for row in rows:
-                lines.append('| ' + label(row['provider']+'/'+row['model']) + ' | ' +
+                lines.append('| ' + label(row['provider'] + '/' + row['model']) + ' | ' +
                              ' | '.join(count(row[f]) for f in TOKEN_FIELDS) + ' |')
             lines.append('')
         work_tests = [e for e in tests if e.get('phase') != 'baseline']
-        lines += [f'🔁 Возвраты на переделку: **{sum(e["result"] == "rework" for e in reviews)}** '
-                  f'· Всего ревью: **{len(reviews)}**', '']
+        lines += [t('🔁 Rework requests: **{reworks}** · Reviews recorded: **{reviews}**',
+                    reworks=sum(e['result'] == 'rework' for e in reviews), reviews=len(reviews)), '']
         failed_attempts = sum(e['result'] == 'failed' for e in reviews)
         if failed_attempts:
-            lines += [f'⚠️ Сбои исполнителя без результата (ошибка, лимит, недоступная модель): **{failed_attempts}**. '
-                      'Это не переделки: исполнитель не изменил файлы.', '']
-        lines += [f'🧪 Полностью успешные прогоны: **{sum(e["status"] == "passed" for e in work_tests)} из {len(work_tests)}**', '']
+            lines += [t('⚠️ Executor failures without a result (error, limit, unavailable model): **{count}**. These are not reworks: no files changed.', count=failed_attempts), '']
+        lines += [t('🧪 Fully successful runs: **{passed} of {total}**', passed=sum(e['status'] == 'passed' for e in work_tests), total=len(work_tests)), '']
         if len(work_tests) != len(tests):
-            lines += [f'Начальные проверки до реализации (baseline): **{len(tests) - len(work_tests)}**; '
-                      'в рабочие успешные прогоны не входят.', '']
+            lines += [t('Initial checks before implementation (baseline): **{count}**; excluded from successful work runs.', count=len(tests) - len(work_tests)), '']
         full = [e for e in tests if e.get('scope', 'full') == 'full' and e.get('phase') != 'baseline']
-        lines += [f'Полный набор тестов: **{sum(e["status"] == "passed" for e in full)} из {len(full)}**. '
-                  'Остальные прогоны могут проверять отдельный класс или модуль.', '']
+        lines += [t('Full suite: **{passed} of {total}**. Other runs may cover a selected class or module.', passed=sum(e['status'] == 'passed' for e in full), total=len(full)), '']
         attempts = [e for e in events if e['kind'] == 'delegation']
         if attempts or events[0].get('track_delegations'):
             closed = {e.get('delegation_id') for e in reviews}
             pending = [e['work_item'] for e in attempts if e['event_id'] not in closed]
-            lines += [f'Заданий исполнителю зарегистрировано: **{len(attempts)}** · без записанного ревью: '
-                      f'**{len(pending)}**.', '']
+            lines += [t('Executor assignments registered: **{total}** · without a recorded review: **{pending}**.', total=len(attempts), pending=len(pending)), '']
             if pending:
-                lines += ['⚠️ Не завершено ревью: ' + ', '.join(label(p) for p in pending) + '.', '']
+                lines += [t('⚠️ Pending reviews: {items}.', items=', '.join(label(p) for p in pending)), '']
         if not full or full[-1]['status'] != 'passed':
-            lines += ['⚠️ Последний полный прогон не зелёный или отсутствует; готовность всей задачи не подтверждена.', '']
+            lines += [t('⚠️ The latest full run failed or is missing; overall readiness is unconfirmed.'), '']
         no_result = [e for e in tests if e.get('category') in {CATEGORY_NO_RESULT, CATEGORY_TIMEOUT}]
         if no_result:
-            lines += [f'⚙️ Прогоны без результата (сборка, окружение или зависание): **{len(no_result)}**. '
-                      'Они не считаются ошибками исполнителя.', '']
+            lines += [t('⚙️ Runs without a readable result (build, environment or timeout): **{count}**. These are not executor errors.', count=len(no_result)), '']
         halts = [e for e in events if e['kind'] == 'halt']
         if halts:
             resumes = [e for e in events if e['kind'] == 'resume']
-            lines += [f'⛔ Остановки по защитным лимитам: **{len(halts)}** · продолжений после решения пользователя: '
-                      f'**{len(resumes)}**', '']
-            lines += ['- Остановка: ' + label(e['reason']) for e in halts]
-            lines += ['- Продолжение: ' + label(e['reason']) for e in resumes]
+            lines += [t('⛔ Protective stops: **{stops}** · resumes after user decisions: **{resumes}**', stops=len(halts), resumes=len(resumes)), '']
+            lines += [t('- Stop: {reason}', reason=label(e['reason'])) for e in halts]
+            lines += [t('- Resume: {reason}', reason=label(e['reason'])) for e in resumes]
             lines.append('')
         if tests:
             last = tests[-1]
-            lines += [f'Последний прогон: **{label(last["status"])}** · тестов: {count(last["tests"])} · '
-                      f'падений: {count(last["failures"])} · ошибок: {count(last["errors"])} · '
-                      f'пропусков: {count(last["skipped"])}.', '']
+            lines += [t('Last run: **{status}** · tests: {tests} · failures: {failures} · errors: {errors} · skipped: {skipped}.',
+                        status=label(last['status']), **{key: count(last[key]) for key in ('tests', 'failures', 'errors', 'skipped')}), '']
         else:
-            lines += ['Тесты через утилиту не запускались; успешность не подтверждена.', '']
+            lines += [t('No tests were run through the utility; success is unconfirmed.'), '']
         bindings = [e for e in events if e['kind'] == 'attempt_session']
         if bindings:
-            lines += ['### Расход по попыткам (часть общего итога)', '',
-                      '| Роль / worker | Попытка | Фактическая модель | Вход | Выход | Стоимость USD |',
-                      '|---|---|---|---:|---:|---:|']
+            lines += [t('### Usage by attempt (included in the total)'), '',
+                      t('| Role / worker | Attempt | Actual model | Input | Output | Cost USD |'), '|---|---|---|---:|---:|---:|']
             for binding in bindings:
                 rows = [row for row in usage.get('session_usage', []) if row['session'] == binding['session']]
                 totals = {field: sum(row[field] for row in rows) if rows and all(row[field] is not None for row in rows) else None
                           for field in ('input', 'output', 'cost_usd')}
-                models = ', '.join(row['provider'] + '/' + row['model'] for row in rows) or 'нет данных'
-                cost = 'нет данных' if totals['cost_usd'] is None else f'{totals["cost_usd"]:.6f}'
+                models = ', '.join(row['provider'] + '/' + row['model'] for row in rows) or t('no data')
+                cost = t('no data') if totals['cost_usd'] is None else f'{totals["cost_usd"]:.6f}'
                 lines.append(f'| {label(binding["role"])} / {label(binding["worker_id"])} | {label(binding["delegation_id"])} | '
                              f'{label(models)} | {count(totals["input"])} | {count(totals["output"])} | {cost} |')
-            lines += ['', 'Эта детализация не прибавляется повторно к общему итогу. Отсутствующий cost остаётся неизвестным.', '']
-        lines += ['Время измеряется от `start` до `finish`; работа до старта не учтена.',
-                  'Ревью и задания учитываются по журналу; незарегистрированные действия обнаружить нельзя.',
-                  'Все `lmstudio` — локальные без платы за API; модели OpenRouter с окончанием `:free` и OpenCode с `-free` — бесплатные облачные; '
-                  'остальные провайдеры считаются платными по умолчанию.',
-                  'Токены рассуждений и кэша показаны отдельно, без сложения пересекающихся счётчиков.',
-                  'Срез сделан перед итоговым ответом: его токены не включены. Стоимость из тарифов и экономия не вычислялись.', '']
+            lines += ['', t('This breakdown is not added to the total again. Missing cost remains unknown.'), '']
+        lines += [t('Time is measured from `start` to `finish`; earlier work is excluded.'),
+                  t('Reviews and assignments follow the journal; unregistered actions cannot be detected.'),
+                  t('All `lmstudio` models have no API fee; OpenRouter `:free` and OpenCode `-free` models are free cloud models; other known providers are classified as paid by default.'),
+                  t('Reasoning and cache tokens are shown separately without adding overlapping counters.'),
+                  t('Snapshot taken before the final answer; its tokens are excluded. Catalog-based cost and savings were not calculated.'), '']
         if usage['warnings']:
-            lines += ['Примечания:', ''] + ['- '+label(w) for w in usage['warnings']] + ['']
+            warnings = []
+            for warning in usage['warnings']:
+                if warning.startswith('Токены — нет данных: '):
+                    warning = t('Tokens unavailable: {reason}', reason=localization.diagnostic(warning.split(': ', 1)[1], language))
+                else:
+                    warning = localization.diagnostic(warning, language)
+                warnings.append('- ' + label(warning))
+            lines += [t('Notes:'), ''] + warnings + ['']
         return '\n'.join(lines)
 
+
     # it is our final step to finish a task, collect exports, parse usage, and write a Markdown report to report.md in the task directory
-    def finish(self, task: str, export_paths: list[str] | None = None, executable: str = 'opencode') -> str:
+    def finish(self, task: str, export_paths: list[str] | None = None, executable: str = 'opencode', language: str | None = None) -> str:
+        if __package__:
+            from .localization import load_language
+        else:
+            from localization import load_language
+        language = language or load_language(self.root)
         with self.lock(task):
             reason = blocking_reason(self.root, task)
             if reason:
@@ -1152,7 +1162,7 @@ class TaskMetrics:
                                    snapshot(self.root), [])['changed']):
                     raise ValueError('Finish needs a green full test of the integrated project')
             if finished:
-                report = self.render(task, events, finished['usage'], finished['ended'])
+                report = self.render(task, events, finished['usage'], finished['ended'], language)
             else:
                 ended = time.time()
                 usage = dict(models=[], warnings=[], sessions=[])
@@ -1167,7 +1177,7 @@ class TaskMetrics:
                     usage['warnings'].append(f'Токены — нет данных: {error}')
                 # Journal first: report-write failure can be retried without recounting.
                 self.append(task, 'finish', ended=ended, usage=usage)
-                report = self.render(task, events, usage, ended)
+                report = self.render(task, events, usage, ended, language)
             folder = self.task_dir(task)
             tmp = folder / ('report-'+uuid.uuid4().hex+'.tmp')
             tmp.write_text(report, encoding='utf-8')
@@ -1218,7 +1228,7 @@ def main(argv=None) -> int:
         elif args.action == 'resume':
             event = metrics.resume(args.task, args.reason)
         elif args.action == 'finish':
-            print(metrics.finish(args.task, args.exports, args.opencode))
+            print(metrics.finish(args.task, args.exports, args.opencode, args.language))
             return EXIT_OK
         elif args.action == 'check':
             command = args.command[1:] if args.command[:1] == ['--'] else args.command

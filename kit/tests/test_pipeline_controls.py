@@ -220,7 +220,7 @@ class PipelineControls(unittest.TestCase):
         self.assertEqual(cli('review', '--task', 'cli', '--work-item', 'App', '--result', 'accepted',
                              '--checks', '.metrics/cli/checks.json'), 0)
         self.assertEqual(cli('test', '--task', 'cli', '--scope', 'full', '--', *self.command), 0)
-        self.assertEqual(cli('finish', '--task', 'cli'), 0)
+        self.assertEqual(cli('finish', '--task', 'cli', '--language', 'ru'), 0)
         report = (folder / 'report.md').read_text(encoding='utf-8')
         self.assertIn('без записанного ревью: **0**', report)
         self.assertIn('Полный набор тестов: **1 из 1**', report)
@@ -238,19 +238,19 @@ class PipelineControls(unittest.TestCase):
             self.begin()
         with self.assertRaisesRegex(ValueError, 'match'):
             self.metrics.review('task', 'Other', 'rework')
-        report = self.metrics.finish('task')
+        report = self.metrics.finish('task', language='ru')
         self.assertIn('без записанного ревью: **1**', report)
         self.assertIn('Не завершено ревью: App', report)
 
     def test_scoped_green_is_not_full_project_success(self):
         self.metrics.test('task', self.command, scope='App')
-        report = self.metrics.finish('task')
+        report = self.metrics.finish('task', language='ru')
         self.assertIn('Полный набор тестов: **0 из 0**', report)
         self.assertIn('готовность всей задачи не подтверждена', report)
 
     def test_green_baseline_is_not_a_successful_implementation_run(self):
         self.metrics.test('task', self.command, scope='App', phase='baseline')
-        report = self.metrics.finish('task')
+        report = self.metrics.finish('task', language='ru')
         self.assertIn('Полностью успешные прогоны: **0 из 0**', report)
         self.assertIn('Начальные проверки до реализации (baseline): **1**', report)
 

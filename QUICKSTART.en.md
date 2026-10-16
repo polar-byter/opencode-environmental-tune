@@ -292,8 +292,9 @@ it checks the `/models` address, which does not always prove the key is valid.
   The current chat does not switch models: open a **new build chat**. If you
   just added a new key, fully restart OpenCode Desktop so it sees it.
 
-The configurator window has an English interface by default (Language → Russian
-switches it).
+The configurator initially follows the system language (English or Russian),
+with English as fallback. Language saves a manual override for this project.
+The dashboard follows the browser language until a manual choice is saved.
 
 If you work from a terminal rather than Desktop, launch with preparation like this:
 

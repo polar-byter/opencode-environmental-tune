@@ -82,8 +82,8 @@ working on what, how many parts are done, how often work was sent back, token us
 and every executor job. Buttons let you **pause** the task (everything is kept),
 **resume** it, **stop** it (cancel) or **delete** the task journal — your application
 code stays. At the end a summary appears with links to the project folder, the launch
-file and the report. The dashboard page itself is currently in Russian; the diagram
-shows its labels in English.
+file and the report. The dashboard supports English and Russian, initially follows
+the browser language, and saves a manual Language selection for the project.
 
 ![Using the dashboard](readme_gif/en/05_dashboard_controls.gif)
 

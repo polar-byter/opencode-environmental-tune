@@ -47,9 +47,9 @@ class MetricsCase(unittest.TestCase):
         self.metrics.start('task')
         self.metrics.review('task', 'work_item', 'rework')
         self.metrics.review('task', 'work_item', 'accepted')
-        report = self.metrics.finish('task')
+        report = self.metrics.finish('task', language='ru')
         self.assertIn('нет данных', report)
-        self.assertEqual(self.metrics.finish('task'), report)
+        self.assertEqual(self.metrics.finish('task', language='ru'), report)
         self.assertEqual(sum(e['kind']=='finish' for e in self.metrics.read('task')), 1)
         with self.assertRaises(ValueError):
             self.metrics.review('task', 'work_item', 'accepted')
@@ -176,7 +176,7 @@ class MetricsCase(unittest.TestCase):
         path = self.root/'export.json'
         path.write_text(json.dumps(export()), encoding='utf-8')
         with patch('task_metrics.time.time', return_value=3):
-            report = self.metrics.finish('task',[str(path)])
+            report = self.metrics.finish('task',[str(path)], language='ru')
         self.assertIn('any-new-model', report)
         self.assertEqual(self.metrics.read('task')[-1]['usage']['models'][0]['input'],10)
 
@@ -184,7 +184,7 @@ class MetricsCase(unittest.TestCase):
         self.metrics.start('task','s1')
         self.metrics.review('task','x','rework')
         with patch.object(self.metrics,'collect_exports',side_effect=ValueError('CLI unavailable')):
-            report=self.metrics.finish('task')
+            report=self.metrics.finish('task', language='ru')
         self.assertIn('CLI unavailable',report)
         self.assertIn('нет данных',report)
 
@@ -259,7 +259,7 @@ class MetricsCase(unittest.TestCase):
     def test_bad_json_report_not_successful(self):
         self.metrics.start('task','s1')
         (self.root/'bad.json').write_text('not json')
-        result = self.metrics.finish('task',['bad.json'])
+        result = self.metrics.finish('task',['bad.json'], language='ru')
         self.assertIn('нет данных',result)
         self.assertEqual(self.metrics.read('task')[-1]['usage']['models'], [])
 
@@ -276,15 +276,15 @@ class MetricsCase(unittest.TestCase):
         self.metrics.review('task','x','rework')
         self.metrics.review('task','x','rework')
         self.metrics.review('task','x','accepted')
-        report=self.metrics.finish('task')
+        report=self.metrics.finish('task', language='ru')
         self.assertIn('**2 из 6**',report)
         self.assertIn('переделку: **2**',report)
 
     def test_finish_recreates_missing_report(self):
         self.metrics.start('task')
-        report=self.metrics.finish('task')
+        report=self.metrics.finish('task', language='ru')
         (self.metrics.task_dir('task')/'report.md').unlink()
-        self.assertEqual(self.metrics.finish('task'),report)
+        self.assertEqual(self.metrics.finish('task', language='ru'),report)
 
     def test_missing_junit_report_is_unknown(self):
         result=self.metrics.parse_tests('',0,self.root/'absent.xml')

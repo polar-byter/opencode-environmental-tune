@@ -54,7 +54,8 @@ class RuntimeHTTP(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertIn('text/html', headers['Content-Type'])
         self.assertEqual(headers['Cache-Control'], 'no-store')
-        self.assertIn('Автообновление', text)
+        self.assertIn('Refreshes every 2 seconds', text)
+        self.assertIn('id="language-select"', text)
 
     def test_task_id_selects_the_right_journal(self):
         for task, title in [('first', 'Первая <b>задача</b>'), ('second', 'Вторая задача')]:

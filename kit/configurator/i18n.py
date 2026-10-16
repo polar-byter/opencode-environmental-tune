@@ -1,11 +1,9 @@
-"""Explicit UI language, English source messages, and project-local UI preferences."""
+"""English source messages and saved UI language with an OS-language fallback."""
 from dataclasses import dataclass, field
-import json
-from pathlib import Path
 
 from . import app
+from ..localization import PREFERENCES, load_language, save_language
 
-PREFERENCES = Path('.metrics') / '.configurator-ui.json'
 LANGUAGES = {'English': 'en', 'Russian': 'ru'}
 
 RU = {
@@ -181,27 +179,6 @@ class Text:
 
 def text(key, **values):
     return Text(key, values)
-
-
-def load_language(root: Path) -> str:
-    try:
-        path = Path(root) / PREFERENCES
-        if path.stat().st_size > 4096:
-            return 'en'
-        value = json.loads(path.read_text(encoding='utf-8')).get('language')
-        return value if value in ('en', 'ru') else 'en'
-    except (OSError, ValueError, AttributeError):
-        return 'en'
-
-
-def save_language(root: Path, language: str):
-    if language not in ('en', 'ru'):
-        raise ValueError('Unsupported language')
-    path = Path(root) / PREFERENCES
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps({'language': language}) + '\n', encoding='utf-8')
-    temporary.replace(path)
 
 
 class Translator:

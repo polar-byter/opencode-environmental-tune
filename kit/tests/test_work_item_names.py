@@ -116,7 +116,7 @@ class WorkItemNames(unittest.TestCase):
     def test_legacy_review_is_reported_and_finished(self):
         self.metrics.start('task')
         self.metrics.append('task', 'review', piece='App', result='rework')
-        report = self.metrics.finish('task')
+        report = self.metrics.finish('task', language='ru')
         self.assertIn('Возвраты на переделку: **1**', report)
 
     def test_dashboard_parser_reads_legacy_and_canonical_names(self):

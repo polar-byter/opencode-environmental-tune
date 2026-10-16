@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Задача OpenCode</title>
+  <title data-i18n="OpenCode task">OpenCode task</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; background: #101724; color: #e8edf5; }
     body { margin: 0; }
@@ -69,106 +69,112 @@
 <body>
 <main>
   <header>
-    <div><div class="eyebrow muted">OpenCode · наблюдение за задачей</div><h1 id="title">Загрузка задачи…</h1><div id="project-name" class="muted"></div></div>
-    <span id="connection" class="badge">Подключение…</span>
+    <div><div class="eyebrow muted" data-i18n="OpenCode · task dashboard">OpenCode · task dashboard</div><h1 id="title" data-i18n="Loading task…">Loading task…</h1><div id="project-name" class="muted"></div></div>
+    <div><label for="language-select" data-i18n="Language">Language</label>
+      <select id="language-select"><option value="en">English</option><option value="ru">Русский</option></select>
+      <span id="connection" class="badge" data-i18n="Connecting…">Connecting…</span></div>
   </header>
   <div class="toolbar">
-    <label for="task-select">Задача</label><select id="task-select" aria-label="Задача"></select>
-    <button id="refresh" type="button">Обновить</button>
-    <button id="ongoing-tasks" type="button" disabled title="Открыть последнюю задачу в работе этого проекта">В работе: 0</button>
-    <button id="model-settings" type="button">Настройки моделей</button>
+    <label for="task-select" data-i18n="Task">Task</label><select id="task-select" aria-label="Task" data-i18n-aria-label="Task"></select>
+    <button id="refresh" type="button" data-i18n="Refresh">Refresh</button>
+    <button id="ongoing-tasks" type="button" disabled title="Open this project&#x27;s latest running task" data-i18n-title="Open this project&#x27;s latest running task" data-i18n="In progress: 0">In progress: 0</button>
+    <button id="model-settings" type="button" data-i18n="Model settings">Model settings</button>
   </div>
   <p id="settings-message" class="muted" role="status" aria-live="polite"></p>
-  <div class="toolbar" aria-label="Управление выбранной задачей">
-    <button id="pause-task" type="button" disabled>⏸ Приостановить</button>
-    <button id="resume-task" type="button" disabled>▶ Продолжить</button>
-    <button id="cancel-task" type="button" disabled>■ Остановить</button>
-    <button id="delete-task" type="button" disabled>Удалить задачу…</button>
+  <div class="toolbar" aria-label="Selected task controls" data-i18n-aria-label="Selected task controls">
+    <button id="pause-task" type="button" disabled data-i18n="⏸ Pause">⏸ Pause</button>
+    <button id="resume-task" type="button" disabled data-i18n="▶ Resume">▶ Resume</button>
+    <button id="cancel-task" type="button" disabled data-i18n="■ Cancel">■ Cancel</button>
+    <button id="delete-task" type="button" disabled data-i18n="Delete task…">Delete task…</button>
   </div>
   <p id="control-message" class="muted" role="status" aria-live="polite"></p>
   <p id="message" role="status" aria-live="polite"></p>
   <section id="live-work" class="live-work" hidden aria-labelledby="live-title">
-    <div class="eyebrow muted">Текущая работа</div>
-    <h2 id="live-title">Сейчас в работе</h2>
+    <div class="eyebrow muted" data-i18n="Current work">Current work</div>
+    <h2 id="live-title" data-i18n="Working now">Working now</h2>
     <p id="live-stage"></p><p id="live-actor" class="muted"></p><div id="active-workers"></div>
     <p id="live-action"></p><p id="live-function"></p>
     <dl class="cards">
-      <div class="card"><dt>Задания приняты</dt><dd id="live-items">—</dd></div>
-      <div class="card"><dt>Функции реализованы</dt><dd id="live-functions">—</dd></div>
-      <div class="card"><dt>Токены: вход / выход</dt><dd id="live-tokens">—</dd></div>
-      <div class="card"><dt>С начала задачи</dt><dd id="live-elapsed">—</dd></div>
+      <div class="card"><dt data-i18n="Work items accepted">Work items accepted</dt><dd id="live-items">—</dd></div>
+      <div class="card"><dt data-i18n="Functions implemented">Functions implemented</dt><dd id="live-functions">—</dd></div>
+      <div class="card"><dt data-i18n="Tokens: input / output">Tokens: input / output</dt><dd id="live-tokens">—</dd></div>
+      <div class="card"><dt data-i18n="Since task start">Since task start</dt><dd id="live-elapsed">—</dd></div>
     </dl>
     <p id="live-last-message" class="muted"></p>
     <p id="live-data-status" class="muted"></p>
-    <button id="live-details" type="button">Посмотреть детализацию работ</button>
+    <button id="live-details" type="button" data-i18n="View work details">View work details</button>
   </section>
   <section id="completion" class="completion" hidden aria-labelledby="completion-title">
-    <div class="eyebrow muted">Итог задачи</div>
-    <h2 id="completion-title">✓ Работа завершена</h2>
+    <div class="eyebrow muted" data-i18n="Task outcome">Task outcome</div>
+    <h2 id="completion-title" data-i18n="✓ Work completed">✓ Work completed</h2>
     <p id="completion-text"></p>
     <p id="completion-path" class="muted"></p>
     <div class="actions">
-      <button id="open-project" type="button">Открыть папку проекта</button>
-      <a id="launch-file" hidden target="_blank" rel="noopener">Посмотреть файл запуска</a>
-      <a id="completion-report" target="_blank" rel="noopener">Итоговый отчёт</a>
+      <button id="open-project" type="button" data-i18n="Open project folder">Open project folder</button>
+      <a id="launch-file" hidden target="_blank" rel="noopener" data-i18n="View launch file">View launch file</a>
+      <a id="completion-report" target="_blank" rel="noopener" data-i18n="Final report">Final report</a>
     </div>
     <p id="project-message" class="muted" role="status" aria-live="polite"></p>
   </section>
-  <nav class="tabs" role="tablist" aria-label="Представление задачи">
-    <button id="overview-tab" role="tab" aria-selected="true" aria-controls="overview">Обзор</button>
-    <button id="details-tab" role="tab" aria-selected="false" aria-controls="details">Детализация работ</button>
-    <button id="tokens-tab" role="tab" aria-selected="false" aria-controls="tokens">Токены</button>
+  <nav class="tabs" role="tablist" aria-label="Task views" data-i18n-aria-label="Task views">
+    <button id="overview-tab" role="tab" aria-selected="true" aria-controls="overview" data-i18n="Overview">Overview</button>
+    <button id="details-tab" role="tab" aria-selected="false" aria-controls="details" data-i18n="Work details">Work details</button>
+    <button id="tokens-tab" role="tab" aria-selected="false" aria-controls="tokens" data-i18n="Tokens">Tokens</button>
   </nav>
   <div id="overview" role="tabpanel" aria-labelledby="overview-tab">
   <section class="activity">
-    <h2>Что происходит</h2>
-    <p id="stage">Читаем задачу…</p>
+    <h2 data-i18n="What is happening">What is happening</h2>
+    <p id="stage" data-i18n="Reading task…">Reading task…</p>
     <p id="models" class="muted"></p>
-    <a id="architecture" hidden target="_blank" rel="noopener">Посмотреть архитектуру кода</a>
+    <a id="architecture" hidden target="_blank" rel="noopener" data-i18n="View code architecture">View code architecture</a>
     <p id="function-count" class="muted"></p>
-    <progress id="function-progress" hidden aria-label="Прогресс функций"></progress>
+    <progress id="function-progress" hidden aria-label="Function progress" data-i18n-aria-label="Function progress"></progress>
     <p id="current-function"></p>
   </section>
   <dl class="cards">
-    <div class="card"><dt>Статус</dt><dd id="status">—</dd></div>
-    <div class="card"><dt>События</dt><dd id="event-count">—</dd></div>
-    <div class="card"><dt>Успешные прогоны / все</dt><dd id="runs">—</dd></div>
-    <div class="card"><dt>Возвраты на доработку</dt><dd id="reworks">—</dd></div>
-    <div class="card"><dt>Сбои исполнителя</dt><dd id="failures">—</dd></div>
-    <div class="card"><dt>Последнее событие</dt><dd id="updated">—</dd></div>
+    <div class="card"><dt data-i18n="Status">Status</dt><dd id="status">—</dd></div>
+    <div class="card"><dt data-i18n="Events">Events</dt><dd id="event-count">—</dd></div>
+    <div class="card"><dt data-i18n="Successful runs / all">Successful runs / all</dt><dd id="runs">—</dd></div>
+    <div class="card"><dt data-i18n="Rework requests">Rework requests</dt><dd id="reworks">—</dd></div>
+    <div class="card"><dt data-i18n="Executor failures">Executor failures</dt><dd id="failures">—</dd></div>
+    <div class="card"><dt data-i18n="Latest event">Latest event</dt><dd id="updated">—</dd></div>
   </dl>
-  <section class="activity"><h2>Последние события</h2><ol id="events"></ol></section>
+  <section class="activity"><h2 data-i18n="Recent events">Recent events</h2><ol id="events"></ol></section>
   </div>
   <div id="tokens" role="tabpanel" aria-labelledby="tokens-tab" hidden>
     <section class="activity">
-      <h2>Расход токенов</h2><p id="token-status" class="muted"></p>
+      <h2 data-i18n="Token usage">Token usage</h2><p id="token-status" class="muted"></p>
       <dl id="token-totals" class="cards token-cards"></dl>
-      <p id="token-scroll-hint" class="muted">Таблицу можно прокрутить по горизонтали →</p>
-      <div class="table-wrap"><table aria-label="Токены по моделям">
-        <thead><tr><th>Модель / роль</th><th>Вход</th><th>Выход</th><th>Рассуждения</th><th>Кэш: чтение</th><th>Кэш: запись</th></tr></thead>
+      <p id="token-scroll-hint" class="muted" data-i18n="Scroll the table horizontally →">Scroll the table horizontally →</p>
+      <div class="table-wrap"><table aria-label="Tokens by model" data-i18n-aria-label="Tokens by model">
+        <thead><tr><th data-i18n="Model / role">Model / role</th><th data-i18n="Input">Input</th><th data-i18n="Output">Output</th><th data-i18n="Reasoning">Reasoning</th><th data-i18n="Cache: read">Cache: read</th><th data-i18n="Cache: write">Cache: write</th></tr></thead>
         <tbody id="token-models"></tbody>
       </table></div>
-      <p class="muted">Категории показаны отдельно: рассуждения и кэш могут пересекаться с другими счётчиками. Это данные OpenCode, не денежный счёт.</p>
+      <p class="muted" data-i18n="Categories are shown separately: reasoning and cache may overlap other counters. This is OpenCode usage data, not a bill.">Categories are shown separately: reasoning and cache may overlap other counters. This is OpenCode usage data, not a bill.</p>
       <ul id="token-warnings" class="compact muted"></ul>
     </section>
   </div>
   <div id="details" role="tabpanel" aria-labelledby="details-tab" hidden>
-    <section class="activity"><h2>Задания исполнителю</h2><div id="work-items"></div></section>
-    <section class="activity"><h2>Функции</h2><ol id="functions" class="compact"></ol></section>
-    <section class="activity"><h2>Сообщения и действия моделей</h2><p id="session-status" class="muted"></p><div id="session-feed"></div></section>
+    <section class="activity"><h2 data-i18n="Executor work items">Executor work items</h2><div id="work-items"></div></section>
+    <section class="activity"><h2 data-i18n="Functions">Functions</h2><ol id="functions" class="compact"></ol></section>
+    <section class="activity"><h2 data-i18n="Model messages and actions">Model messages and actions</h2><p id="session-status" class="muted"></p><div id="session-feed"></div></section>
   </div>
-  <footer><span id="task-id" class="muted"></span><a id="report" hidden target="_blank" rel="noopener">Открыть итоговый отчёт</a><span class="muted">Автообновление каждые 2 секунды</span></footer>
+  <footer><span id="task-id" class="muted"></span><a id="report" hidden target="_blank" rel="noopener" data-i18n="Open final report">Open final report</a><span class="muted" data-i18n="Refreshes every 2 seconds">Refreshes every 2 seconds</span></footer>
 </main>
+<script src="/localization.js"></script>
 <script>
   'use strict';
+  let localization = KitLocalization.create();
+  const t = key => localization.text(key);
+  const tr = (parts, ...values) => localization.template(parts, ...values);
   const parameters = new URLSearchParams(window.location.search);
   let activeTask = parameters.get('task') || '';
   let busy = false;
   let latestTasks = [];
   let liveStarted = null;
-  const labels = { running: 'В работе', halted: 'Защитная остановка', finished: 'Завершена',
-    pausing: 'Приостанавливается…', paused: 'Приостановлена', resuming: 'Продолжается…',
-    cancelling: 'Останавливается…', cancelled: 'Отменена', deleting: 'Удаляется…', deleted: 'Удалена', error: 'Действие не подтверждено' };
+  const labels = () => ({ running: t("In progress"), halted: t("Protective stop"), finished: t("Finished"),
+    pausing: t("Pausing…"), paused: t("Paused"), resuming: t("Resuming…"),
+    cancelling: t("Cancelling…"), cancelled: t("Cancelled"), deleting: t("Deleting…"), deleted: t("Deleted"), error: t("Action unconfirmed") });
   let controlPending = false;
   let selectedData = null;
   let controlFailure = '';
@@ -180,20 +186,20 @@
     element('resume-task').disabled = pending || !session || state !== 'paused';
     element('cancel-task').disabled = pending || !session || !['running', 'halted', 'paused', 'error'].includes(state);
     element('delete-task').disabled = pending || !data || state === 'deleted' || (!session && state !== 'finished');
-    element('control-message').textContent = data?.control?.error || controlFailure || (pending ?
-      (['pausing', 'resuming', 'cancelling', 'deleting'].includes(state) ? labels[state] : 'Передаём действие…') : data?.control?.message || '');
+    element('control-message').textContent = t(data?.control?.error || controlFailure || (pending ?
+      (['pausing', 'resuming', 'cancelling', 'deleting'].includes(state) ? labels()[state] : t("Sending action…")) : data?.control?.message || ''));
   }
   async function controlTask(action) {
     const task = activeTask;
     if (!task || controlPending || selectedData?.task !== task) return;
-    if (action === 'delete' && !window.confirm('Удалить выбранную задачу, её сессии и метрики? Все её модели будут остановлены. Файлы приложения останутся.')) return;
-    if (action === 'cancel' && !window.confirm('Остановить выбранную задачу и всех её исполнителей? Код и история сохранятся.')) return;
+    if (action === 'delete' && !window.confirm(t("Delete this task, its sessions and metrics? All its models will be stopped. Application files will remain."))) return;
+    if (action === 'cancel' && !window.confirm(t("Cancel this task and all its executors? Code and history will remain."))) return;
     controlPending = true; controlFailure = ''; renderControls(selectedData);
     let failure = '';
     try {
       const ui = await readJSON('/api/ui');
       const response = await fetch('/api/task/control', {method: 'POST', headers: {
-        'Content-Type': 'application/json', 'X-Dashboard-UI-Token': ui.token}, body: JSON.stringify({task, action})});
+        'Content-Type': 'application/json', 'Accept-Language': localization.language, 'X-Dashboard-UI-Token': ui.token}, body: JSON.stringify({task, action})});
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || response.statusText);
       if (task === activeTask) renderControls({...selectedData, status: result.status, control: result});
@@ -206,8 +212,8 @@
       else refreshTask();
     } else renderControls(selectedData); }
   }
-  const kinds = { start: 'Начало задачи', delegation: 'Задание исполнителю', inspection: 'Проверка изменений', review: 'Ревью', test: 'Тесты', halt: 'Остановка', resume: 'Продолжение', finish: 'Завершение задачи' };
-  const states = {executor: 'Исполнитель работает', review: 'На ревью', accepted: 'Принято', rework: 'Возвращено на доработку', failed: 'Сбой исполнителя', planned: 'Запланирована', working: 'В работе', implemented: 'Реализована, ожидает ревью'};
+  const kinds = () => ({ start: t("Task started"), delegation: t("Executor assignment"), inspection: t("Change inspection"), review: t("Review"), test: t("Tests"), halt: t("Stop"), resume: t("Resume"), finish: t("Task finished"), attempt_session: t('Worker session bound'), attempt_admission: t('Worker input admitted'), attempt_end: t('Worker stopped'), integration: t('Changes integrated') });
+  const states = () => ({executor: t("Executor working"), review: t("Under review"), accepted: t("Accepted"), rework: t("Rework requested"), failed: t("Executor failure"), planned: t("Planned"), working: t("In progress"), implemented: t("Implemented, awaiting review")});
   const element = id => document.getElementById(id);
   function paragraph(text, parent, className = '') {
     const node = document.createElement('p'); node.textContent = text; node.className = className; parent.append(node); return node;
@@ -221,12 +227,12 @@
     window.history.replaceState(null, '', '?' + parameters.toString());
   }
 
-  const tokenFields = {input: 'Вход', output: 'Выход', reasoning: 'Рассуждения', cache_read: 'Кэш: чтение', cache_write: 'Кэш: запись'};
-  const formatCount = value => Number.isInteger(value) && value >= 0 ? value.toLocaleString('ru-RU') : 'Нет данных';
+  const tokenFields = () => ({input: t("Input"), output: t("Output"), reasoning: t("Reasoning"), cache_read: t("Cache: read"), cache_write: t("Cache: write")});
+  const formatCount = value => Number.isInteger(value) && value >= 0 ? value.toLocaleString(localization.locale) : t("No data");
   function updateElapsed() {
     if (liveStarted == null) return;
     const elapsed = Math.max(0, Math.floor(Date.now() / 1000 - liveStarted));
-    element('live-elapsed').textContent = Math.floor(elapsed / 60) + ' мин ' + elapsed % 60 + ' сек';
+    element('live-elapsed').textContent = Math.floor(elapsed / 60) + t(" min ") + elapsed % 60 + t(" sec");
   }
   function renderLive(data, work, live, items, last, stage, model) {
     const panel = element('live-work'); panel.hidden = data.status === 'finished';
@@ -234,10 +240,10 @@
     if (panel.hidden) return;
     const running = data.status === 'running';
     panel.className = running ? 'live-work' : 'live-work paused';
-    element('live-title').textContent = running ? 'Сейчас в работе' : 'Работа приостановлена';
+    element('live-title').textContent = running ? t("Working now") : t("Work paused");
     element('live-stage').textContent = work.error || stage;
     const role = last?.state === 'executor' ? 'executor' : 'master_chief';
-    const actor = role === 'executor' ? 'Исполнитель' : 'Master Chief';
+    const actor = role === 'executor' ? t("Executor") : 'Master Chief';
     const now = Date.now() / 1000;
     const cutoff = role === 'executor' && last ? last.attempts.at(-1).at : data.started_at;
     const recent = event => event.role === role && Number.isFinite(event.at) && event.at >= cutoff && event.at <= now;
@@ -245,37 +251,37 @@
     const current = running && cacheFresh ? [...(live.current || [])].filter(event => recent(event) && now - event.at <= 90).at(-1) : null;
     const latest = [...(live.feed || [])].filter(recent).at(-1);
     const observed = current || latest;
-    element('live-actor').textContent = `${actor}: ${current?.model || (role === 'executor' ? last?.model : null) || model(role)}${last && ['executor', 'review'].includes(last.state) ? ' · задание: ' + last.id : ''}`;
+    element('live-actor').textContent = `${actor}: ${current?.model || (role === 'executor' ? last?.model : null) || model(role)}${last && ['executor', 'review'].includes(last.state) ? t(" · work item: ") + last.id : ''}`;
     const activeWorkers = element('active-workers'); activeWorkers.replaceChildren();
     for (const item of items) {
       const attempt = item.attempts?.at(-1);
-      if (attempt?.worker_id && ['executor', 'review'].includes(attempt.state)) paragraph(`${attempt.role === 'bug_fixer' ? 'Bug Fixer' : 'Исполнитель'} ${attempt.worker_id} · ${item.id} · ${attempt.model || 'фактическая модель пока неизвестна'} · ${attempt.state === 'executor' ? 'выполняет' : 'ожидает проверки'}`, activeWorkers, 'work-row');
+      if (attempt?.worker_id && ['executor', 'review'].includes(attempt.state)) paragraph(`${attempt.role === 'bug_fixer' ? 'Bug Fixer' : t("Executor")} ${attempt.worker_id} · ${item.id} · ${attempt.model || t("actual model not yet known")} · ${attempt.state === 'executor' ? t("working") : t("awaiting review")}`, activeWorkers, 'work-row');
     }
-    const tools = {read: 'Чтение файла', edit: 'Изменение файла', write: 'Запись файла', bash: 'Выполнение команды', task: 'Вызов исполнителя', apply_patch: 'Изменение кода', glob: 'Поиск файлов', grep: 'Поиск в коде'};
-    let action = 'Свежих данных о действии модели пока нет.';
+    const tools = {read: t("Reading file"), edit: t("Editing file"), write: t("Writing file"), bash: t("Running command"), task: t("Calling executor"), apply_patch: t("Patching code"), glob: t("Finding files"), grep: t("Searching code")};
+    let action = t("No recent model activity data yet.");
     if (observed) {
-      const detail = observed.kind === 'tool' ? [tools[observed.tool] || observed.tool, observed.target].filter(Boolean).join(' · ') : (observed.kind === 'thinking' ? 'Формирование ответа' : 'Публичное сообщение модели');
-      action = `${current ? 'Сейчас' : 'Последнее зафиксированное действие'}: ${detail}`;
+      const detail = observed.kind === 'tool' ? [tools[observed.tool] || observed.tool, observed.target].filter(Boolean).join(' · ') : (observed.kind === 'thinking' ? t("Generating response") : t("Public model message"));
+      action = `${current ? t("Now") : t("Last recorded action")}: ${detail}`;
     }
     element('live-action').textContent = action;
     const progress = work.progress || {};
-    element('live-function').textContent = running && progress.current ? `Работает над функцией ${progress.current.name} · ${progress.current.file}` : '';
-    element('live-items').textContent = items.length ? `${items.filter(item => item.state === 'accepted').length} / ${items.length}` : 'Пока нет заданий';
-    element('live-functions').textContent = progress.available ? `${progress.implemented} / ${progress.total}` : 'Реестр не передан';
+    element('live-function').textContent = running && progress.current ? tr`Working on function ${progress.current.name} · ${progress.current.file}` : '';
+    element('live-items').textContent = items.length ? `${items.filter(item => item.state === 'accepted').length} / ${items.length}` : t("No work items yet");
+    element('live-functions').textContent = progress.available ? `${progress.implemented} / ${progress.total}` : t("Registry not published");
     const tokens = data.tokens || {};
-    element('live-tokens').textContent = tokens.available ? `${formatCount(tokens.totals?.input)} / ${formatCount(tokens.totals?.output)}` : 'Нет данных';
+    element('live-tokens').textContent = tokens.available ? `${formatCount(tokens.totals?.input)} / ${formatCount(tokens.totals?.output)}` : t("No data");
     const message = [...(live.feed || [])].filter(event => recent(event) && event.kind === 'text').at(-1);
-    element('live-last-message').textContent = message ? 'Последнее сообщение: ' + message.text : '';
-    element('live-data-status').textContent = live.available ? `Сессии прочитаны ${live.updated_at ? new Date(live.updated_at * 1000).toLocaleTimeString() : ''}. Журнал обновляется каждые 2 секунды; сессии — каждые 15 секунд.` : (live.reason || 'Сессия OpenCode недоступна; этап показывается по журналу задачи.');
+    element('live-last-message').textContent = message ? t("Last message: ") + message.text : '';
+    element('live-data-status').textContent = live.available ? tr`Sessions read at ${live.updated_at ? new Date(live.updated_at * 1000).toLocaleTimeString(localization.locale) : ''}. Journal refreshes every 2 seconds; sessions every 15 seconds.` : (live.reason || t("OpenCode session unavailable; showing the stage from the task journal."));
     updateElapsed();
   }
   function renderTokens(data) {
     const usage = data.tokens || {}, totals = element('token-totals'), models = element('token-models');
     totals.replaceChildren(); models.replaceChildren();
-    const timestamp = usage.snapshot_at ? new Date(usage.snapshot_at * 1000).toLocaleString() : '';
-    element('token-status').textContent = usage.available ? `${usage.source === 'finish' ? 'Итоговый срез при завершении задачи' : 'Текущий срез завершённых сообщений'}${timestamp ? ' · ' + timestamp : ''}${usage.sessions != null ? ' · сессий: ' + usage.sessions : ''}` : (usage.reason || 'Данные о токенах пока недоступны');
+    const timestamp = usage.snapshot_at ? new Date(usage.snapshot_at * 1000).toLocaleString(localization.locale) : '';
+    element('token-status').textContent = usage.available ? `${usage.source === 'finish' ? t("Final snapshot at task completion") : t("Current snapshot of completed messages")}${timestamp ? ' · ' + timestamp : ''}${usage.sessions != null ? t(" · sessions: ") + usage.sessions : ''}` : (usage.reason || t("Token data is not available yet"));
     if (usage.available) {
-      for (const [field, label] of Object.entries(tokenFields)) {
+      for (const [field, label] of Object.entries(tokenFields())) {
         const card = document.createElement('div'); card.className = 'card';
         const title = document.createElement('dt'); title.textContent = label;
         const value = document.createElement('dd'); value.textContent = formatCount(usage.totals?.[field]);
@@ -285,15 +291,15 @@
         const row = document.createElement('tr'), name = document.createElement('td');
         name.textContent = model.provider + '/' + model.model;
         const role = document.createElement('span'); role.className = 'muted';
-        const roles = (model.roles || []).map(value => value === 'master_chief' ? 'Master Chief' : 'Исполнитель');
-        role.textContent = `${roles.join(' / ') || 'Роль не установлена'} · сообщений: ${formatCount(model.messages)}`;
+        const roles = (model.roles || []).map(value => value === 'master_chief' ? 'Master Chief' : t("Executor"));
+        role.textContent = tr`${roles.join(' / ') || t("Role unknown")} · messages: ${formatCount(model.messages)}`;
         name.append(role); row.append(name);
-        for (const field of Object.keys(tokenFields)) { const cell = document.createElement('td'); cell.textContent = formatCount(model[field]); row.append(cell); }
+        for (const field of Object.keys(tokenFields())) { const cell = document.createElement('td'); cell.textContent = formatCount(model[field]); row.append(cell); }
         models.append(row);
       }
     }
     const warnings = element('token-warnings'); warnings.replaceChildren();
-    for (const text of usage.warnings || []) { const row = document.createElement('li'); row.textContent = text; warnings.append(row); }
+    for (const text of usage.warnings || []) { const row = document.createElement('li'); row.textContent = t(text); warnings.append(row); }
   }
 
   function renderCompletion(data) {
@@ -301,74 +307,77 @@
     panel.hidden = !completion.finished;
     if (!completion.finished) return;
     panel.className = completion.verified ? 'completion' : 'completion unverified';
-    element('completion-title').textContent = completion.verified ? '✓ Работа завершена' : 'Задача завершена';
-    const duration = Math.floor(completion.duration_seconds / 60) + ' мин ' + (completion.duration_seconds % 60) + ' сек';
-    const checked = completion.verified ? `Итоговая полная проверка: ${formatCount(completion.full_tests?.tests)} тестов, успешно.` : 'Успешная полная проверка не подтверждена' + (completion.pending ? '; есть задания без ревью.' : '.');
-    element('completion-text').textContent = `Время работы: ${duration}. ${checked}`;
+    element('completion-title').textContent = completion.verified ? t("✓ Work completed") : t("Task completed");
+    const duration = Math.floor(completion.duration_seconds / 60) + t(" min ") + (completion.duration_seconds % 60) + t(" sec");
+    const checked = completion.verified ? tr`Final full validation: ${formatCount(completion.full_tests?.tests)} tests passed.` : t("A successful full validation is unconfirmed") + (completion.pending ? t("; some work items have no review.") : '.');
+    element('completion-text').textContent = tr`Elapsed time: ${duration}. ${checked}`;
     element('completion-path').textContent = completion.project_path;
-    element('completion-report').href = '/api/report?' + new URLSearchParams({task: data.task});
+    element('completion-report').href = '/api/report?' + new URLSearchParams({task: data.task, lang: localization.language});
     const launcher = element('launch-file'); launcher.hidden = !completion.launcher;
-    if (completion.launcher) { launcher.href = completion.launcher.url; launcher.textContent = 'Файл запуска: ' + completion.launcher.name; }
+    if (completion.launcher) { launcher.href = completion.launcher.url + '&lang=' + localization.language; launcher.textContent = t("Launch file: ") + completion.launcher.name; }
   }
 
   function renderWork(data) {
-    const work = data.work || {}, live = work.sessions || {}, progress = work.progress || {};
+    const raw = data.work || {};
+    const progress = {...raw.progress, reason: t(raw.progress?.reason || '')};
+    const live = {...raw.sessions, reason: t(raw.sessions?.reason || '')};
+    const work = {...raw, progress, sessions: live, error: raw.errors?.length ? raw.errors.map(t).join('. ') : t(raw.error || '')};
     const configured = work.configured_models || {}, actual = live.models || {};
-    const model = role => (actual[role] || []).join(', ') || (configured[role] ? configured[role] + ' (выбрана в настройках)' : 'модель неизвестна');
-    element('models').textContent = `Master Chief: ${model('master_chief')} · Исполнитель: ${model('executor')}`;
+    const model = role => (actual[role] || []).join(', ') || (configured[role] ? configured[role] + t(" (selected in settings)") : t("model unknown"));
+    element('models').textContent = tr`Master Chief: ${model('master_chief')} · Executor: ${model('executor')}`;
     const items = work.items || [], last = [...items].sort((a, b) => a.attempts.at(-1).at - b.attempts.at(-1).at).at(-1);
-    let stage = 'Master Chief готовит план и архитектуру.';
-    if (work.architecture && work.architecture.registered) stage = 'Master Chief опубликовал архитектуру кода.';
+    let stage = t("Master Chief is preparing the plan and architecture.");
+    if (work.architecture && work.architecture.registered) stage = t("Master Chief published the code architecture.");
     if (last) {
       const executor = last.model || model('executor');
-      stage = {executor: `Master Chief передал задание «${last.id}» исполнителю ${executor}.`, review: `Исполнитель ${executor} передал «${last.id}» на ревью Master Chief.`, accepted: `Master Chief принял задание «${last.id}» от ${executor}.`, rework: `Master Chief вернул «${last.id}» исполнителю ${executor} на доработку.`, failed: `Исполнитель завершил попытку «${last.id}» со сбоем.`}[last.state] || stage;
+      stage = {executor: tr`Master Chief assigned “${last.id}” to executor ${executor}.`, review: tr`Executor ${executor} submitted “${last.id}” for Master Chief review.`, accepted: tr`Master Chief accepted “${last.id}” from ${executor}.`, rework: tr`Master Chief returned “${last.id}” to executor ${executor} for rework.`, failed: tr`The executor attempt for “${last.id}” failed.`}[last.state] || stage;
     }
-    if (data.status === 'finished') stage = `Работа завершена. Принято заданий: ${items.filter(item => item.state === 'accepted').length} из ${items.length}.`;
-    if (data.status === 'halted') stage = 'Задача остановлена. Продолжение ожидает решения пользователя.';
-    if (['pausing', 'paused', 'resuming', 'cancelling', 'cancelled', 'deleting', 'error'].includes(data.status)) stage = labels[data.status] + '. ' + (data.control?.error || data.control?.message || '');
-    if (last && work.architecture?.registered) stage = 'Master Chief подготовил архитектуру. ' + stage;
+    if (data.status === 'finished') stage = tr`Work completed. Work items accepted: ${items.filter(item => item.state === 'accepted').length} of ${items.length}.`;
+    if (data.status === 'halted') stage = t("Task stopped. A user decision is required to continue.");
+    if (['pausing', 'paused', 'resuming', 'cancelling', 'cancelled', 'deleting', 'error'].includes(data.status)) stage = labels()[data.status] + '. ' + (data.control?.error || data.control?.message || '');
+    if (last && work.architecture?.registered) stage = t("Master Chief prepared the architecture. ") + stage;
     element('stage').textContent = stage + (work.error ? ' ' + work.error : '');
     renderLive(data, work, live, items, last, stage, model);
     const architecture = element('architecture');
     architecture.hidden = !work.architecture;
-    architecture.href = '/architecture?' + new URLSearchParams({task: data.task});
-    architecture.textContent = work.architecture?.registered ? 'Посмотреть архитектуру кода' : 'Посмотреть документ проекта (без регистрации в этой задаче)';
-    element('function-count').textContent = progress.available ? `Исполнитель реализовал ${progress.implemented} из ${progress.total} функций · принято на ревью: ${progress.accepted}.` : (progress.reason || 'Реестр функций недоступен');
+    architecture.href = '/architecture?' + new URLSearchParams({task: data.task, lang: localization.language});
+    architecture.textContent = work.architecture?.registered ? t("View code architecture") : t("View project document (not registered for this task)");
+    element('function-count').textContent = progress.available ? tr`Executor implemented ${progress.implemented} of ${progress.total} functions · accepted after review: ${progress.accepted}.` : (progress.reason || t("Function registry unavailable"));
     element('function-progress').hidden = !progress.available;
     if (progress.available) { element('function-progress').max = progress.total; element('function-progress').value = progress.implemented; }
     const activeFunctions = progress.current_functions || (progress.current ? [progress.current] : []);
-    element('current-function').textContent = data.status === 'running' && activeFunctions.length ? activeFunctions.map(fn => `${fn.worker_id || 'Исполнитель'}: ${fn.name} · ${fn.file}`).join(' | ') : (data.status === 'running' ? 'Текущая функция пока не сообщена исполнителем.' : '');
+    element('current-function').textContent = data.status === 'running' && activeFunctions.length ? activeFunctions.map(fn => `${fn.worker_id || t("Executor")}: ${fn.name} · ${fn.file}`).join(' | ') : (data.status === 'running' ? t("The executor has not reported its current function yet.") : '');
     const workList = element('work-items');
     const expanded = new Set([...workList.querySelectorAll('details[open]')].map(row => row.dataset.item));
     workList.replaceChildren();
-    if (!items.length) paragraph('Заданий исполнителю пока нет.', workList, 'muted');
+    if (!items.length) paragraph(t("No executor work items yet."), workList, 'muted');
     for (const item of items) {
       const row = document.createElement('details'); row.className = 'work-row';
       row.dataset.item = item.id; row.open = expanded.has(item.id);
-      const title = document.createElement('summary'); title.textContent = `${item.id} · ${states[item.state] || item.state} · ${item.model || 'модель не установлена'} · попыток: ${item.attempts.length}`;
+      const title = document.createElement('summary'); title.textContent = tr`${item.id} · ${states()[item.state] || item.state} · ${item.model || t("model not identified")} · attempts: ${item.attempts.length}`;
       row.append(title);
       for (const [index, attempt] of item.attempts.entries()) {
-        paragraph(`Попытка ${index + 1} · ${new Date(attempt.at * 1000).toLocaleString()} · ${states[attempt.state] || attempt.state} · ${attempt.model || 'модель не установлена'}`, row);
-        if (attempt.worker_id) paragraph(`${attempt.role === 'bug_fixer' ? 'Bug Fixer' : 'Исполнитель'} · ${attempt.worker_id} · сессия ${attempt.session || 'ещё не привязана'}${attempt.integrated ? ' · изменения объединены' : ''}`, row, 'muted');
-        if (attempt.stop_reason) paragraph(`Причина возврата управления: ${attempt.stop_reason} · остановка ${attempt.stopped === true ? 'подтверждена' : 'не подтверждена'}`, row, 'muted');
-        if (Number.isFinite(attempt.duration_seconds)) paragraph(`Длительность попытки: ${Math.round(attempt.duration_seconds)} сек (включая ожидание).`, row, 'muted');
-        if (attempt.usage?.length) for (const usage of attempt.usage) paragraph(`Токены: ${formatCount(usage.input)} / ${formatCount(usage.output)} · стоимость по данным OpenCode: ${Number.isFinite(usage.cost_usd) ? '$' + usage.cost_usd.toFixed(6) : 'нет данных'}`, row, 'muted');
-        else if (attempt.worker_id) paragraph('Расход этой попытки пока неизвестен.', row, 'muted');
-        paragraph('Файлы: ' + (attempt.files || []).join(', '), row, 'muted');
-        for (const test of attempt.tests || []) paragraph(`Тесты (${test.scope}): ${test.status}, количество: ${test.tests ?? 'неизвестно'}`, row, 'muted');
+        paragraph(tr`Attempt ${index + 1} · ${new Date(attempt.at * 1000).toLocaleString(localization.locale)} · ${states()[attempt.state] || attempt.state} · ${attempt.model || t("model not identified")}`, row);
+        if (attempt.worker_id) paragraph(tr`${attempt.role === 'bug_fixer' ? 'Bug Fixer' : t("Executor")} · ${attempt.worker_id} · session ${attempt.session || t("not yet bound")}${attempt.integrated ? t(" · changes integrated") : ''}`, row, 'muted');
+        if (attempt.stop_reason) paragraph(tr`Control returned: ${attempt.stop_reason} · stop ${attempt.stopped === true ? t("confirmed") : t("unconfirmed")}`, row, 'muted');
+        if (Number.isFinite(attempt.duration_seconds)) paragraph(tr`Attempt duration: ${Math.round(attempt.duration_seconds)} sec (including waiting).`, row, 'muted');
+        if (attempt.usage?.length) for (const usage of attempt.usage) paragraph(tr`Tokens: ${formatCount(usage.input)} / ${formatCount(usage.output)} · OpenCode reported cost: ${Number.isFinite(usage.cost_usd) ? '$' + usage.cost_usd.toFixed(6) : t("no data")}`, row, 'muted');
+        else if (attempt.worker_id) paragraph(t("Usage for this attempt is not yet known."), row, 'muted');
+        paragraph(t("Files: ") + (attempt.files || []).join(', '), row, 'muted');
+        for (const test of attempt.tests || []) paragraph(tr`Tests (${test.scope}): ${test.status}, count: ${test.tests ?? t("unknown")}`, row, 'muted');
       }
       workList.append(row);
     }
     const functions = element('functions'); functions.replaceChildren();
-    for (const fn of progress.functions || []) { const li = document.createElement('li'); li.textContent = `${fn.name} · ${fn.file} · ${states[fn.state] || fn.state}`; functions.append(li); }
-    if (!progress.available) { const li = document.createElement('li'); li.textContent = 'Список функций не опубликован; количество не вычисляется по файлам.'; functions.append(li); }
-    element('session-status').textContent = live.available ? (live.loading ? 'Обновляем сессии…' : 'Публичные сообщения и инструменты OpenCode; обновление сессий каждые 15 секунд.') : (live.reason || 'Сессии недоступны');
+    for (const fn of progress.functions || []) { const li = document.createElement('li'); li.textContent = `${fn.name} · ${fn.file} · ${states()[fn.state] || fn.state}`; functions.append(li); }
+    if (!progress.available) { const li = document.createElement('li'); li.textContent = t("Function list not published; counts are not inferred from files."); functions.append(li); }
+    element('session-status').textContent = live.available ? (live.loading ? t("Updating sessions…") : t("Public OpenCode messages and tools; sessions refresh every 15 seconds.")) : (live.reason || t("Sessions unavailable"));
     const feed = element('session-feed'); feed.replaceChildren();
-    for (const event of [...(live.feed || [])].reverse()) paragraph(`${new Date(event.at * 1000).toLocaleTimeString()} · ${event.role === 'master_chief' ? 'Master Chief' : 'Исполнитель'} · ${event.model || 'модель неизвестна'}: ${event.kind === 'text' ? event.text : [event.tool, event.target, event.status].filter(Boolean).join(' · ')}`, feed, 'work-row');
+    for (const event of [...(live.feed || [])].reverse()) paragraph(`${new Date(event.at * 1000).toLocaleTimeString(localization.locale)} · ${event.role === 'master_chief' ? 'Master Chief' : t("Executor")} · ${event.model || t("model unknown")}: ${event.kind === 'text' ? event.text : [event.tool, event.target, event.status].filter(Boolean).join(' · ')}`, feed, 'work-row');
   }
 
   async function readJSON(url) {
-    const response = await fetch(url);
+    const response = await fetch(url, {headers: {'Accept-Language': localization.language}});
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || response.statusText);
     return data;
@@ -380,28 +389,28 @@
     renderWork(data);
     document.getElementById('title').textContent = data.title;
     document.title = data.title + ' · OpenCode';
-    document.getElementById('status').textContent = labels[data.status] || data.status;
+    document.getElementById('status').textContent = labels()[data.status] || data.status;
     document.getElementById('event-count').textContent = data.event_count;
     document.getElementById('runs').textContent = `${data.green_work_runs} / ${data.work_runs}`;
     document.getElementById('reworks').textContent = data.reworks;
     document.getElementById('failures').textContent = data.executor_failures;
-    document.getElementById('updated').textContent = new Date(data.last_event_at * 1000).toLocaleTimeString();
-    document.getElementById('task-id').textContent = 'ID задачи: ' + data.task;
+    document.getElementById('updated').textContent = new Date(data.last_event_at * 1000).toLocaleTimeString(localization.locale);
+    document.getElementById('task-id').textContent = t("Task ID: ") + data.task;
     const list = document.getElementById('events');
     list.replaceChildren();
     for (const event of [...data.activity].reverse()) {
       const row = document.createElement('li');
       const time = document.createElement('time');
-      time.textContent = new Date(event.at * 1000).toLocaleTimeString();
+      time.textContent = new Date(event.at * 1000).toLocaleTimeString(localization.locale);
       const text = document.createElement('span');
       const detail = event.work_item || event.scope || '';
-      text.textContent = [kinds[event.kind] || event.kind, detail, event.result || event.status || '', event.reason || ''].filter(Boolean).join(' · ');
+      text.textContent = [kinds()[event.kind] || event.kind, detail, event.result || event.status || '', event.reason || ''].filter(Boolean).join(' · ');
       row.append(time, text);
       list.append(row);
     }
     const report = document.getElementById('report');
     report.hidden = data.status !== 'finished';
-    report.href = '/api/report?' + new URLSearchParams({ task: data.task });
+    report.href = '/api/report?' + new URLSearchParams({task: data.task, lang: localization.language});
   }
 
   async function refreshTask() {
@@ -413,17 +422,17 @@
     try {
       const metadata = await readJSON('/api/health');
       const expectedProject = parameters.get('project');
-      if (expectedProject && expectedProject !== metadata.project.id) throw new Error('Страница открыта для другого проекта');
+      if (expectedProject && expectedProject !== metadata.project.id) throw new Error(t("This page belongs to a different project"));
       document.getElementById('project-name').textContent = metadata.project.name;
       const tasks = await readJSON('/api/tasks');
       latestTasks = tasks;
       const ongoing = tasks.filter(task => task.status === 'running');
-      element('ongoing-tasks').textContent = 'В работе: ' + ongoing.length;
+      element('ongoing-tasks').textContent = t("In progress: ") + ongoing.length;
       element('ongoing-tasks').disabled = !ongoing.length;
       if (!activeTask && tasks.length) activeTask = tasks[0].task;
       const selector = document.getElementById('task-select');
       selector.replaceChildren();
-      for (const task of tasks) selector.add(new Option(`${labels[task.status] || task.status} · ${task.title}`, task.task));
+      for (const task of tasks) selector.add(new Option(`${labels()[task.status] || task.status} · ${task.title}`, task.task));
       if (activeTask && !tasks.some(task => task.task === activeTask)) {
         const control = await readJSON('/api/task/control?' + new URLSearchParams({task: activeTask}));
         if (control.status === 'deleted') {
@@ -436,14 +445,14 @@
       }
       selector.value = activeTask;
       if (!activeTask) {
-        document.getElementById('title').textContent = 'Пока нет задач';
-        renderControls(null); element('control-message').textContent = 'Выберите задачу или начните новую в OpenCode.';
+        document.getElementById('title').textContent = t("No tasks yet");
+        renderControls(null); element('control-message').textContent = t("Select a task or start a new one in OpenCode.");
         element('live-work').hidden = true; element('completion').hidden = true;
-        element('stage').textContent = 'Список задач пуст. Файлы приложения сохранены.';
+        element('stage').textContent = t("The task list is empty. Application files remain.");
         for (const id of ['status', 'event-count', 'runs', 'reworks', 'failures', 'updated', 'task-id']) element(id).textContent = '—';
         for (const id of ['models', 'function-count', 'current-function']) element(id).textContent = '';
         element('architecture').hidden = true; element('function-progress').hidden = true; element('report').hidden = true;
-        element('token-status').textContent = 'Задача не выбрана';
+        element('token-status').textContent = t("No task selected");
         for (const id of ['work-items', 'functions', 'session-feed', 'events', 'token-totals', 'token-models', 'token-warnings']) element(id).replaceChildren();
       } else {
         const selected = activeTask;
@@ -452,11 +461,11 @@
         render(data);
       }
       document.getElementById('message').textContent = '';
-      connection.textContent = 'На связи';
+      connection.textContent = t("Connected");
       connection.className = 'badge online';
     } catch (error) {
       document.getElementById('message').textContent = error.message;
-      connection.textContent = 'Не удалось обновить';
+      connection.textContent = t("Refresh failed");
       connection.className = 'badge offline';
     } finally {
       button.disabled = false;
@@ -464,7 +473,36 @@
     }
   }
 
-  function main() {
+  async function main() {
+    try {
+      const response = await fetch('/api/i18n');
+      if (!response.ok) throw new Error('Language data unavailable');
+      const settings = await response.json();
+      const preferred = KitLocalization.choose([parameters.get('lang'), settings.saved_language], null)
+        || KitLocalization.choose(navigator.languages || [navigator.language]);
+      localization = KitLocalization.create(settings.catalog, preferred);
+    } catch (_) { localization = KitLocalization.create(); }
+    localization.apply(document);
+    element('language-select').value = localization.language;
+    element('language-select').addEventListener('change', async event => {
+      const selector = event.target;
+      selector.disabled = true;
+      const language = KitLocalization.choose([selector.value]);
+      localization.set(language);
+      parameters.set('lang', language);
+      window.history.replaceState(null, '', '?' + parameters.toString());
+      localization.apply(document);
+      if (selectedData) render(selectedData);
+      try {
+        const ui = await readJSON('/api/ui');
+        const response = await fetch('/api/language', {method: 'POST', headers: {
+          'Content-Type': 'application/json', 'Accept-Language': language,
+          'X-Dashboard-UI-Token': ui.token}, body: JSON.stringify({language})});
+        if (!response.ok) throw new Error('Language preference not saved');
+      } catch (_) { element('settings-message').textContent = t('Could not save the language preference.'); }
+      finally { selector.disabled = false; }
+      refreshTask();
+    });
     for (const action of ['pause', 'resume', 'cancel', 'delete']) element(action + '-task').addEventListener('click', () => controlTask(action));
     element('live-details').addEventListener('click', () => showTab('details'));
     element('ongoing-tasks').addEventListener('click', () => {
@@ -476,25 +514,25 @@
     showTab(['details', 'tokens'].includes(parameters.get('view')) ? parameters.get('view') : 'overview');
     element('open-project').addEventListener('click', async () => {
       const button = element('open-project'); button.disabled = true;
-      element('project-message').textContent = 'Открываем папку проекта…';
+      element('project-message').textContent = t("Opening project folder…");
       try {
         const ui = await readJSON('/api/ui');
-        const response = await fetch('/api/project/open', {method: 'POST', headers: {'X-Dashboard-UI-Token': ui.token}});
+        const response = await fetch('/api/project/open', {method: 'POST', headers: {'Accept-Language': localization.language, 'X-Dashboard-UI-Token': ui.token}});
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || response.statusText);
-        element('project-message').textContent = 'Папка проекта открыта в файловом менеджере.';
+        element('project-message').textContent = t("Project folder opened in the file manager.");
       } catch (error) { element('project-message').textContent = error.message; }
       finally { button.disabled = false; }
     });
     element('model-settings').addEventListener('click', async () => {
       const button = element('model-settings'); button.disabled = true;
-      element('settings-message').textContent = 'Запускаем настройки моделей…';
+      element('settings-message').textContent = t("Opening model settings…");
       try {
         const ui = await readJSON('/api/ui');
-        const response = await fetch('/api/models/open', {method: 'POST', headers: {'X-Dashboard-UI-Token': ui.token}});
+        const response = await fetch('/api/models/open', {method: 'POST', headers: {'Accept-Language': localization.language, 'X-Dashboard-UI-Token': ui.token}});
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || response.statusText);
-        element('settings-message').textContent = result.reused ? 'Конфигуратор уже запущен. Переключитесь на его окно.' : 'Конфигуратор запущен. Настройки доступны в отдельном окне.';
+        element('settings-message').textContent = result.reused ? t("The configurator is already running. Switch to its window.") : t("Configurator started. Settings are in a separate window.");
       } catch (error) { element('settings-message').textContent = error.message; }
       finally { button.disabled = false; }
     });
@@ -505,12 +543,12 @@
       renderControls(null);
       parameters.set('task', activeTask);
       window.history.replaceState(null, '', '?' + parameters.toString());
-      element('stage').textContent = 'Читаем выбранную задачу…';
+      element('stage').textContent = t("Reading selected task…");
       element('completion').hidden = true; element('project-message').textContent = '';
       element('live-work').hidden = true; liveStarted = null;
-      element('token-status').textContent = 'Читаем токены выбранной задачи…';
+      element('token-status').textContent = t("Reading selected task tokens…");
       for (const id of ['token-totals', 'token-models', 'token-warnings']) element(id).replaceChildren();
-      element('title').textContent = 'Загрузка задачи…'; element('models').textContent = '';
+      element('title').textContent = t("Loading task…"); element('models').textContent = '';
       for (const id of ['work-items', 'functions', 'session-feed']) element(id).replaceChildren();
       element('architecture').hidden = true;
       element('function-count').textContent = ''; element('current-function').textContent = '';

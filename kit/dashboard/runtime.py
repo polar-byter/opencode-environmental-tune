@@ -19,6 +19,7 @@ from . import tracking, observations, delivery
 from .launcher import SERVICE, VERSION, project_id, read_state, runtime_folder, write_state
 from ..task_metrics import TaskMetrics
 from .. import task_control_state
+from .. import localization
 from .controls import TaskControls
 
 PAGE = Path(__file__).resolve().parent / 'static' / 'runtime.html'
@@ -185,13 +186,25 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
+        self.send_header('Content-Language', self.language())
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'")
         self.end_headers()
         self.wfile.write(body)
 
     def send_json(self, status: int, data: dict | list):
+        if isinstance(data, dict):
+            data = dict(data)
+            for key in ('error', 'message'):
+                if key in data:
+                    data[key] = localization.diagnostic(data[key], self.language())
         self.send_body(status, json.dumps(data, ensure_ascii=False, allow_nan=False).encode('utf-8'))
+
+    def language(self):
+        query = parse_qs(urlsplit(self.path).query)
+        if 'lang' in query:
+            return localization.choose_language(query['lang'])
+        return localization.request_language(self.headers.get('Accept-Language'), localization.load_language(self.server.root))
 
     def selected_task(self, query: dict) -> str:
         values = query.get('task', [])
@@ -212,6 +225,13 @@ class Handler(BaseHTTPRequestHandler):
             if parts.path == '/':
                 body = PAGE.read_bytes()
                 status, content_type = 200, 'text/html; charset=utf-8'
+            elif parts.path == '/localization.js':
+                body = PAGE.with_name('localization.js').read_bytes()
+                status, content_type = 200, 'text/javascript; charset=utf-8'
+            elif parts.path == '/api/i18n':
+                body = json.dumps({'saved_language': localization.saved_language(self.server.root),
+                                   'catalog': localization.catalog()}, ensure_ascii=False).encode('utf-8')
+                status, content_type = 200, 'application/json; charset=utf-8'
             elif parts.path == '/api/health':
                 body = json.dumps(self.server.health(), ensure_ascii=False).encode('utf-8')
                 status, content_type = 200, 'application/json; charset=utf-8'
@@ -221,7 +241,7 @@ class Handler(BaseHTTPRequestHandler):
             elif parts.path == '/api/task':
                 task = self.selected_task(query)
                 self.server.controls.view(task)
-                data = task_view(self.server.root, task, self.server.reader)
+                data = localization.task_presentation(task_view(self.server.root, task, self.server.reader), self.language())
                 body = json.dumps(data, ensure_ascii=False, allow_nan=False).encode('utf-8')
                 status, content_type = 200, 'application/json; charset=utf-8'
             elif parts.path == '/api/ui':
@@ -244,8 +264,10 @@ class Handler(BaseHTTPRequestHandler):
                     raise FileNotFoundError('Документ ещё не опубликован')
                 title = html.escape(document['document'])
                 text = html.escape(document['text'])
-                body = (f'<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-                        f'<title>Архитектура · {title}</title><style>body{{max-width:1000px;margin:30px auto;padding:0 20px;background:#101724;color:#e8edf5;font:16px system-ui}}'
+                language = self.language()
+                heading = localization.diagnostic(heading, language)
+                body = (f'<!doctype html><html lang="{language}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                        f'<title>{heading} · {title}</title><style>body{{max-width:1000px;margin:30px auto;padding:0 20px;background:#101724;color:#e8edf5;font:16px system-ui}}'
                         f'pre{{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}}a{{color:#9ec8ff}}</style><h1>{heading}</h1><p>{title}</p><pre>{text}</pre></html>').encode('utf-8')
                 status, content_type = 200, 'text/html; charset=utf-8'
             elif parts.path == '/api/report':
@@ -255,26 +277,54 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Report is outside the task directory')
                 if report.stat().st_size > 2 * 1024 * 1024:
                     raise ValueError('Report exceeds 2 MiB')
-                body = report.read_text(encoding='utf-8-sig').encode('utf-8')
+                events = TaskMetrics(self.server.root).read(self.selected_task(query))
+                finished = next((event for event in events if event['kind'] == 'finish'), None)
+                content = (TaskMetrics(self.server.root).render(self.selected_task(query), events,
+                           finished['usage'], finished.get('ended', finished['at']), self.language())
+                           if finished and isinstance(finished.get('usage'), dict) else report.read_text(encoding='utf-8-sig'))
+                body = content.encode('utf-8')
                 status, content_type = 200, 'text/plain; charset=utf-8'
             else:
                 body = b'{"error":"Not found"}'
                 status, content_type = 404, 'application/json; charset=utf-8'
         except FileNotFoundError as error:
-            body = json.dumps({'error': str(error)}, ensure_ascii=False).encode('utf-8')
+            body = json.dumps({'error': localization.diagnostic(str(error), self.language())}, ensure_ascii=False).encode('utf-8')
             status, content_type = 404, 'application/json; charset=utf-8'
         except ValueError as error:
-            body = json.dumps({'error': str(error)}, ensure_ascii=False).encode('utf-8')
+            body = json.dumps({'error': localization.diagnostic(str(error), self.language())}, ensure_ascii=False).encode('utf-8')
             status, content_type = 400, 'application/json; charset=utf-8'
         except OSError as error:
             print(f'Dashboard read failed: {error}', file=sys.stderr, flush=True)
-            body = b'{"error":"Cannot read dashboard data"}'
+            body = json.dumps({'error': localization.diagnostic('Cannot read dashboard data', self.language())}, ensure_ascii=False).encode('utf-8')
             status, content_type = 500, 'application/json; charset=utf-8'
         self.send_body(status, body, content_type)
 
     def do_POST(self):
         if not self.host_allowed():
             self.send_json(403, {'error': 'Forbidden Host'})
+            return
+        if urlsplit(self.path).path == '/api/language':
+            origin = self.headers.get('Origin', '')
+            allowed = (f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}')
+            token = self.headers.get('X-Dashboard-UI-Token', '')
+            if origin not in allowed or not token or not secrets.compare_digest(token, self.server.ui_token):
+                self.send_json(403, {'error': 'Forbidden settings request'})
+                return
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                if not 0 < length <= 1024 or self.headers.get('Transfer-Encoding') or urlsplit(self.path).query:
+                    raise ValueError('Invalid language preference request')
+                if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
+                    raise ValueError('JSON required')
+                value = json.loads(self.rfile.read(length))
+                if not isinstance(value, dict) or set(value) != {'language'} or not isinstance(value['language'], str):
+                    raise ValueError('Language preference must contain only language')
+                localization.save_language(self.server.root, value['language'])
+                self.send_json(200, {'language': value['language']})
+            except (ValueError, UnicodeError) as error:
+                self.send_json(400, {'error': str(error)})
+            except OSError:
+                self.send_json(503, {'error': 'Could not save the language preference.'})
             return
         if urlsplit(self.path).path == '/api/task/control':
             origin = self.headers.get('Origin', '')
