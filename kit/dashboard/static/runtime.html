@@ -215,6 +215,18 @@
   const kinds = () => ({ start: t("Task started"), delegation: t("Executor assignment"), inspection: t("Change inspection"), review: t("Review"), test: t("Tests"), halt: t("Stop"), resume: t("Resume"), finish: t("Task finished"), attempt_session: t('Worker session bound'), attempt_admission: t('Worker input admitted'), attempt_end: t('Worker stopped'), integration: t('Changes integrated') });
   const states = () => ({executor: t("Executor working"), review: t("Under review"), accepted: t("Accepted"), rework: t("Rework requested"), failed: t("Executor failure"), planned: t("Planned"), working: t("In progress"), implemented: t("Implemented, awaiting review")});
   const element = id => document.getElementById(id);
+  function applyLanguage() {
+    localization.apply(document);
+    for (const option of element('task-select').options || []) {
+      const task = latestTasks.find(row => row.task === option.value);
+      if (task) option.textContent = `${labels()[task.status] || task.status} · ${task.title}`;
+    }
+    element('ongoing-tasks').textContent = t('In progress: ') + latestTasks.filter(task => task.status === 'running').length;
+    const connection = element('connection');
+    if (connection.className.includes('online')) connection.textContent = t('Connected');
+    else if (connection.className.includes('offline')) connection.textContent = t('Refresh failed');
+    if (selectedData) render(selectedData);
+  }
   function paragraph(text, parent, className = '') {
     const node = document.createElement('p'); node.textContent = text; node.className = className; parent.append(node); return node;
   }
@@ -491,8 +503,7 @@
       localization.set(language);
       parameters.set('lang', language);
       window.history.replaceState(null, '', '?' + parameters.toString());
-      localization.apply(document);
-      if (selectedData) render(selectedData);
+      applyLanguage();
       try {
         const ui = await readJSON('/api/ui');
         const response = await fetch('/api/language', {method: 'POST', headers: {
