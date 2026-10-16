@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 check_env.py — agentic environment checker.
+It is not an automated test, but a manual check that can be run from the command line.
+It checks the configuration and the LM Studio server, and it performs a trial request to a loaded language model instance.
+Nothing calls it automatically: the real launcher is run_opencode.py, and it skips LM Studio
+when executors run on a cloud model (opencode) or an own API. This script always checks LM Studio.
 
-Checks:
+It checks generally that the environment is ready for use, and it prints a summary of the results.
+Steps:
   1. Syntax of the opencode.jsonc config (JSON with comments).
   2. LM Studio API (http://127.0.0.1:1234/v1) online.
   3. Language model instances already loaded in LM Studio.
@@ -42,30 +47,44 @@ CONFIG_PATH = Path(__file__).resolve().parent.parent / "opencode.jsonc"
 # Matches either a JSON string (kept) or a comment (removed).
 # The string alternative comes first, so "//" inside a string is never a comment.
 _STRING_OR_COMMENT = re.compile(
+    # The outer () captures the whole string as group 1: the lambda in strip_jsonc() needs it.
+    # The inner (?: ) only groups the "|" alternatives and is not captured.
     r'("(?:\\.|[^"\\])*")'  # group 1: a full string "abcdef..etc", escapes included
     r"|//[^\r\n]*"          # or a // line comment
-    r"|/\*.*?\*/",          # or a /* block comment */
+    r"|/\*.*?\*/",          # or a /* block comment */ ? is for non-greedy match, so it stops at the first */
     re.DOTALL,
 )
 
 
 def strip_jsonc(text: str) -> str:
-    # To convert jsonc(comments) into plain json
+    """ 
+     The main point of this function is to remove comments and trailing commas from JSONC text.
+     because the standard json.loads() does not support comments or trailing commas.
+     but opencode.jsonc contains also strings with http:// or something like that,
+     so we need to be careful not to remove those.
+    """
+    
+    # To convert jsonc comments into plain json
     text = _STRING_OR_COMMENT.sub(lambda m: m.group(1) or "", text)
-    #remove commas before "]"
+    # Remove trailing commas before "}" or "]"
     return re.sub(r",(\s*[}\]])", r"\1", text)
 
 
 def check_config() -> bool:
-    """Step 1: To see if is opencode.jsonc valid?"""
+    """
+        Step 1: We check if is opencode.jsonc valid
+        and print some of its content : model, default_agent, lmstudio.baseURL, local aliases, agents
+    """
     print("=" * 60)
-    print("[1] Checking opencode.jsonc")
+    print("Step 1: Checking opencode.jsonc")
     print("=" * 60)
+    
     try:
         raw = CONFIG_PATH.read_text(encoding="utf-8")
     except FileNotFoundError:
         print(f"  File not found: {CONFIG_PATH}")
         return False
+   
     try:
         strip_json_data = strip_jsonc(raw)
         result_config_data = json.loads(strip_json_data)
@@ -73,7 +92,7 @@ def check_config() -> bool:
         print(f"  JSON error: {e}")
         return False
     
-    print(f"     json data is valid; \r\n size: ({len(raw)} chars)")
+    print(f"     json data is valid, size: {len(raw)} chars")
     print(f"     model (Master Chief):       {result_config_data.get('model', '—')}")
     print(f"     default_agent:       {result_config_data.get('default_agent', '—')}")
     lm = result_config_data.get("providers", {}).get("lmstudio", {})
@@ -107,7 +126,7 @@ def check_lmstudio(base: str = LMSTUDIO_BASE) -> list:
 
     print()
     print("=" * 60)
-    print("[2] LM Studio API")
+    print("Step 2: Checking LM Studio API")
     print("=" * 60)
     try:
         models = loaded_models(base)
@@ -130,7 +149,7 @@ def live_test(models: list, preferred: str | None = None, explicit: str | None =
               base: str = LMSTUDIO_BASE) -> bool:
     print()
     print("=" * 60)
-    print("[3] Live generation test (chat/completions)")
+    print("Step 3: Live generation test (chat/completions)")
     print("=" * 60)
     try:
         target = select_model(models, preferred, explicit).id
