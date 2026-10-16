@@ -7,7 +7,7 @@ shows a warning. Failed preparation keeps the task paused. See the
 [architecture and detailed guide (Russian)](docs/LIVE_MODELS.ru.md).
 
 The kit coordinates a Chief (architecture and review), executors (implementation),
-and an optional Bug Fixer (one correction attempt). Its dashboard shows progress,
+and an optional Bug Fixer with its own correction budget. Its dashboard shows progress,
 tests and token usage. A token is a unit of text counted by a model.
 
 ## Windows setup

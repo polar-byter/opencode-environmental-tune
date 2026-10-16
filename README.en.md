@@ -6,7 +6,7 @@ You describe a task in OpenCode, and a team of AI agents takes it from there. Th
 **Master Chief** (the main `build` agent) plans the work and the contracts between
 parts of the program, writes blanks and tests, hands implementation to **executors**,
 reviews their work and, at the end, checks the application interface.
-If an executor makes a mistake or hits a limit, the **Bug Fixer** steps in once.
+If an executor makes a mistake or hits a limit, the **Bug Fixer** takes over with its own retry budget.
 Every step goes into a journal, and a browser dashboard shows the progress.
 
 **It works like a building site.** The Master Chief is the foreman: reads the
@@ -30,6 +30,9 @@ model settings. Free models are already filled in — just click "Save settings"
 "Prepare OpenCode". Then the project opens in Desktop: copy the example prompt, paste
 it into a new **build** chat and send it. The wizard never sends anything to a model itself.
 
+For Ubuntu, Debian and Mint, use the [`.deb` installer](docs/LINUX_INSTALL.ru.md)
+(Russian guide): open the package with the mouse, then launch OpenCode Project Setup from the applications menu.
+
 ![Installation in four steps](readme_gif/en/01_install.gif)
 
 Here is how it looks in the wizard itself:
@@ -40,7 +43,7 @@ Here is how it looks in the wizard itself:
 
 Everyone has a role. The Master Chief thinks and reviews. Executors write code from
 ready descriptions — from one to eight of them, each in its own copy of the files.
-The Bug Fixer makes one attempt when an executor did not manage. The **controller** is not AI but
+The Bug Fixer has its own correction budget when an executor does not finish. The **controller** is not AI but
 a plain kit program: it hands out file copies, watches the limits and moves accepted
 code into the project. The journal and dashboard make all of this visible.
 
@@ -74,13 +77,17 @@ executor by default; the number is set in the settings.
 ### 5. The Bug Fixer: when and how
 
 If review finds a bug in an executor's code, or the executor runs out of steps or time,
-the work goes to the Bug Fixer once: the same file, the same requirements and the test
+the work goes to the Bug Fixer: the same file, the same requirements and the test
 error output. It only repairs function bodies, and the Master Chief reviews again.
 A service error (including a `429` rate limit), a broken test setup, a pause or a cancel
-never calls the Bug Fixer — those are not code bugs. If the Bug Fixer fails too, work
+never calls the Bug Fixer — those are not code bugs. When its repair or total budget is exhausted, work
 stops with `STOP` and waits for your decision; it never bounces back to the executor.
 
 ![The Bug Fixer](readme_gif/en/05_bugfixer.gif)
+
+The animation shows one handoff. Further corrections stay with the Bug Fixer.
+Defaults per work item: 3 executor code failures, 6 Bug Fixer failures, 9 combined.
+API and setup interruptions do not spend these budgets. Change the limits in model settings.
 
 ### 6. The finish: interface, tests, report
 
@@ -138,7 +145,7 @@ The Master Chief proposes a solution. You discuss the requirements and approve t
 plan. After that it assigns jobs, calls the needed scripts and checks the result. If
 it lacks information or access, it explains what it needs from you.
 
-New model settings take effect in a new session. If the executors use LM Studio, the
+To change models during a task, pause it in the dashboard, save and prepare the new selection, then resume. See [live model changes](docs/LIVE_MODELS.ru.md) (Russian). If the executors use LM Studio, the
 model must be loaded and its server running; other sources do not need that. The
 Master Chief prepares the selected models as described in `AGENTS.md`;
 `kit/run_opencode.py` remains the configuration preparer and an alternative launcher.
@@ -170,15 +177,12 @@ single function is handed out for a targeted fix or when a class is too large.
 4. Hands the executor a small class or related file with requirements written down in advance.
    With more than one executor selected, independent parts run in parallel, each in its own copy of the files.
 5. Reviews the returned code. If fixes are needed, records a rework; after a code bug or an
-   attempt limit it may hand the work to the Bug Fixer once.
+   attempt limit it hands the work to the Bug Fixer.
 6. Runs tests through the tracking script and checks the results. Integrates accepted
    files into the main project one by one.
 7. Reviews the interface in real scenarios when the tools allow it and fixes it as a separate phase.
 8. Runs the full test suite, updates the plan, collects statistics and shows the outcome.
 
-These steps are written into the agent's instructions. The full cycle was tested on
-two Spring tic-tac-toe implementations. The repeat run passed 85 tests and 27 external
-HTTP scenarios; token savings were not confirmed in it.
 
 ## What you get at the end
 
@@ -256,12 +260,7 @@ debugging; you do not need to run them all before each task.
 
 ## Versions and updates
 
-Data collection was tested on **OpenCode CLI 2.0.21** and **Python 3.13** on
-October 3, 2026. The CLI is the OpenCode the script calls from a terminal; it must see
-the same sessions you work with in Desktop. Model selection through
-`.opencode/kit-models.json` was tested on **OpenCode 2.0.26** on October 10, 2026 by
-exporting real sessions: the Master Chief via the top-level `model` key of the overlay,
-executors via `agents.executor` and `agents.executor-fast`.
+The kit uses the CLI bundled with your OpenCode Desktop installation. The following reference explains command selection and compatibility checks.
 
 ### Which OpenCode the kit uses
 
@@ -390,21 +389,11 @@ py kit/task_metrics.py check <same report flags> -- <same test command>
 `CHECK OK` — ready to work. `CHECK FAILED` — hints appear below the line. Details:
 `METRICS.ru.md`, section 3 (Russian).
 
-## What changed after real testing
+## How results are checked
 
-On tic-tac-toe the setup completed every module and collected statistics, but the first
-review missed a null bug. Now the Master Chief saves the requirements before calling the
-executor and, on acceptance, names the code location and test for each item. The script
-refuses an incomplete check table and notices changes to other files, including new
-files Git does not track yet.
+The Chief records requirements before implementation, then links each requirement to code and a test during review. After integration, the full test suite must pass. A module test alone does not establish application readiness.
 
-During work the current class or module is tested. The initial red run is recorded
-separately; failures of different modules do not add up to one limit. A full test suite
-is required at the end. A small class is implemented in one call instead of one call per
-short method.
-
-You do not type these commands; the Master Chief runs them. A detailed null example and
-the statistics explanation: [how executor review works](PIPELINE.ru.md) (Russian).
+See the [review reference](PIPELINE.ru.md) (Russian) for commands and examples.
 
 ## License
 

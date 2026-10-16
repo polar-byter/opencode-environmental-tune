@@ -26,7 +26,7 @@ The kit works the same way:
   end, checks the application interface.
 - 🛠 **Executors** — models that fill in the "insides" of functions from a ready
   description. There can be one to eight of them; each works in its own copy of the files.
-- 🩹 **Bug Fixer** — a separate model with exactly one attempt to repair the work if an
+- 🩹 **Bug Fixer** — a separate model with its own budget to repair the work if an
   executor made a mistake or hit a limit.
 - ⚙ **Controller** — not AI but a plain kit program: it hands out file copies, watches
   the limits and moves accepted code into the project.
@@ -67,7 +67,7 @@ moved into the project one by one, and nothing else is overwritten on the way.
 If review finds a bug or an executor runs out of its limit, the work goes to the Bug
 Fixer once: the same file, the same requirements and the error output. A service error
 (for example a `429` rate limit), a broken test setup, a pause or a cancel never calls
-the Bug Fixer. If it fails too, everything stops with `STOP` and waits for your
+the Bug Fixer. When the correction budget is exhausted, work stops with `STOP` and waits for your
 decision.
 
 ![The Bug Fixer](readme_gif/en/05_bugfixer.gif)
@@ -241,6 +241,9 @@ in the dashboard, or when you ask the Master Chief. At the top there are four se
 | Concurrent executors | 1 | 1 = one after another; 2–8 = in parallel, but only for independent parts |
 | Steps per attempt | 24 | how many actions a model may take in one attempt |
 | Seconds per attempt | 600 | how much time one attempt gets |
+| Executor failures per work item | 3 | executor code-repair budget |
+| Bug Fixer failures per work item | 6 | corrections stay with the Bug Fixer |
+| Total code failures per work item | 9 | combined limit; API and setup interruptions are excluded |
 | Repeated actions without progress | 3 | how many identical actions without a result are allowed |
 
 This is a maximum: with fewer parts, or parts that depend on each other, fewer executors run. A part that depends
@@ -358,7 +361,7 @@ From here it runs on its own, part by part:
 4. The executor fills in **only the function bodies**; the watchdog tracks its steps and time.
 5. The Master Chief checks nothing else was touched, matches requirements against code
    and runs the tests of that very copy. A mistake means a rework; after a code bug or
-   a limit — one Bug Fixer attempt. A build or setup problem the Master Chief fixes
+   a limit — a bounded Bug Fixer correction. A build or setup problem the Master Chief fixes
    itself or brings to you.
 6. The accepted file is integrated into the main project, the part is ticked off in
    the plan and the Master Chief takes the next one.
