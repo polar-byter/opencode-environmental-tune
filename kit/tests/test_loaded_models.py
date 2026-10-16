@@ -43,17 +43,17 @@ class Discovery(unittest.TestCase):
 
 class Selection(unittest.TestCase):
     def test_sole_loaded_instance_wins_over_unloaded_config(self):
-        self.assertEqual(lm.select_model([A], preferred='not-loaded'), A)
+        self.assertEqual(lm.select_model([A], preferred_model='not-loaded'), A)
 
     def test_loaded_config_preference_resolves_multiple_models(self):
-        self.assertEqual(lm.select_model([A, B], preferred='model-b'), B)
+        self.assertEqual(lm.select_model([A, B], preferred_model='model-b'), B)
 
     def test_explicit_instance_wins(self):
-        self.assertEqual(lm.select_model([A, B], preferred='model-b', explicit=A.id), A)
+        self.assertEqual(lm.select_model([A, B], preferred_model='model-b', explicit_model=A.id), A)
 
     def test_explicit_unloaded_model_is_not_replaced(self):
         with self.assertRaisesRegex(ValueError, 'does not identify'):
-            lm.select_model([A], explicit='unloaded')
+            lm.select_model([A], explicit_model='unloaded')
 
     def test_no_loaded_model_is_an_error(self):
         with self.assertRaisesRegex(ValueError, 'No language model'):
@@ -61,13 +61,13 @@ class Selection(unittest.TestCase):
 
     def test_ambiguous_models_are_not_selected_by_list_order(self):
         with self.assertRaisesRegex(ValueError, 'Several'):
-            lm.select_model([A, B], preferred='unloaded')
+            lm.select_model([A, B], preferred_model='unloaded')
 
     def test_multiple_instances_of_one_model_require_instance_id(self):
         other = lm.LoadedModel('second-a', 'model-a', 'A')
         with self.assertRaisesRegex(ValueError, 'does not identify'):
-            lm.select_model([A, other], preferred='model-a')
-        self.assertEqual(lm.select_model([A, other], explicit='second-a'), other)
+            lm.select_model([A, other], preferred_model='model-a')
+        self.assertEqual(lm.select_model([A, other], explicit_model='second-a'), other)
 
 
 class Launch(unittest.TestCase):
