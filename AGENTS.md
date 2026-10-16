@@ -41,7 +41,7 @@ Every test run goes through `task_metrics.py test`. Its exit code decides the ne
 | 2 | wrong usage or a broken journal | fix the command; never ignore it |
 
 Loop guards (defaults; set others at `start` with `--max-reworks`, `--max-no-result`, `--max-failed-runs`, `--max-runs` only when the user asks):
-- the same work item is sent back 3 times, or the executor fails 3 times on the same work item without changing files;
+- Legacy sequential work: the same work item is sent back 3 times, or fails 3 times without changes. Isolated controller attempts use the configured per-role budgets instead: executorMaxAttempts=3, fixerMaxAttempts=6, maxAttempts=9 per work item. API/setup interruptions do not consume code-repair budgets. The first code defect or execution limit transfers to the configured fixer immediately; additional corrections stay with that role. Never reset counters on handoff; stop at the repair/total limit and await a user decision.
 - 3 test runs in a row give no readable result;
 - 12 work-phase test runs in a row in the same test scope are not green (initial baseline excluded);
 - 60 test runs since start/resume, including baselines and scoped runs. Baseline build failures still count toward the global no-result limit. A green full run resets all scope failure streaks. Do not rename scopes to evade guards.
@@ -97,15 +97,17 @@ sequential. Setting a number in the configurator does not isolate direct edits.
   It checks original source/shared-contract hashes and applies one accepted file
   sequentially. A conflicting main file is a decision to rebase/review, not a
   reason to overwrite user work. Run final unfiltered tests on the integrated root.
-- A selected Bug Fixer has its own model/API and one bounded attempt. After a
+- A selected Bug Fixer has its own model/API and a separate bounded correction budget. After a
   reviewed code defect use the same launch command with `--role bug_fixer
   --previous <rejected-attempt-ID>`, preserving the frozen requirements/contracts.
-  A watchdog step/repetition/deadline signal can trigger that one handoff after
+  A watchdog step/repetition/deadline signal can trigger the handoff after
   confirmed interruption and rework. Read events before dispatching a duplicate.
 - Do not escalate API errors, 429, setup errors, pause or cancel to a different
   model. Missing progress alone is not a loop. Never inspect private reasoning.
   If stop is unconfirmed, block replacement. The fixer cannot delegate back.
-  Global STOP guards remain in force; do not reset them automatically.
+  Global STOP guards remain in force; do not reset them automatically. Further
+  fixer corrections use the failed fixer's ID as --previous, with remaining
+  fixer/total budget. Never retry a predecessor that already has a successor.
 - Canonical role text is in `kit/prompts/*.md`; `prepare` loads only the four
   named role documents. Russian human explanations live in `kit/prompts/README.ru.md`.
   HTML comments inside a prompt are still visible to a model.
@@ -134,7 +136,7 @@ Commands in this file are written with `py`; on macOS and Linux replace `py` wit
 - Use the actual OpenCode session ID from context. If unavailable, inspect `opencode session list --format json` and match the current project and task; never guess or pick the latest automatically. If still unknown, omit `--session` and report missing token data.
 - Before each executor call register it with `delegate` as described above. The script reports registered attempts without a matching review. It cannot detect calls that bypass this protocol.
 - After each code review, run `py kit/task_metrics.py review --task <ID> --work-item <function-or-class> --result accepted` with `--checks <path>` for acceptance, or `--result rework`. One return for corrections is one rework, regardless of the number of comments.
-- If the executor returned no work and changed no files (an error, a rate limit, an unavailable model), record `--result failed` instead: it is not a rework, and the runner refuses it when files changed. Then follow Task intake: report the blocker to the user instead of retrying an unavailable executor or implementing the work item yourself.
+- For isolated API/setup interruptions, record `review --result blocked` after a confirmed infrastructure attempt_end; partial source is allowed and retained. Explicit continuation uses the same role and `--previous <attempt-ID>` after the blocker is resolved. Never reclassify a code failure as blocked. For legacy sequential attempts, if the executor returned no work and changed no files (an error, a rate limit, an unavailable model), record `--result failed` instead: it is not a rework, and the runner refuses it when files changed. Then follow Task intake: report the blocker to the user instead of retrying an unavailable executor or implementing the work item yourself.
 - Before the first implementation step of every task, run the test command once through `py kit/task_metrics.py check [--junit <file> | --junit-dir <folder>] -- <test command>`. Exit code 0 means the runner can read the results (failing tests are fine at this point). Exit code 4 means it cannot: do not write code; show the user the hints and ask them to fix the setup.
 - During work use a documented work-item/module test filter and stable `--scope <work_item-or-module>`; store reports inside generated directories. Once per scope before delegation, an initial red run may use `--phase baseline`. At completion run the unfiltered project command with `--scope full`.
 - Run the project's test command through `py kit/task_metrics.py test --task <ID> [--junit <file> | --junit-dir <folder>] -- <test command>`, using the **Project stack** tool and a filter for the current scope; the final full run uses the unfiltered command. React to its exit code as described in **Review loop and stop rules**.

@@ -221,7 +221,8 @@
     } else renderControls(selectedData); }
   }
   const kinds = () => ({ start: t("Task started"), delegation: t("Executor assignment"), inspection: t("Change inspection"), review: t("Review"), test: t("Tests"), halt: t("Stop"), resume: t("Resume"), finish: t("Task finished"), attempt_session: t('Worker session bound'), attempt_admission: t('Worker input admitted'), attempt_end: t('Worker stopped'), integration: t('Changes integrated') });
-  const states = () => ({executor: t("Executor working"), review: t("Under review"), accepted: t("Accepted"), rework: t("Rework requested"), failed: t("Executor failure"), planned: t("Planned"), working: t("In progress"), implemented: t("Implemented, awaiting review")});
+  const states = () => ({executor: t("Executor working"), review: t("Under review"), accepted: t("Accepted"), rework: t("Rework requested"), failed: t("Executor failure"), blocked: t("Infrastructure interruption"), planned: t("Planned"), working: t("In progress"), implemented: t("Implemented, awaiting review")});
+  const workerState = attempt => attempt?.state === 'executor' && attempt.role === 'bug_fixer' ? t('Bug Fixer working') : states()[attempt?.state] || attempt?.state;
   const element = id => document.getElementById(id);
   function applyLanguage() {
     localization.apply(document);
@@ -401,10 +402,15 @@
     for (const item of items) {
       const row = document.createElement('details'); row.className = 'work-row';
       row.dataset.item = item.id; row.open = expanded.has(item.id);
-      const title = document.createElement('summary'); title.textContent = tr`${item.id} · ${states()[item.state] || item.state} · ${item.model || t("model not identified")} · attempts: ${item.attempts.length}`;
+      const title = document.createElement('summary'); title.textContent = tr`${item.id} · ${workerState(item.attempts.at(-1))} · ${item.model || t("model not identified")} · attempts: ${item.attempts.length}`;
       row.append(title);
+      if (item.budget) {
+        const b = item.budget;
+        paragraph(`${t("Code repair budget")} · ${t("Executor")}: ${b.used.executor}/${b.executor_limit} · Bug Fixer: ${b.used.bug_fixer}/${b.fixer_limit} · ${t("Total")}: ${b.used.executor + b.used.bug_fixer}/${b.total_limit}`, row);
+        paragraph(t('Budgets count code failures since the last STOP resolution. API and setup interruptions are excluded.'), row, 'muted');
+      }
       for (const [index, attempt] of item.attempts.entries()) {
-        paragraph(tr`Attempt ${index + 1} · ${new Date(attempt.at * 1000).toLocaleString(localization.locale)} · ${states()[attempt.state] || attempt.state} · ${attempt.model || t("model not identified")}`, row);
+        paragraph(tr`Attempt ${index + 1} · ${new Date(attempt.at * 1000).toLocaleString(localization.locale)} · ${workerState(attempt)} · ${attempt.model || t("model not identified")}`, row);
         if (attempt.worker_id) paragraph(tr`${attempt.role === 'bug_fixer' ? 'Bug Fixer' : t("Executor")} · ${attempt.worker_id} · session ${attempt.session || t("not yet bound")}${attempt.integrated ? t(" · changes integrated") : ''}`, row, 'muted');
         if (attempt.stop_reason) paragraph(tr`Control returned: ${attempt.stop_reason} · stop ${attempt.stopped === true ? t("confirmed") : t("unconfirmed")}`, row, 'muted');
         if (Number.isFinite(attempt.duration_seconds)) paragraph(tr`Attempt duration: ${Math.round(attempt.duration_seconds)} sec (including waiting).`, row, 'muted');

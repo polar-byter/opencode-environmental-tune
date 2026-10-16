@@ -7,6 +7,10 @@ from ..localization import PREFERENCES, load_language, save_language
 LANGUAGES = {'English': 'en', 'Russian': 'ru'}
 
 RU = {
+    'Bounded corrections after a code error or execution limit. API failures pause work.': 'Исправляет код в пределах своего запаса попыток. При сбое API работа приостанавливается.',
+    'Executor failures per work item': 'Неудачных попыток исполнителя на модуль',
+    'Bug Fixer failures per work item': 'Неудачных попыток Bug Fixer на модуль',
+    'Total code failures per work item': 'Общий предел ошибок кода на модуль',
     'Settings prepared. Resume a paused task to use this selection; new sessions will use it too.': 'Настройки подготовлены. Продолжите приостановленную задачу — она использует новый выбор; новые сессии тоже.',
     'Bug Fixer': 'Исправитель ошибок',
     'Implement independent work items from the Master Chief architecture. One model for all executor slots.': 'Выполняют независимые поручения по архитектуре Чифа. Одна модель для всех исполнителей.',
@@ -17,7 +21,7 @@ RU = {
     'Steps per attempt': 'Шагов на попытку',
     'Seconds per attempt': 'Секунд на попытку',
     'Repeated actions without progress': 'Повторов без прогресса',
-    'Enter valid whole-number limits: workers 1–8, steps 1–256, seconds 1–3600, repeats 2–32.': 'Введите целые числа: исполнителей 1–8, шагов 1–256, секунд 1–3600, повторов 2–32.',
+    'Enter valid whole-number limits: workers 1–8, steps 1–256, seconds 1–3600, repeats 2–32, role failures 1–100, total failures 1–200.': 'Введите целые числа: исполнителей 1–8, шагов 1–256, секунд 1–3600, повторов 2–32, ошибок роли 1–100, общий предел 1–200.',
     'One correction attempt after a code error or execution limit. Never used for API failures.': 'Одна попытка исправления после ошибки кода или лимита выполнения. Ошибки API не запускают исправителя.',
     '2. Replace API key (optional)': '2. Заменить API-ключ (необязательно)',
     'New key entered': 'Введён новый ключ',

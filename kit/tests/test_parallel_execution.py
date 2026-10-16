@@ -217,6 +217,8 @@ class ParallelExecutionTests(unittest.TestCase):
             self.metrics.test('demo', [sys.executable, '-c', 'pass'], scope='b', attempt_id=a['event_id'])
 
     def test_watchdog_hands_off_once_and_keeps_partial_implementation(self):
+        self.choices['execution']['fixerMaxAttempts'] = 1
+        self.save_choices()
         a = self.launch('a')
         workspace = self.metrics.attempt_root('demo', a)
         (workspace / 'a.py').write_text('def f():\n    return -1\n', encoding='utf-8')
@@ -254,11 +256,144 @@ class ParallelExecutionTests(unittest.TestCase):
         try:
             with patch.object(self.controller, 'observe', side_effect=lambda *args: release.wait(5)):
                 result = self.controller.watch(a['event_id'], poll_seconds=0)
-            self.assertEqual(result['reason'], 'deadline')
+            self.assertEqual(result['reason'], 'api_error')
             self.assertLess(time.monotonic() - started, 2)
             self.assertFalse(self.service.active())
         finally:
             release.set()
+
+    def test_progress_exists_before_input_without_claiming_implementation(self):
+        original = self.service.call
+        def call(operation, params=None, data=None):
+            if operation == 'session.prompt':
+                paths = list((self.home / 'progress').glob('*.json'))
+                self.assertEqual(len(paths), 1)
+                value = json.loads(paths[0].read_text())
+                self.assertEqual(value['implemented_ids'], [])
+                self.assertIsNone(value['current_id'])
+                self.assertIn(str(paths[0]), data['text'])
+                self.assertIn('You may read files inside this workspace', data['text'])
+                self.assertIn('Do not browse the main project', data['text'])
+            return original(operation, params, data)
+        self.service.call = call
+        attempt = self.launch('a')
+        self.assertEqual(Path(attempt['workspace']).name, attempt['worker_id'])
+
+    def test_old_three_failure_guard_cannot_abort_handoff(self):
+        for _ in range(3):
+            # Build history from the former protocol, which could retry the weak role.
+            with patch('kit.execution_controller.attempt_counts', return_value={'executor': 0, 'bug_fixer': 0}):
+                a = self.launch('a')
+            self.controller.stop(a['event_id'], 'deadline')
+            self.metrics.inspect('demo', 'a')
+            self.assertNotIn('halt', self.metrics.review('demo', 'a', 'rework'))
+        fixer = self.launch('a', role='bug_fixer', previous=a['event_id'])
+        self.assertEqual(fixer['role'], 'bug_fixer')
+
+    def test_reviewed_code_defect_requires_fixer_instead_of_repeating_weak_model(self):
+        a = self.launch('a')
+        self.controller.stop(a['event_id'], 'returned')
+        self.metrics.inspect('demo', 'a')
+        self.metrics.review('demo', 'a', 'rework')
+        with self.assertRaisesRegex(ValueError, 'bug fixer'):
+            self.launch('a')
+        fixer = self.launch('a', role='bug_fixer', previous=a['event_id'])
+        self.assertEqual(fixer['role'], 'bug_fixer')
+
+    def test_executor_budget_halts_when_fixer_is_disabled(self):
+        self.choices.pop('bugFixer')
+        self.choices['execution']['executorMaxAttempts'] = 1
+        self.save_choices()
+        a = self.launch('a')
+        with patch.object(self.controller, 'observe', return_value='deadline'):
+            result = self.controller.watch(a['event_id'], 0)
+        self.assertIn('executor code repair budget exhausted: 1/1', result['halt'])
+        self.assertEqual(len(self.service.sessions), 1)
+
+    def test_dashboard_budget_matches_review_guard_and_keeps_roles_separate(self):
+        a = self.launch('a')
+        with patch.object(self.controller, 'observe', return_value='step_limit'):
+            self.controller.watch(a['event_id'], 0)
+        item = work_items(self.metrics.read('demo'))[0]
+        self.assertEqual(item['budget']['used'], {'executor': 1, 'bug_fixer': 0})
+        self.assertEqual(item['budget']['fixer_limit'], 6)
+
+    def test_progress_write_failure_sends_no_model_request(self):
+        write_text = Path.write_text
+        def write(path, *args, **kwargs):
+            if path.parent.name == 'progress':
+                raise OSError('cannot initialize progress')
+            return write_text(path, *args, **kwargs)
+        with patch.object(Path, 'write_text', write):
+            with self.assertRaisesRegex(OSError, 'initialize progress'):
+                self.launch('a')
+        self.assertFalse(self.service.prompts)
+        self.assertEqual(self.metrics.read('demo')[-1]['reason'], 'setup_error')
+
+    def test_fixer_uses_own_budget_then_stops_without_watcher_crash(self):
+        self.choices['execution'].update(fixerMaxAttempts=2, maxAttempts=8)
+        self.save_choices()
+        a = self.launch('a')
+        with patch.object(self.controller, 'observe', return_value='step_limit'):
+            first = self.controller.watch(a['event_id'], 0)
+            second = self.controller.watch(first['handoff'], 0)
+            last = self.controller.watch(second['handoff'], 0)
+        self.assertIn('bug_fixer code repair budget exhausted: 2/2', last['halt'])
+        self.assertEqual(len(self.service.sessions), 3)
+        self.assertFalse(self.service.active())
+
+    def test_total_budget_stops_even_with_fixer_budget_remaining(self):
+        self.choices['execution'].update(maxAttempts=2, fixerMaxAttempts=6)
+        self.save_choices()
+        a = self.launch('a')
+        with patch.object(self.controller, 'observe', return_value='deadline'):
+            first = self.controller.watch(a['event_id'], 0)
+            last = self.controller.watch(first['handoff'], 0)
+        self.assertIn('2/2 attempts per work item', last['halt'])
+        self.assertEqual(len(self.service.sessions), 2)
+
+    def test_partial_source_then_quota_is_blocked_without_spending_code_budget(self):
+        from kit.execution_policy import attempt_counts
+        a = self.launch('a')
+        (self.metrics.attempt_root('demo', a) / 'a.py').write_text('def f():\n    return -1\n')
+        with patch.object(self.controller, 'observe', return_value='rate_limit'):
+            result = self.controller.watch(a['event_id'], 0)
+        events = self.metrics.read('demo')
+        self.assertEqual(events[-1]['result'], 'blocked')
+        self.assertEqual(events[-1]['changed'], ['a.py'])
+        self.assertEqual(attempt_counts(events, 'a'), {'executor': 0, 'bug_fixer': 0})
+        self.assertNotIn('handoff', result)
+        self.assertEqual(len(self.service.sessions), 1)
+
+    def test_blocked_cannot_hide_a_code_failure(self):
+        a = self.launch('a')
+        self.controller.stop(a['event_id'], 'deadline')
+        self.metrics.inspect('demo', 'a')
+        with self.assertRaisesRegex(ValueError, 'infrastructure'):
+            self.metrics.review('demo', 'a', 'blocked')
+
+    def test_explicit_infrastructure_retry_preserves_partial_source_and_role(self):
+        a = self.launch('a')
+        (self.metrics.attempt_root('demo', a) / 'a.py').write_text('def f():\n    return -1\n')
+        with patch.object(self.controller, 'observe', return_value='api_error'):
+            self.controller.watch(a['event_id'], 0)
+        retry = self.launch('a', previous=a['event_id'])
+        self.assertEqual(retry['role'], 'executor')
+        self.assertIn('return -1', (self.metrics.attempt_root('demo', retry) / 'a.py').read_text())
+
+    def test_duplicate_fixer_successor_is_rejected(self):
+        a = self.launch('a')
+        self.controller.stop(a['event_id'], 'deadline')
+        self.metrics.inspect('demo', 'a')
+        self.metrics.review('demo', 'a', 'rework')
+        fixer = self.launch('a', role='bug_fixer', previous=a['event_id'])
+        self.controller.stop(fixer['event_id'], 'returned')
+        self.metrics.inspect('demo', 'a')
+        self.metrics.review('demo', 'a', 'rework')
+        with self.assertRaisesRegex(ValueError, 'eligible'):
+            self.launch('a', role='bug_fixer', previous=a['event_id'])
+        with self.assertRaisesRegex(ValueError, 'bounce'):
+            self.launch('a')
 
     def test_unconfirmed_stop_does_not_start_fixer(self):
         a = self.launch('a')

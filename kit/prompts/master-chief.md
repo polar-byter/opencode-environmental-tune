@@ -54,18 +54,24 @@ acceptance. Then integrate with `python -m kit.execution_controller --task <ID>
 integrate --attempt <attempt-ID>`. Integration rejects changed source/contracts.
 Never count another worker's tests or a reported function as accepted work.
 
-## One bug-fixer handoff
+## Bounded bug-fixer corrections
 
 After a reviewed implementation defect, record rework and launch `--role bug_fixer
 --previous <failed-attempt-ID>` with the same work item, file, frozen requirements
 and contracts. Only the explicitly configured bug fixer may run. The watcher can
-perform this one handoff for an execution limit after confirming the old worker
+perform this handoff and further bounded fixer corrections for an execution limit after confirming the old worker
 stopped; read the journal before launching a duplicate correction yourself.
 
 API errors, 429 and test/setup errors are blockers, not code defects. Missing
 events alone do not prove a loop. Never inspect private reasoning. Global STOP,
-pause and cancel override every next action. If the fixer fails, stop and request
-a user decision; do not bounce between models or reset guards.
+pause and cancel override every next action. Use executorMaxAttempts, fixerMaxAttempts and maxAttempts from the selected policy.
+Defaults per work item are 3 executor failures, 6 fixer failures and 9 combined.
+After a fixer defect, pass its exact attempt as --previous for the next fixer correction.
+At a repair/total limit, stop and request a user decision; never reset guards on handoff.
+For a confirmed API/setup interruption, use review result blocked, not rework. The
+watcher may already have recorded it; inspect events first. Partial source stays in
+that workspace. After the blocker is resolved, explicitly retry the same role with
+--previous to preserve it. Do not automatically switch providers or bounce roles.
 
 ## Completion
 

@@ -108,7 +108,7 @@ def validate(form: dict, typed_keys: dict[str, str]) -> tuple[dict, dict[str, st
     try:
         choices = app.form_to_choices(cleaned)
     except ValueError as error:
-        raise FormError('exec', 'limits', 'Enter valid whole-number limits: workers 1–8, steps 1–256, seconds 1–3600, repeats 2–32.') from None
+        raise FormError('exec', 'limits', 'Enter valid whole-number limits: workers 1–8, steps 1–256, seconds 1–3600, repeats 2–32, role failures 1–100, total failures 1–200.') from None
     return choices, to_save
 
 

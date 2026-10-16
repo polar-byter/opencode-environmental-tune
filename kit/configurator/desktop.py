@@ -246,7 +246,7 @@ class DesktopConfigurator:
         self.notebook.add(holder, text=workflow.ROLE_NAMES[role])
         title = workflow.ROLE_NAMES[role]
         description = ('Plans, designs the architecture, and reviews the result.' if role == 'master_chief'
-                       else 'One correction attempt after a code error or execution limit. Never used for API failures.' if role == 'bug_fixer'
+                       else 'Bounded corrections after a code error or execution limit. API failures pause work.' if role == 'bug_fixer'
                        else 'Implement independent work items from the Master Chief architecture. One model for all executor slots.')
         ttk.Label(page, text=title, style='Heading.TLabel').grid(sticky='w')
         ttk.Label(page, text=description, style='Hint.TLabel', wraplength=650).grid(sticky='w', pady=(3, 10))
@@ -256,15 +256,17 @@ class DesktopConfigurator:
             for row, (label, field, high) in enumerate((('Concurrent executors', 'max_executors', 8),
                                                        ('Steps per attempt', 'max_steps', 256),
                                                        ('Seconds per attempt', 'max_seconds', 3600),
-                                                       ('Repeated actions without progress', 'max_repeated_actions', 32))):
+                                                       ('Repeated actions without progress', 'max_repeated_actions', 32),
+                                                       ('Executor failures per work item', 'executor_max_attempts', 100),
+                                                       ('Total code failures per work item', 'max_attempts', 200))):
                 ttk.Label(limits, text=label, style='Card.TLabel').grid(row=row, column=0, sticky='w', padx=(0, 12))
                 ttk.Spinbox(limits, from_=1, to=high, textvariable=self.vars[field], width=8).grid(row=row, column=1, pady=3)
         if role == 'bug_fixer':
-            description = 'One correction attempt after a code error or execution limit. Never used for API failures.'
             limits = ttk.Frame(page, style='Card.TFrame')
             limits.grid(row=5, column=0, sticky='ew', pady=12)
             for row, (label, field, high) in enumerate((('Steps per attempt', 'fixer_max_steps', 256),
-                                                       ('Seconds per attempt', 'fixer_max_seconds', 3600))):
+                                                       ('Seconds per attempt', 'fixer_max_seconds', 3600),
+                                                       ('Bug Fixer failures per work item', 'fixer_max_attempts', 100))):
                 ttk.Label(limits, text=label, style='Card.TLabel').grid(row=row, column=0, sticky='w', padx=(0, 12))
                 ttk.Spinbox(limits, from_=1, to=high, textvariable=self.vars[field], width=8).grid(row=row, column=1, pady=3)
         source_bar = ttk.Frame(page, style='Card.TFrame')

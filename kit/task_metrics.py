@@ -28,7 +28,7 @@ TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
 EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish',
                'attempt_session', 'attempt_admission', 'attempt_end', 'integration'}
 # failed: the executor returned no work (error, rate limit, unavailable model) and changed no files.
-REVIEW_RESULTS = {'accepted', 'rework', 'failed'}
+REVIEW_RESULTS = {'accepted', 'rework', 'failed', 'blocked'}
 WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
                               *(f'COM{n}' for n in range(1, 10)), *(f'LPT{n}' for n in range(1, 10))})
 
@@ -387,8 +387,23 @@ def limit_breach(events: list[dict], limits: dict) -> str | None:
     """
     recent = [normalize_work_item(event) for event in since_last_resume(events)]
     tests = [e for e in recent if e['kind'] == 'test']
+    if __package__:
+        from .execution_policy import attempt_counts, budget_reason
+    else:
+        from execution_policy import attempt_counts, budget_reason
+    isolated = {e['event_id']: e for e in events if e['kind'] == 'delegation' and e.get('workspace')}
+    for item in {e['work_item'] for e in isolated.values()}:
+        bindings = [e for e in events if e['kind'] == 'attempt_session'
+                    and e.get('delegation_id') in isolated and isolated[e['delegation_id']]['work_item'] == item]
+        if bindings:
+            role = 'executor' if bindings[-1].get('fixer_enabled') is False else None
+            reason = budget_reason(attempt_counts(events, item), bindings[-1].get('policy'), role)
+            if reason:
+                return item + ': ' + reason
     reworks, failures = {}, {}
     for event in recent:
+        if event.get('delegation_id') in isolated:
+            continue
         if event['kind'] == 'review' and event['result'] == 'rework':
             reworks[event['work_item']] = reworks.get(event['work_item'], 0) + 1
         elif event['kind'] == 'review' and event['result'] == 'failed':
@@ -651,6 +666,11 @@ class TaskMetrics:
                 from .run_opencode import load_choices
                 settings = self.task_dir(task) / 'execution-settings.json'
                 choices = json.loads(settings.read_text(encoding='utf-8')) if settings.exists() else load_choices(self.root)
+                from .task_control_state import read_state
+                selected = read_state(self.root, task).get('settings_revision')
+                if selected:
+                    from .model_switch import revision
+                    choices = revision(self.root, task, selected)['choices']
                 policy = normalize_policy(choices.get('execution'))
                 if role not in ('executor', 'bug_fixer') or not worker_id:
                     raise ValueError('Isolated attempts need a worker identity and role')
@@ -704,18 +724,19 @@ class TaskMetrics:
                                snapshot=filename, **changes)
 
     def review(self, task: str, work_item: str, result: str, checks: Path | None = None) -> dict:
-        """Record the Master Chief's accepted/rework/failed decision and check acceptance evidence.
+        """Record the Chief's accepted/rework/failed/blocked decision and evidence.
 
         Acceptance requires allowed edits, matching requirement checks and a green
         scoped/full run on unchanged files. "failed" means the executor returned no work
         (error, rate limit, unavailable model): it is allowed only when the attempt changed
         no files and it is not counted as a rework. This method does not call the Master
-        Chief, review source code or run tests. Legacy tasks may have no delegation.
+        Chief, review source code or run tests. blocked preserves partial source
+        after a confirmed infrastructure interruption. Legacy tasks may have no delegation.
         """
 
         work_item = work_item.strip()
         if not work_item or result not in REVIEW_RESULTS:
-            raise ValueError('Review requires a work item and accepted/rework/failed result')
+            raise ValueError('Review requires a work item and accepted/rework/failed/blocked result')
         
         with self.lock(task):
             events = self.running(task)
@@ -755,6 +776,13 @@ class TaskMetrics:
                 
                 evidence = dict(delegation_id=attempt['event_id'], **changes)
 
+                if result == 'blocked':
+                    ended = [e for e in events if e['kind'] == 'attempt_end'
+                             and e.get('delegation_id') == attempt['event_id']]
+                    if not ended or not ended[-1].get('stopped') or ended[-1]['reason'] not in ('api_error', 'rate_limit', 'setup_error', 'paused', 'cancelled'):
+                        raise ValueError('Blocked requires a confirmed infrastructure interruption')
+                    evidence['reason'] = ended[-1]['reason']
+
                 if result == 'failed' and changes['changed']:
                     raise ValueError('The executor changed files: review the attempt as accepted or rework, '
                                      'not failed: ' + ', '.join(changes['changed']))
@@ -787,6 +815,8 @@ class TaskMetrics:
                     if compare(tested, after, [])['changed']:
                         raise ValueError('Project files changed since the green test; rerun tests before acceptance')
                     
+            if result == 'blocked' and not pending:
+                raise ValueError('Blocked requires an isolated attempt')
             event = self.append(task, 'review', work_item=work_item, result=result, **evidence)
             halt = self.guard(task, events + [event])
             return dict(event, halt=halt['reason']) if halt else event
@@ -1074,6 +1104,9 @@ class TaskMetrics:
         lines += [t('🔁 Rework requests: **{reworks}** · Reviews recorded: **{reviews}**',
                     reworks=sum(e['result'] == 'rework' for e in reviews), reviews=len(reviews)), '']
         failed_attempts = sum(e['result'] == 'failed' for e in reviews)
+        blocked_attempts = sum(e['result'] == 'blocked' for e in reviews)
+        if blocked_attempts:
+            lines += [t('Infrastructure interruptions: **{count}**. Partial source is preserved; code repair budgets are unchanged.', count=blocked_attempts), '']
         if failed_attempts:
             lines += [t('⚠️ Executor failures without a result (error, limit, unavailable model): **{count}**. These are not reworks: no files changed.', count=failed_attempts), '']
         lines += [t('🧪 Fully successful runs: **{passed} of {total}**', passed=sum(e['status'] == 'passed' for e in work_tests), total=len(work_tests)), '']

@@ -15,7 +15,8 @@ class ConfigurationTests(unittest.TestCase):
     def test_third_role_and_every_limit_survive_form_round_trip(self):
         form = dict(app.EMPTY_FORM, bug_fixer_source='api', bug_fixer_url='https://fix.example/v1',
                     bug_fixer_model='strong', bug_fixer_key_env='FIX_KEY', max_executors='2',
-                    max_repeated_actions='5', fixer_max_steps='48', fixer_max_seconds='900')
+                    max_repeated_actions='5', fixer_max_steps='48', fixer_max_seconds='900',
+                    executor_max_attempts='5', fixer_max_attempts='12', max_attempts='17')
         choice = app.form_to_choices(form)
         self.assertEqual(choice['bugFixer']['keyEnv'], 'FIX_KEY')
         self.assertEqual(choice['execution']['maxExecutors'], 2)

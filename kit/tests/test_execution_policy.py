@@ -24,7 +24,8 @@ class ExecutionPolicyTests(unittest.TestCase):
     def test_inclusive_bounds(self):
         bounds = {'maxExecutors': (1, 8), 'maxSteps': (1, 256),
                   'fixerMaxSteps': (1, 256), 'maxSeconds': (1, 3600),
-                  'fixerMaxSeconds': (1, 3600), 'maxRepeatedActions': (2, 32)}
+                  'fixerMaxSeconds': (1, 3600), 'maxRepeatedActions': (2, 32),
+                  'executorMaxAttempts': (1, 100), 'fixerMaxAttempts': (1, 100), 'maxAttempts': (1, 200)}
         for key, values in bounds.items():
             for number in values:
                 with self.subTest(key=key, number=number):
@@ -78,6 +79,23 @@ class ExecutionPolicyTests(unittest.TestCase):
             for reason in ('paused', 'cancelled'):
                 with self.subTest(role=role, reason=reason):
                     self.assertEqual(next_action(role, reason, fixer_enabled=True), 'stop')
+
+    def test_selected_fixer_budget_allows_same_role_corrections_only_until_limit(self):
+        self.assertEqual(next_action('bug_fixer', 'implementation_error', fixer_enabled=True,
+                                    fixer_attempts=5, max_fixer_attempts=6), 'bug_fixer')
+        self.assertEqual(next_action('bug_fixer', 'implementation_error', fixer_enabled=True,
+                                    fixer_attempts=6, max_fixer_attempts=6), 'stop')
+
+    def test_resume_and_infrastructure_history_do_not_leak_into_new_role_budgets(self):
+        from kit.execution_policy import attempt_counts
+        events = [dict(kind='delegation', event_id='a', work_item='one', workspace='a', role='executor'),
+                  dict(kind='attempt_end', delegation_id='a', reason='rate_limit'),
+                  dict(kind='review', delegation_id='a', result='rework')]
+        self.assertEqual(attempt_counts(events, 'one'), {'executor': 0, 'bug_fixer': 0})
+        events[1]['reason'] = 'deadline'
+        self.assertEqual(attempt_counts(events, 'one')['executor'], 1)
+        self.assertEqual(attempt_counts(events, 'other')['executor'], 0)
+        self.assertEqual(attempt_counts(events + [{'kind': 'resume'}], 'one')['executor'], 0)
 
     def test_route_validates_even_when_no_transfer_possible(self):
         for role in ('', 'master_chief', None):

@@ -1,4 +1,10 @@
 {
+  "Bug Fixer working": "Bug Fixer исправляет код",
+  "Budgets count code failures since the last STOP resolution. API and setup interruptions are excluded.": "Здесь считаются ошибки кода после последнего решения продолжить работу после STOP. Прерывания API и настройки не входят в этот запас.",
+  "Infrastructure interruption": "Прерывание из-за API или настройки",
+  "Code repair budget": "Попытки исправления кода",
+  "Total": "Всего",
+  "Infrastructure interruptions: **{count}**. Partial source is preserved; code repair budgets are unchanged.": "Прерывания из-за API или настройки: **{count}**. Частичный код сохранён; запас исправлений кода не расходуется.",
   "OpenCode task": "Задача OpenCode",
   "OpenCode · task dashboard": "OpenCode · наблюдение за задачей",
   "Loading task…": "Загрузка задачи…",

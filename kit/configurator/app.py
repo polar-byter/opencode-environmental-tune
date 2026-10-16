@@ -59,6 +59,9 @@ EMPTY_FORM = {
     'max_repeated_actions': '3',
     'fixer_max_steps': '32',
     'fixer_max_seconds': '600',
+    'executor_max_attempts': '3',
+    'fixer_max_attempts': '6',
+    'max_attempts': '9',
 }
 
 # Step 7. Pure (independent from the window for our tests) Form -> choices (no window needed)
@@ -108,7 +111,9 @@ def form_to_choices(form: dict) -> dict:
     values = {}
     for field, key, default in (('max_executors', 'maxExecutors', '1'), ('max_steps', 'maxSteps', '24'),
                                 ('max_seconds', 'maxSeconds', '600'), ('max_repeated_actions', 'maxRepeatedActions', '3'),
-                                ('fixer_max_steps', 'fixerMaxSteps', '32'), ('fixer_max_seconds', 'fixerMaxSeconds', '600')):
+                                ('fixer_max_steps', 'fixerMaxSteps', '32'), ('fixer_max_seconds', 'fixerMaxSeconds', '600'),
+                                ('executor_max_attempts', 'executorMaxAttempts', '3'), ('fixer_max_attempts', 'fixerMaxAttempts', '6'),
+                                ('max_attempts', 'maxAttempts', '9')):
         value = form.get(field, default)
         if not isinstance(value, str) or not value.isascii() or not value.isdecimal():
             raise ValueError('Execution limits must be whole numbers')
@@ -160,7 +165,8 @@ def choices_to_form(data: dict) -> dict:
     policy = normalize_policy(data.get('execution'))
     for field, key in (('max_executors', 'maxExecutors'), ('max_steps', 'maxSteps'), ('max_seconds', 'maxSeconds'),
                        ('max_repeated_actions', 'maxRepeatedActions'), ('fixer_max_steps', 'fixerMaxSteps'),
-                       ('fixer_max_seconds', 'fixerMaxSeconds')):
+                       ('fixer_max_seconds', 'fixerMaxSeconds'), ('executor_max_attempts', 'executorMaxAttempts'),
+                       ('fixer_max_attempts', 'fixerMaxAttempts'), ('max_attempts', 'maxAttempts')):
         result_form[field] = str(policy[key])
     return result_form
     

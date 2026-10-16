@@ -168,6 +168,14 @@ def work_items(events: list[dict]) -> list[dict]:
                     latest['tests'].append({key: event.get(key) for key in ('at', 'scope', 'status', 'tests', 'failures', 'errors')})
     for item in rows.values():
         item['state'] = item['attempts'][-1]['state']
+        from ..execution_policy import attempt_counts, normalize_policy
+        bindings = [e for e in events if e['kind'] == 'attempt_session'
+                    and any(a['event_id'] == e.get('delegation_id') for a in item['attempts'])]
+        if bindings:
+            policy = normalize_policy(bindings[-1].get('policy'))
+            item['budget'] = {'used': attempt_counts(events, item['id']),
+                              'executor_limit': policy['executorMaxAttempts'],
+                              'fixer_limit': policy['fixerMaxAttempts'], 'total_limit': policy['maxAttempts']}
         item['files'] = item['attempts'][-1].get('files') or []
     return list(rows.values())
 
