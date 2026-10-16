@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 import subprocess
+from urllib.parse import quote
 
 from ..opencode_cli import locate_opencode
 from ..task_metrics import session_id
@@ -21,7 +22,7 @@ class SessionControl:
         executable = locate_opencode()
         if not executable:
             raise ControlError('OpenCode CLI не найден')
-        args = [executable, 'api', operation]
+        args = [executable, 'api', operation, '--header', 'x-opencode-directory:' + quote(str(self.root), safe='')]
         for key, value in (params or {}).items():
             args += ['--param', f'{key}={value}']
         if data is not None:
@@ -153,6 +154,17 @@ class SessionControl:
                 'Read the saved work plan and task journal. Inspect partial edits and interrupted executor attempts '
                 'before continuing; do not assume an interrupted attempt passed review or tests. '
                 'Do not reset loop guards or start a new task. Continue the next unfinished approved work item.')
+        from ..task_control_state import read_state
+        reference = read_state(self.root, task).get('settings_revision')
+        if reference:
+            from ..model_switch import verify_revision
+            selected = verify_revision(self.root, task, reference)
+            text += (f' The user explicitly prepared and approved model revision {reference} for this continuation: '
+                     + json.dumps(selected['models'], ensure_ascii=True) + '. '
+                     'Use this revision for future attempts; keep the original execution-settings.json as history. '
+                     'The user has authorized continuing unfinished work with these revised models after the previous provider limit. '
+                     'Inspect the interrupted attempt, then use a new controlled attempt when required; do not retry the old session, '
+                     'switch to any unselected model, reset guards, or accept incomplete work.')
         result = self.call('session.prompt', {'sessionID': session_id(sid)},
                            {'id': 'msg_' + operation_id, 'text': text, 'delivery': 'steer', 'resume': True})
         if not isinstance(result, dict) or not isinstance(result.get('data'), dict) or result['data'].get('id') != 'msg_' + operation_id:

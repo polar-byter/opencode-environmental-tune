@@ -30,6 +30,14 @@ class Observations(unittest.TestCase):
     def test_messages_outside_task_window_are_ignored(self):
         self.assertEqual(observations([exported('root', 'model', [])], 'root', 200, 300)['models']['master_chief'], [])
 
+    def test_model_switch_keeps_history_but_session_model_uses_latest_timestamp(self):
+        old = exported('root', 'old', [])['messages'][0]
+        new = exported('root', 'new', [])['messages'][0]
+        new['time'] = {'created': 120000, 'completed': 121000}
+        view = observations([{'info': {'id': 'root'}, 'messages': [new, old]}], 'root', 100, 130)
+        self.assertEqual(view['session_models']['root'], 'provider/new')
+        self.assertEqual(set(view['models']['master_chief']), {'provider/old', 'provider/new'})
+
     def test_http_view_does_not_wait_for_collector(self):
         entered, release = threading.Event(), threading.Event()
         def collect(root, sid):

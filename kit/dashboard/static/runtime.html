@@ -369,7 +369,7 @@
     const live = {...raw.sessions, reason: t(raw.sessions?.reason || '')};
     const work = {...raw, progress, sessions: live, error: raw.errors?.length ? raw.errors.map(t).join('. ') : t(raw.error || '')};
     const configured = work.configured_models || {}, actual = live.models || {};
-    const model = role => (actual[role] || []).join(', ') || (configured[role] ? configured[role] + t(" (selected in settings)") : t("model unknown"));
+    const model = role => (role === 'master_chief' ? live.session_models?.[data.session] : (actual[role] || []).join(', ')) || (configured[role] ? configured[role] + t(" (selected in settings)") : t("model unknown"));
     element('models').textContent = tr`Master Chief: ${model('master_chief')} · Executor: ${model('executor')}`;
     const items = work.items || [], last = [...items].sort((a, b) => a.attempts.at(-1).at - b.attempts.at(-1).at).at(-1);
     let stage = t("Master Chief is preparing the plan and architecture.");

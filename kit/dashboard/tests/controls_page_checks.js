@@ -117,5 +117,14 @@ const run = code => vm.runInContext(code, context);
       }
     }
   }
+  context.roleData.session = 'ses_root';
+  context.roleData.work.items[0].state = 'review';
+  context.roleData.work.sessions.models = {master_chief:['old/provider-model','openrouter/new-model']};
+  context.roleData.work.sessions.session_models = {ses_root:'openrouter/new-model'};
+  run('renderWork(roleData)');
+  assert(elements.get('live-actor').textContent.includes('openrouter/new-model'));
+  assert(!elements.get('live-actor').textContent.includes('old/provider-model'));
+  assert(!elements.get('models').textContent.includes('old/provider-model'));
+  assert.equal(context.roleData.work.sessions.models.master_chief.length, 2);
   console.log('Page controls: requests, confirmation, failures, stale replies, empty state OK');
 })().catch(error=>{console.error(error);process.exitCode=1;});

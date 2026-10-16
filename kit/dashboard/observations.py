@@ -128,7 +128,7 @@ def observations(exports: list[dict], root_session: str, since: float, until: fl
             reference = provider + '/' + model if provider != 'unknown' and model != 'unknown' else None
             if reference and reference not in models[role]:
                 models[role].append(reference)
-            if reference:
+            if newest is info:
                 session_models[session] = reference
             parts = message.get('parts', message.get('content', []))
             last_tool = None

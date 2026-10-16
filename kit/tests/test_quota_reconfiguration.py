@@ -188,6 +188,29 @@ class ModelRevisions(unittest.TestCase):
 
 
 class NativeModelChange(unittest.TestCase):
+    def test_resume_relays_only_the_prepared_model_revision_and_preserves_guards(self):
+        service=SessionControl(Path.cwd())
+        selected={'models':{'masterChief':'openrouter/new-chief','executors':'openrouter/new-worker:free'}}
+        with patch('kit.task_control_state.read_state',return_value={'settings_revision':'r1'}), \
+             patch('kit.model_switch.verify_revision',return_value=selected), \
+             patch.object(service,'call',return_value={'data':{'id':'msg_operation'}}) as call:
+            service.resume('ses_root','task','operation')
+        text=call.call_args.args[2]['text']
+        self.assertIn('explicitly prepared and approved model revision r1',text)
+        self.assertIn('openrouter/new-worker:free',text)
+        self.assertIn('do not retry the old session',text)
+        self.assertIn('Do not reset loop guards',text)
+
+    def test_native_api_uses_explicit_project_location_not_server_working_directory(self):
+        from urllib.parse import quote
+        service=SessionControl(Path.cwd()/'project with spaces')
+        response=Mock(returncode=0,stdout='{"data": []}')
+        with patch('kit.dashboard.session_control.locate_opencode',return_value='opencode'), \
+             patch('kit.dashboard.session_control.subprocess.run',return_value=response) as call:
+            self.assertEqual(service.call('model.list'),{'data':[]})
+        args=call.call_args.args[0]
+        self.assertEqual(args[args.index('--header')+1],'x-opencode-directory:'+quote(str(service.root),safe=''))
+
     def test_switch_verifies_durable_session_model(self):
         service=SessionControl(Path.cwd())
         selected={'providerID':'openrouter','id':'p/m:free'}
