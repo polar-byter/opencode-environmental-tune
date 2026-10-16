@@ -220,7 +220,7 @@
       else refreshTask();
     } else renderControls(selectedData); }
   }
-  const kinds = () => ({ start: t("Task started"), delegation: t("Executor assignment"), inspection: t("Change inspection"), review: t("Review"), test: t("Tests"), halt: t("Stop"), resume: t("Resume"), finish: t("Task finished"), attempt_session: t('Worker session bound'), attempt_admission: t('Worker input admitted'), attempt_end: t('Worker stopped'), integration: t('Changes integrated') });
+  const kinds = () => ({ start: t("Task started"), delegation: t("Executor assignment"), inspection: t("Change inspection"), review: t("Review"), test: t("Tests"), halt: t("Stop"), resume: t("Resume"), finish: t("Task finished"), attempt_session: t('Worker session bound'), attempt_admission: t('Worker input admitted'), attempt_end: t('Worker stopped'), attempt_reclassification: t('Stop classification corrected'), integration: t('Changes integrated') });
   const states = () => ({executor: t("Executor working"), review: t("Under review"), accepted: t("Accepted"), rework: t("Rework requested"), failed: t("Executor failure"), blocked: t("Infrastructure interruption"), planned: t("Planned"), working: t("In progress"), implemented: t("Implemented, awaiting review")});
   const workerState = attempt => attempt?.state === 'executor' && attempt.role === 'bug_fixer' ? t('Bug Fixer working') : states()[attempt?.state] || attempt?.state;
   const element = id => document.getElementById(id);

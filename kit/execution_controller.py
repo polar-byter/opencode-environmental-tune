@@ -336,6 +336,8 @@ class ExecutionController:
                 continue
             steps += 1
             if info.get('error'):
+                if isinstance(info['error'], dict) and info['error'].get('type') == 'aborted':
+                    return 'cancelled'
                 return 'rate_limit' if quota_error(info['error']) else 'api_error'
             for index, part in enumerate(message.get('parts', message.get('content', []))):
                 if not isinstance(part, dict) or part.get('type') != 'tool':
@@ -411,12 +413,13 @@ class ExecutionController:
                     return self.stop(identifier, 'paused')
                 remaining = max(0, timeout - (time.monotonic() - started))
             if sampler.is_alive():
-                # The wall-clock bound also covers a stuck observation/API request.
-                signal = 'api_error'
+                # Sampling can still be in flight when the execution budget expires.
+                # That is a deadline, not evidence of a provider failure.
+                signal = 'deadline'
             else:
                 signal, unavailable = result.get()
                 if unavailable and time.monotonic() - started >= timeout:
-                    signal = 'api_error'
+                    signal = 'deadline'
             if signal:
                 if signal == 'deadline' and not any(e['kind'] == 'attempt_admission' and e['delegation_id'] == identifier
                                                    for e in self.metrics.read(self.task)):
@@ -444,6 +447,52 @@ class ExecutionController:
                     return {'kind': 'handoff', 'previous': identifier, 'handoff': successor['event_id'], 'stopped': True}
                 return stopped
             time.sleep(min(poll_seconds, max(0, timeout - (time.monotonic() - started))))
+
+    def repair_deadline(self, identifier, reason):
+        """Audit the former watchdog misclassification after verifying native evidence.
+
+        This maintenance action never starts a model or edits an old event. Genuine
+        provider errors, an active worker or an early interruption fail closed.
+        """
+        if not reason.strip():
+            raise ValueError('A timeout correction needs the user-authorized repair reason')
+        events = self.metrics.active(self.task)
+        if is_halted(events):
+            raise ValueError('Resolve the task STOP before correcting an attempt')
+        attempt = self.attempt(identifier)
+        binding = next(e for e in events if e['kind'] == 'attempt_session' and e['delegation_id'] == identifier)
+        ended = [e for e in events if e['kind'] == 'attempt_end' and e['delegation_id'] == identifier]
+        reviews = [e for e in events if e['kind'] == 'review' and e.get('delegation_id') == identifier]
+        timeout = binding['policy']['fixerMaxSeconds' if attempt['role'] == 'bug_fixer' else 'maxSeconds']
+        if (not ended or not reviews or ended[-1]['reason'] != 'api_error' or not ended[-1].get('stopped')
+                or reviews[-1]['result'] != 'blocked' or ended[-1]['at'] - attempt['at'] < timeout):
+            raise ValueError('Attempt is not an expired, blocked API misclassification')
+        sid = self.binding(identifier)
+        linked = {events[0]['session'], *(e['session'] for e in events if e['kind'] == 'attempt_session')}
+        if linked & set(self.service.active()):
+            raise ValueError('Pause the task and confirm all linked execution stopped before correcting it')
+        info = self.service.call('session.get', {'sessionID': sid})['data']
+        export = self.metrics.export_session(self.metrics_cli(), sid)
+        if (info.get('id') != sid or info.get('parentID') != events[0]['session']
+                or Path(info.get('location', {}).get('directory', '')).resolve() != self.root
+                or info.get('outcome') != 'interrupted' or export['info'].get('id') != sid
+                or export['info'].get('parentID') != events[0]['session']):
+            raise ValueError('Native interruption evidence or ancestry mismatch')
+        errors = [message_info(m).get('error') for m in export.get('messages', []) if message_info(m).get('error')]
+        if not errors or any(not isinstance(e, dict) or e.get('type') != 'aborted' or e.get('message') != 'Step interrupted' for e in errors):
+            raise ValueError('Provider error evidence cannot be relabelled as a deadline')
+        inspections = [e for e in events if e['kind'] == 'inspection' and e['delegation_id'] == identifier]
+        if not inspections or snapshot(self.metrics.attempt_root(self.task, attempt)) != json.loads(
+                (self.metrics.task_dir(self.task) / inspections[-1]['snapshot']).read_text(encoding='utf-8')):
+            raise ValueError('Inspected workspace changed; cannot correct its classification')
+        with self.metrics.lock(self.task):
+            if self.metrics.active(self.task) != events:
+                raise ValueError('Journal changed during timeout verification; inspect again')
+            event = self.metrics.append(self.task, 'attempt_reclassification', delegation_id=identifier,
+                                        end_event=ended[-1]['event_id'], review_event=reviews[-1]['event_id'],
+                                        reason='deadline', explanation=reason.strip())
+            halt = self.metrics.guard(self.task, self.metrics.read(self.task))
+            return dict(event, halt=halt['reason']) if halt else event
 
     def integrate(self, identifier):
         """Apply one accepted file only if its source and shared contracts are unchanged."""
@@ -498,8 +547,9 @@ def main(argv=None):
     launch.add_argument('--dependencies', nargs='*', default=[])
     launch.add_argument('--role', choices=('executor', 'bug_fixer'), default='executor')
     launch.add_argument('--previous')
-    for name in ('watch', 'integrate'):
+    for name in ('watch', 'integrate', 'repair-deadline'):
         sub.add_parser(name).add_argument('--attempt', required=True)
+    sub.choices['repair-deadline'].add_argument('--reason', required=True)
     args = parser.parse_args(argv)
     controller = ExecutionController(args.root, args.task)
     try:
@@ -508,6 +558,8 @@ def main(argv=None):
                                        args.dependencies, args.role, args.previous)
         elif args.action == 'watch':
             result = controller.watch(args.attempt)
+        elif args.action == 'repair-deadline':
+            result = controller.repair_deadline(args.attempt, args.reason)
         else:
             result = controller.integrate(args.attempt)
         print(json.dumps(result))

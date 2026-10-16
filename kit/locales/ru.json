@@ -1,4 +1,5 @@
 {
+  "Stop classification corrected": "Уточнена причина остановки",
   "Bug Fixer working": "Bug Fixer исправляет код",
   "Budgets count code failures since the last STOP resolution. API and setup interruptions are excluded.": "Здесь считаются ошибки кода после последнего решения продолжить работу после STOP. Прерывания API и настройки не входят в этот запас.",
   "Infrastructure interruption": "Прерывание из-за API или настройки",

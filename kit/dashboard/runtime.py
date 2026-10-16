@@ -17,7 +17,7 @@ import uuid
 from . import journal
 from . import tracking, observations, delivery
 from .launcher import SERVICE, VERSION, project_id, read_state, runtime_folder, write_state
-from ..task_metrics import TaskMetrics
+from ..task_metrics import TaskMetrics, corrected_events
 from .. import task_control_state
 from .. import localization
 from .controls import TaskControls
@@ -38,7 +38,7 @@ def task_directory(root: Path, task: str) -> Path:
 
 
 def task_view(root: Path, task: str, reader=None) -> dict:
-    events = journal.read_events(task_directory(root, task) / 'events.jsonl')
+    events = corrected_events(journal.read_events(task_directory(root, task) / 'events.jsonl'))
     result = journal.brief_summary(events)
     result.update(task=task, started_at=events[0]['at'], session=events[0].get('session'))
     try:

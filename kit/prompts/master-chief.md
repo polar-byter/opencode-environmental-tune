@@ -73,6 +73,12 @@ watcher may already have recorded it; inspect events first. Partial source stays
 that workspace. After the blocker is resolved, explicitly retry the same role with
 --previous to preserve it. Do not automatically switch providers or bounce roles.
 
+A time budget expiring while session observation is pending is still a deadline;
+it does not establish a provider error. A native aborted/Step interrupted outcome
+alone is not an API failure either. Do not infer provider throughput from total
+attempt duration. Read metrics through TaskMetrics so audited stop corrections
+are applied consistently; the raw journal preserves original records.
+
 ## Completion
 
 Continue through ready dependencies without separate module requests. After

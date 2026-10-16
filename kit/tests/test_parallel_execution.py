@@ -256,11 +256,111 @@ class ParallelExecutionTests(unittest.TestCase):
         try:
             with patch.object(self.controller, 'observe', side_effect=lambda *args: release.wait(5)):
                 result = self.controller.watch(a['event_id'], poll_seconds=0)
-            self.assertEqual(result['reason'], 'api_error')
+            self.assertEqual(result['reason'], 'deadline')
             self.assertLess(time.monotonic() - started, 2)
             self.assertFalse(self.service.active())
         finally:
             release.set()
+
+    def test_stuck_sample_at_deadline_hands_off_instead_of_reporting_api_failure(self):
+        a = self.launch('a')
+        release = threading.Event()
+        try:
+            with patch.object(self.controller, 'observe', side_effect=lambda *args: release.wait(5)):
+                result = self.controller.watch(a['event_id'], 0)
+            self.assertIn('handoff', result)
+            ended = [e for e in self.metrics.read('demo') if e['kind'] == 'attempt_end'][0]
+            self.assertEqual(ended['reason'], 'deadline')
+            self.assertEqual(self.controller.attempt(result['handoff'])['role'], 'bug_fixer')
+        finally:
+            release.set()
+
+    def test_unavailable_observation_does_not_turn_execution_deadline_into_api_failure(self):
+        a = self.launch('a')
+        with patch.object(self.controller, 'observe', side_effect=RuntimeError('sampling failed')):
+            result = self.controller.watch(a['event_id'], .05)
+        self.assertIn('handoff', result)
+        events = self.metrics.read('demo')
+        self.assertEqual(next(e for e in events if e['kind'] == 'attempt_end')['reason'], 'deadline')
+        self.assertNotIn('blocked', [e['result'] for e in events if e['kind'] == 'review'])
+
+    def expired_api_fixture(self):
+        a = self.launch('a')
+        sid = self.controller.binding(a['event_id'])
+        with patch('kit.execution_controller.time.time', return_value=a['at'] + 2):
+            self.controller.stop(a['event_id'], 'api_error')
+            self.metrics.inspect('demo', 'a')
+            self.metrics.review('demo', 'a', 'blocked')
+        self.service.sessions[sid]['outcome'] = 'interrupted'
+        export = {'info': {'id': sid, 'parentID': 'ses_root'}, 'messages': [
+            {'type': 'assistant', 'error': {'type': 'aborted', 'message': 'Step interrupted'}}]}
+        return a, export
+
+    def test_audited_timeout_repair_preserves_journal_and_restores_fixer_route(self):
+        from kit.execution_policy import attempt_counts
+        from kit.task_metrics import corrected_events
+        from kit.dashboard.runtime import task_view
+        a, export = self.expired_api_fixture()
+        journal = self.home / 'events.jsonl'
+        before = journal.read_bytes()
+        with patch.object(self.controller.metrics, 'export_session', return_value=export), patch('kit.execution_controller.time.time', return_value=a['at'] + 3):
+            self.controller.repair_deadline(a['event_id'], 'User requested repair of watchdog classification')
+        self.assertTrue(journal.read_bytes().startswith(before))
+        events = self.metrics.read('demo')
+        self.assertEqual(corrected_events(events), events)
+        self.assertEqual(next(e for e in events if e['kind'] == 'review')['result'], 'rework')
+        self.assertEqual(attempt_counts(events, 'a')['executor'], 1)
+        self.assertEqual(task_view(self.root, 'demo')['reworks'], 1)
+        with patch.object(self.controller.metrics, 'export_session', return_value=export):
+            with self.assertRaisesRegex(ValueError, 'misclassification'):
+                self.controller.repair_deadline(a['event_id'], 'Duplicate')
+        successor = self.launch('a', role='bug_fixer', previous=a['event_id'])
+        self.assertEqual(successor['role'], 'bug_fixer')
+
+    def test_actual_provider_error_cannot_be_relabelled_as_deadline(self):
+        a, export = self.expired_api_fixture()
+        export['messages'][0]['error'] = {'type': 'api', 'message': '429 provider quota exhausted'}
+        before = self.metrics.read('demo')
+        with patch.object(self.controller.metrics, 'export_session', return_value=export):
+            with self.assertRaisesRegex(ValueError, 'Provider error'):
+                self.controller.repair_deadline(a['event_id'], 'Repair')
+        self.assertEqual(self.metrics.read('demo'), before)
+
+    def test_early_api_failure_is_not_a_deadline(self):
+        a = self.launch('a')
+        self.controller.stop(a['event_id'], 'api_error')
+        self.metrics.inspect('demo', 'a')
+        self.metrics.review('demo', 'a', 'blocked')
+        with self.assertRaisesRegex(ValueError, 'misclassification'):
+            self.controller.repair_deadline(a['event_id'], 'Repair')
+
+    def test_native_abort_is_not_reported_as_provider_api_error(self):
+        a = self.launch('a')
+        sid = self.controller.binding(a['event_id'])
+        export = {'info': {'id': sid, 'parentID': 'ses_root'}, 'messages': [
+            {'type': 'assistant', 'error': {'type': 'aborted', 'message': 'Step interrupted'}}]}
+        with patch.object(self.controller.metrics, 'export_session', return_value=export):
+            self.assertEqual(self.controller.observe(a['event_id'], 0), 'cancelled')
+
+    def test_repair_requires_idle_coordinator_too(self):
+        a, export = self.expired_api_fixture()
+        self.service.running.add('ses_root')
+        with patch.object(self.controller.metrics, 'export_session', return_value=export):
+            with self.assertRaisesRegex(ValueError, 'all linked execution stopped'):
+                self.controller.repair_deadline(a['event_id'], 'Repair')
+
+    def test_correction_cannot_change_acceptance_or_another_attempt(self):
+        from kit.task_metrics import corrected_events
+        events = [dict(kind='attempt_end', event_id='end', delegation_id='a', reason='api_error', stopped=True, at=1),
+                  dict(kind='review', event_id='review', delegation_id='a', result='accepted', at=2),
+                  dict(kind='attempt_reclassification', event_id='correction', delegation_id='a',
+                       end_event='end', review_event='review', reason='deadline', explanation='Repair', at=3)]
+        with self.assertRaisesRegex(ValueError, 'API/blocked'):
+            corrected_events(events)
+        self.assertEqual(events[1]['result'], 'accepted')
+        events[1].update(result='blocked', delegation_id='other')
+        with self.assertRaisesRegex(ValueError, 'API/blocked'):
+            corrected_events(events)
 
     def test_progress_exists_before_input_without_claiming_implementation(self):
         original = self.service.call

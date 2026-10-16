@@ -26,7 +26,7 @@ else:
 
 TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
 EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish',
-               'attempt_session', 'attempt_admission', 'attempt_end', 'integration'}
+               'attempt_session', 'attempt_admission', 'attempt_end', 'integration', 'attempt_reclassification'}
 # failed: the executor returned no work (error, rate limit, unavailable model) and changed no files.
 REVIEW_RESULTS = {'accepted', 'rework', 'failed', 'blocked'}
 WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
@@ -91,6 +91,39 @@ def session_id(value):
     if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,159}', value):
         raise ValueError('Invalid session ID')
     return value
+
+
+def corrected_events(events):
+    """Project an audited timeout correction without rewriting original journal rows.
+
+    Only an api_error/blocked pair can become deadline/rework. Acceptance, file
+    evidence and timestamps are never changed. References must precede the correction.
+    """
+    result, positions = [], {}
+    for source in events:
+        event = dict(normalize_work_item(source))
+        if event['kind'] == 'attempt_reclassification':
+            if any(not isinstance(event.get(key), str) or not event[key].strip()
+                   for key in ('end_event', 'review_event', 'delegation_id', 'explanation')):
+                raise ValueError('Timeout correction requires exact references and an explanation')
+            end_index = positions.get(event.get('end_event'))
+            review_index = positions.get(event.get('review_event'))
+            if end_index is None or review_index is None or event.get('reason') != 'deadline':
+                raise ValueError('Invalid timeout correction references')
+            end, review = result[end_index], result[review_index]
+            identifier = event.get('delegation_id')
+            if (end['kind'] != 'attempt_end' or review['kind'] != 'review'
+                    or end.get('delegation_id') != identifier or review.get('delegation_id') != identifier
+                    or end.get('original_reason', end.get('reason')) != 'api_error'
+                    or review.get('original_result', review.get('result')) != 'blocked'
+                    or not end.get('stopped') or event['at'] < max(end['at'], review['at'])
+                    or end.get('classification_event') not in (None, event['event_id'])):
+                raise ValueError('Only a stopped API/blocked attempt can be corrected')
+            result[end_index] = dict(end, reason='deadline', original_reason='api_error', classification_event=event['event_id'])
+            result[review_index] = dict(review, result='rework', reason='deadline', original_result='blocked', classification_event=event['event_id'])
+        positions[event.get('event_id')] = len(result)
+        result.append(event)
+    return result
 
 
 def message_info(message):
@@ -553,7 +586,7 @@ class TaskMetrics:
                         e.get('kind') not in EVENT_KINDS for e in events)):
                 raise ValueError('Invalid journal events')
 
-            return [normalize_work_item(event) for event in events]
+            return corrected_events(events)
         except (OSError, ValueError, AttributeError) as error:
             raise ValueError(f'Cannot read task {task}; start it first or inspect events.jsonl: {error}') from error
 
