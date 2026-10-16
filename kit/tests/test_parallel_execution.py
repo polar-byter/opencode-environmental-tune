@@ -1,5 +1,6 @@
 """Isolated parallel attempts, acceptance, conflict detection and watchdog routing."""
 import json
+import fnmatch
 from pathlib import Path
 import sys
 import tempfile
@@ -8,7 +9,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from kit.execution_controller import ExecutionController
+from kit.execution_controller import ExecutionController, worker_permissions
 from kit.task_metrics import TaskMetrics
 from kit.run_opencode import prepare
 from kit.dashboard.tracking import work_items
@@ -30,6 +31,14 @@ class FakeService:
             self.running.add(params['sessionID'])
             self.prompts.append(data['text'])
             return {'data': {'id': data['id']}}
+        if operation == 'session.permission.create':
+            rules = self.sessions[params['sessionID']]['permissions']
+            effects = []
+            for resource in data['resources']:
+                matches = [rule for rule in rules if fnmatch.fnmatchcase(data['action'], rule['action'])
+                           and fnmatch.fnmatchcase(resource, rule['resource'])]
+                effects.append(matches[-1]['effect'] if matches else 'ask')
+            return {'data': {'id': 'per_probe', 'effect': 'deny' if 'deny' in effects else effects[0]}}
         if operation == 'session.inbox.list':
             return {'data': []}
         if operation == 'session.get':
@@ -114,6 +123,37 @@ class ParallelExecutionTests(unittest.TestCase):
         items = work_items(self.metrics.read('demo'))
         self.assertTrue(all(i['attempts'][-1]['integrated'] for i in items))
         self.assertEqual(len(items[0]['attempts'][-1]['tests']), 1)
+
+    def test_resources_are_relative_and_only_assigned_files_are_writable(self):
+        a, b = self.launch('a'), self.launch('b')
+        workspace = self.metrics.attempt_root('demo', a)
+        sid = self.controller.binding(a['event_id'])
+        rules = self.service.sessions[sid]['permissions']
+        self.assertTrue(all(not Path(rule['resource']).is_absolute() and '\\' not in rule['resource'] for rule in rules))
+        other = self.metrics.attempt_root('demo', b).relative_to(self.root).as_posix() + '/b.py'
+        for action, resource in [('edit', other), ('read', other), ('edit', 'CONTRACT.md'),
+                                 ('read', str(workspace / 'a.py')), ('edit', workspace.relative_to(self.root).as_posix() + '/b.py')]:
+            result = self.service.call('session.permission.create', {'sessionID': sid},
+                                       {'action': action, 'resources': [resource]})
+            self.assertEqual(result['data']['effect'], 'deny', (action, resource))
+        with self.assertRaises(ValueError):
+            worker_permissions(self.root, self.root.parent, 'a.py', self.home / 'progress.json')
+
+    def test_native_permission_mismatch_stops_before_watcher_or_model_input(self):
+        original = self.service.call
+        def mismatched(operation, params=None, data=None):
+            if operation == 'session.permission.create':
+                return {'data': {'id': 'per_probe', 'effect': 'deny'}}
+            return original(operation, params, data)
+        watcher = []
+        self.controller.start_watcher = watcher.append
+        with patch.object(self.service, 'call', side_effect=mismatched):
+            with self.assertRaisesRegex(ValueError, 'permission preflight'):
+                self.launch('a')
+        self.assertEqual(watcher, [])
+        self.assertEqual(self.service.prompts, [])
+        ended = self.metrics.read('demo')[-1]
+        self.assertEqual((ended['kind'], ended['reason'], ended['stopped']), ('attempt_end', 'setup_error', True))
 
     def test_shared_contract_change_blocks_integration(self):
         a = self.launch('a')

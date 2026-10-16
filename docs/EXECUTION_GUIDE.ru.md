@@ -255,7 +255,8 @@ USD по [официальной справке OpenCode](https://opencode.ai/v2
 | Модуль / класс | Основные функции | Назначение |
 | --- | --- | --- |
 | `kit/execution_policy.py` | `normalize_policy`, `limit_reason`, `next_action` | Чистые правила: проверить лимиты и выбрать разрешённое действие; никаких API и окон |
-| `kit/execution_controller.py:ExecutionController` | `settings`, `launch`, `binding`, `spawn_watch`, `observe`, `watch`, `stop`, `integrate` | Зафиксированный профиль задачи, запуск контроля до модели, жизненный цикл попытки и объединение |
+| `kit/execution_controller.py:worker_permissions` | Функция построения правил | Переводит разрешённые файлы в относительные ресурсы OpenCode; сохраняет общий запрет |
+| `kit/execution_controller.py:ExecutionController` | `settings`, `launch`, `verify_permissions`, `binding`, `spawn_watch`, `observe`, `watch`, `stop`, `integrate` | Зафиксированный профиль задачи, проверка реальных прав до модели, жизненный цикл попытки и объединение |
 | `kit/task_metrics.py:TaskMetrics` | `delegate`, `attempt_root`, `inspect`, `test`, `review`, `parse_exports`, `finish` | Достоверный журнал, проверки, расход и отчёт |
 | `kit/delegation_guard.py` | `snapshot`, `compare`, `review_checks` | Снимки файлов и формальная полнота доказательств ревью |
 | `kit/dashboard/session_control.py:SessionControl` | `call`, `active`, `interrupt`, `clear_inbox`, `tree` | Общение с установленным OpenCode и проверка семьи сессий |

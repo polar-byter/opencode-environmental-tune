@@ -22,6 +22,27 @@ from .dashboard.session_control import SessionControl
 from .task_control_state import blocking_reason, plain_path
 
 
+def worker_permissions(root, workspace, source, progress):
+    """Use project-relative resources, as OpenCode FileAccess does for local files.
+
+    Absolute tool arguments do not imply absolute permission resources. Everything
+    stays denied except reads in this workspace and edits to its assigned source
+    and the exact task progress file. Shell and nested agents remain denied.
+    """
+    root = Path(root).resolve()
+    workspace = Path(workspace).resolve().relative_to(root).as_posix()
+    progress = Path(progress).resolve().relative_to(root).as_posix()
+    target = (Path(workspace) / source).as_posix()
+    return [
+        {'action': '*', 'resource': '*', 'effect': 'deny'},
+        {'action': 'read', 'resource': workspace, 'effect': 'allow'},
+        {'action': 'read', 'resource': workspace + '/*', 'effect': 'allow'},
+        {'action': 'read', 'resource': progress, 'effect': 'allow'},
+        {'action': 'edit', 'resource': target, 'effect': 'allow'},
+        {'action': 'edit', 'resource': progress, 'effect': 'allow'},
+    ]
+
+
 class ExecutionController:
     """One task, bounded worker slots, isolated edits and serialized integration."""
 
@@ -94,6 +115,30 @@ class ExecutionController:
         with self.metrics.lock(self.task):
             self.metrics.active(self.task)
             return self.metrics.append(self.task, kind, **fields)
+
+    def verify_permissions(self, sid, agent, workspace, source, progress, contracts):
+        """Check native effective grants and denials before sending model input.
+
+        The permission API evaluates the same rules as file tools, without a
+        model request. A mismatch is a setup error, never a worker rework.
+        """
+        workspace = Path(workspace).relative_to(self.root).as_posix()
+        progress = Path(progress).relative_to(self.root).as_posix()
+        target = workspace + '/' + source
+        checks = [('read', target, 'allow'), ('edit', target, 'allow'),
+                  ('read', progress, 'allow'), ('edit', progress, 'allow'),
+                  ('read', source, 'deny'), ('edit', source, 'deny'),
+                  ('edit', workspace + '/.unassigned-file', 'deny'),
+                  ('read', '.env', 'deny'), ('shell', '*', 'deny'),
+                  ('subagent', '*', 'deny'), ('external_directory', '*', 'deny')]
+        for contract in contracts:
+            checks += [('read', workspace + '/' + contract, 'allow'),
+                       ('edit', workspace + '/' + contract, 'deny')]
+        for action, resource, expected in checks:
+            result = self.service.call('session.permission.create', {'sessionID': sid},
+                                       {'agent': agent, 'action': action, 'resources': [resource]})
+            if not isinstance(result, dict) or result.get('data', {}).get('effect') != expected:
+                raise ValueError('Worker permission preflight failed for ' + action + ': ' + resource)
 
     def launch(self, work_item, file, requirements, contracts, dependencies=(), role='executor', previous=None):
         """Prepare an isolated source snapshot and bind one exact child before admission.
@@ -184,11 +229,7 @@ class ExecutionController:
             child = self.service.call('session.create', data={'parentID': events[0]['session'],
                 'title': f'{self.task}: {work_item} ({worker})', 'agent': agent,
                 'model': model_reference,
-                'permissions': [{'action': '*', 'resource': '*', 'effect': 'deny'},
-                    {'action': 'read', 'resource': str(workspace / '**'), 'effect': 'allow'},
-                    {'action': 'external_directory', 'resource': str(workspace / '**'), 'effect': 'allow'},
-                    {'action': 'edit', 'resource': str(workspace / allowed), 'effect': 'allow'},
-                    {'action': 'edit', 'resource': str(progress), 'effect': 'allow'}]})['data']
+                'permissions': worker_permissions(self.root, workspace, allowed, progress)})['data']
             if (child.get('parentID') != events[0]['session'] or child.get('agent') != agent
                     or child.get('title') != f'{self.task}: {work_item} ({worker})'
                     or not child.get('location', {}).get('directory')
@@ -197,6 +238,7 @@ class ExecutionController:
             self.record('attempt_session', delegation_id=attempt['event_id'], session=child['id'],
                         worker_id=worker, role=role, previous_attempt=previous, policy=policy,
                         requirements_file=requirement_path.relative_to(self.root).as_posix())
+            self.verify_permissions(child['id'], agent, workspace, allowed, progress, contracts)
             plan = self.metrics.task_dir(self.task) / 'progress' / 'plan.json'
             functions = json.loads(plan.read_text(encoding='utf-8')).get('functions', []) if plan.exists() else []
             ids = [f['id'] for f in functions if f['work_item'] == work_item]
