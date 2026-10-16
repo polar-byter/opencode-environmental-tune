@@ -97,13 +97,14 @@
 | Что | Зачем | Как проверить |
 | --- | --- | --- |
 | OpenCode Desktop 2.x | приложение, в котором живут агенты | открывается окно OpenCode |
-| Python 3.13+ с Tk и Python Launcher | для скриптов кита, мастера установки и окна настроек | `py --version` (macOS/Linux: `python3 --version`) |
+| Python 3.13.16 с Tk | установщик подготовит автоматически при первом запуске | вручную устанавливать не нужно |
 | Доступ к моделям | бесплатные модели OpenCode уже выбраны в шаблоне; можно LM Studio, OpenRouter или свой API | см. раздел 6 |
 | Инструменты твоего языка | для примера ниже: JDK 21 и Maven | `java -version`, `mvn -v` |
 
-> Python нужен самому киту, а не твоему приложению. Стандартный установщик Python
-> включает Tk и Python Launcher — не отключай их. Команды здесь написаны для Windows,
-> где Python запускается командой `py`; на macOS и Linux вместо `py` пиши `python3`.
+> Python нужен инструментам кита. Его отдельная копия устанавливается в личную папку,
+> системные версии сохраняются. Команды ниже используют `kit\python.cmd` на Windows;
+> на Ubuntu/Debian/Mint вместо него пиши `sh kit/python.sh`. Обычному пользователю эти
+> команды вводить не нужно. macOS пока требует самостоятельной установки Python с Tk.
 
 ---
 
@@ -173,7 +174,7 @@ kit/                  ← скрипты кита (учёт, контролле�
 - Language: Java 21 (`java -version`). Build tool: Maven (`mvn`).
 - Tests: JUnit 5. Maven writes one JUnit XML file per test class into `target/surefire-reports`.
 - Test command (always through task_metrics):
-  `py kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test`
+  `kit\python.cmd kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test`
 - Compile only: `mvn -q compile`.
 - Run the app: `mvn spring-boot:run`.
 ```
@@ -196,7 +197,7 @@ kit/                  ← скрипты кита (учёт, контролле�
 **Проверь, что кит понимает результаты тестов.** Один раз выполни в корне проекта:
 
 ```bash
-py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
+kit\python.cmd kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
 ```
 
 - `CHECK OK` — всё в порядке. Упавшие тесты на этом шаге не мешают.
@@ -204,7 +205,7 @@ py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
 
 Мастер Чиф делает эту проверку и сам перед каждой задачей и не начинает писать код,
 пока она не проходит. Окно выбора моделей запускается командой
-`py -m kit.configurator.app` из корня проекта (или попроси Мастер Чифа его открыть).
+`kit\python.cmd -m kit.configurator.app` из корня проекта (или попроси Мастер Чифа его открыть).
 
 ---
 
@@ -270,7 +271,7 @@ py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
 что добавил новый ключ, полностью перезапусти OpenCode Desktop.
 
 > Параллельная работа и сторож лимитов работают в общей службе OpenCode Desktop.
-> Если запустить OpenCode отдельно (`py kit/run_opencode.py` в частном режиме
+> Если запустить OpenCode отдельно (`kit\python.cmd kit/run_opencode.py` в частном режиме
 > `--standalone`), кит работает по прежнему последовательному протоколу.
 
 Подробнее: [руководство конфигуратора](kit/configurator/UX.ru.md),
@@ -414,7 +415,7 @@ py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
 
 | Что видишь | Почему | Что делать |
 | --- | --- | --- |
-| Мастер не находит Python | Python установлен без Python Launcher | Переустанови Python со стандартными компонентами и снова запусти `install.cmd` |
+| Подготовка Python не завершилась | Нет интернета, места или загрузка повреждена | Проверь причину в окне запуска и повтори установку; другую версию Python вручную ставить не нужно |
 | Desktop открыл не ту папку | Не все версии Desktop выбирают папку по ссылке | «Копировать путь» в мастере → **Open Project** в Desktop |
 | Выбранная модель недоступна | Бесплатные модели и лимиты меняются | Выбери другую модель в окне настроек, «Подготовить OpenCode», новый чат |
 | Работа стоит, в отчёте лимит запросов / `429` | Лимит провайдера (у бесплатных моделей OpenRouter — дневной) | Подожди или выбери другую модель; исправитель в таком случае не запускается |

@@ -73,7 +73,7 @@
 Сначала Мастер Чиф начинает учёт всей задачи:
 
 ```powershell
-py kit/task_metrics.py start --task game-001 --session <реальный-ID> --track-delegations --title "Крестики-нолики"
+kit\python.cmd kit/task_metrics.py start --task game-001 --session <реальный-ID> --track-delegations --title "Крестики-нолики"
 ```
 
 Пишет `.metrics/game-001/GameService-requirements.json`:
@@ -88,19 +88,19 @@ py kit/task_metrics.py start --task game-001 --session <реальный-ID> --t
 После каркаса и тестов регистрирует задание, затем вызывает executor:
 
 ```powershell
-py kit/task_metrics.py delegate --task game-001 --work-item GameService --scope GameService --files src/main/java/example/GameService.java --requirements .metrics/game-001/GameService-requirements.json
+kit\python.cmd kit/task_metrics.py delegate --task game-001 --work-item GameService --scope GameService --files src/main/java/example/GameService.java --requirements .metrics/game-001/GameService-requirements.json
 ```
 
 Сразу после ответа фиксирует изменения, до своих правок и запуска тестов:
 
 ```powershell
-py kit/task_metrics.py inspect --task game-001 --work-item GameService
+kit\python.cmd kit/task_metrics.py inspect --task game-001 --work-item GameService
 ```
 
 Код выхода 1 означает посторонние изменения: нужно записать rework и разобраться с ними. Если границы соблюдены, Мастер Чиф читает код, проверяет требования, добавляет недостающие тесты и запускает их:
 
 ```powershell
-py kit/task_metrics.py test --task game-001 --scope GameService --junit-dir target/surefire-reports -- mvn -q -Dtest=GameServiceTest test
+kit\python.cmd kit/task_metrics.py test --task game-001 --scope GameService --junit-dir target/surefire-reports -- mvn -q -Dtest=GameServiceTest test
 ```
 
 Сохраняет `.metrics/game-001/GameService-checks.json`. Текст каждого requirement должен совпадать с исходным списком:
@@ -125,7 +125,7 @@ py kit/task_metrics.py test --task game-001 --scope GameService --junit-dir targ
 Принимает результат:
 
 ```powershell
-py kit/task_metrics.py review --task game-001 --work-item GameService --result accepted --checks .metrics/game-001/GameService-checks.json
+kit\python.cmd kit/task_metrics.py review --task game-001 --work-item GameService --result accepted --checks .metrics/game-001/GameService-checks.json
 ```
 
 При ошибке вместо принятия фиксирует `review --result rework`, исправляет спецификацию или возвращает замечания исполнителю. Перед повторным вызовом снова запускает delegate. Когда все модули готовы, запускает полный набор с `--scope full` и только после этого finish.

@@ -7,7 +7,8 @@
 
 ```mermaid
 flowchart TD
-    CMD[install.cmd: проверка Python и Tk] --> ENTRY[install.py]
+    CMD[install.cmd / Linux: меню OpenCode Kit] --> BOOT[Нативная подготовка Python 3.13.16]
+    BOOT --> ENTRY[install.py]
     ENTRY --> UI[installer_ui.InstallerWindow]
     UI --> FIND[installer.find_desktop]
     FIND --> DESKTOP[Desktop: application + bundled CLI]
@@ -24,7 +25,9 @@ flowchart TD
 
 | Модуль и символ | Ответственность |
 |---|---|
-| `install.cmd` | Windows-вход: найти Python Launcher, проверить Tk, показать понятную причину отсутствия Python |
+| `install.cmd` / `install.sh` | Вход без Python: вызвать нативный bootstrap, затем существующий мастер |
+| `kit/runtime/bootstrap.ps1` / `bootstrap.sh` | Прочитать закреплённую версию, проверить личный runtime, скачать и проверить SHA256, подготовить при отсутствии |
+| `kit/python.cmd` / `python.sh` | Общий запуск инструментов и Python-приложений через закреплённый runtime |
 | `install.py` → `installer_ui.main()` | Создать окно Tk и запустить обработку событий |
 | `installer.Desktop` | Неизменяемые пути к GUI-приложению и его встроенному CLI |
 | `desktop_from_path()` / `find_desktop()` | Проверить выбранный путь / найти распространённые установки; CLI отдельно не считается Desktop |
@@ -45,6 +48,9 @@ flowchart TD
 окну отвечать на действия, пока читаются файлы. **Манифест** — служебный JSON с
 версией формата и SHA256 файлов; SHA256 — отпечаток содержимого. Это не подпись
 издателя и не доказательство безопасности скачанного архива.
+
+Устройство подготовки Python, пути и политика обновления описаны отдельно:
+[закреплённый runtime](PYTHON_RUNTIME.ru.md).
 
 При конфликте мастер останавливается до копирования. Создание новых файлов использует
 режим `xb`: если файл уже появился, он не заменяется. При ошибке удаляются только

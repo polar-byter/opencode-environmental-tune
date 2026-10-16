@@ -22,9 +22,10 @@ steps are in the [quick start](QUICKSTART.en.md).
 
 ### 1. Installation in four steps
 
-You need three things: [OpenCode Desktop](https://opencode.ai/download),
-[Python 3.13 with Tk](https://www.python.org/downloads/windows/) and this repository's
-ZIP (**Code → Download ZIP**). Extract it and double-click **install.cmd**. The setup
+You need [OpenCode Desktop](https://opencode.ai/download) and this repository's
+ZIP (**Code → Download ZIP**). The installer automatically prepares pinned Python
+3.13.16 with Tk from python.org; internet access is needed on first launch.
+Extract the ZIP and double-click **install.cmd**. The setup
 wizard finds Desktop, creates the project folder, copies the kit there and opens the
 model settings. Free models are already filled in — just click "Save settings" and
 "Prepare OpenCode". Then the project opens in Desktop: copy the example prompt, paste
@@ -295,7 +296,7 @@ How to set it up:
    `PATH`. It is better to update or remove the old `PATH` command so you do not run it
    by mistake. Commands with other names (e.g. `opencode2`) are never called by the kit.
 3. To use a specific CLI, pass the path explicitly:
-   `py kit/run_opencode.py --opencode "C:\path\opencode-cli.exe"`, and for statistics
+   `kit\python.cmd kit/run_opencode.py --opencode "C:\path\opencode-cli.exe"`, and for statistics
    `task_metrics.py finish --opencode ...`.
 4. After changing models, check that OpenCode accepted them. `debug agents` is not
    enough: it shows agent models, while the main session runs on the top-level `model`
@@ -303,7 +304,7 @@ How to set it up:
 
    ```powershell
    $cli = "$env:LOCALAPPDATA\Programs\@opencodedesktop\resources\opencode-cli.exe"
-   $out = py kit/run_opencode.py -- run --format json "Reply with the single word OK." | Out-String
+   $out = kit\python.cmd kit/run_opencode.py -- run --format json "Reply with the single word OK." | Out-String
    $session = [regex]::Match($out, '"sessionID":"(ses_[A-Za-z0-9]+)"').Groups[1].Value
    (& $cli session export $session | ConvertFrom-Json).messages.model | Select-Object -Unique providerID, id
    ```
@@ -356,16 +357,16 @@ test command in the `Project stack` section of `AGENTS.md` together with the rep
 
 | Language | Install once | Test command for `Project stack` |
 | --- | --- | --- |
-| Python (unittest) | nothing | `py kit/task_metrics.py test --task <ID> -- py -m unittest discover -s tests -v` |
-| Python (pytest) | `pip install pytest` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- py -m pytest --junitxml=.metrics/<ID>/run-NN.xml` |
-| Java, Kotlin (Maven) | nothing | `py kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test` |
-| Java, Kotlin (Gradle) | nothing | `py kit/task_metrics.py test --task <ID> --junit-dir build/test-results/test -- gradlew test` (macOS and Linux: `./gradlew test`) |
-| C# (.NET) | `dotnet add <TestProject> package JunitXml.TestLogger` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- dotnet test --results-directory .metrics/<ID> --logger "junit;LogFileName=run-NN.xml"` |
-| JS, TS, React, Vue (Vitest) | nothing | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx vitest run --reporter=junit --outputFile=.metrics/<ID>/run-NN.xml` |
-| JS, TS, React (Jest) | `npm i -D jest-junit cross-env` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx cross-env JEST_JUNIT_OUTPUT_FILE=.metrics/<ID>/run-NN.xml jest --ci --reporters=default --reporters=jest-junit` |
-| Go | `go install gotest.tools/gotestsum@latest` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- gotestsum --junitfile .metrics/<ID>/run-NN.xml` |
-| Rust | `cargo install cargo-nextest` and a profile with `junit` in `.config/nextest.toml` | `py kit/task_metrics.py test --task <ID> --junit-dir target/nextest -- cargo nextest run` |
-| PHP (PHPUnit) | nothing | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- vendor/bin/phpunit --log-junit .metrics/<ID>/run-NN.xml` |
+| Python (unittest) | nothing | `kit\python.cmd kit/task_metrics.py test --task <ID> -- kit\python.cmd -m unittest discover -s tests -v` |
+| Python (pytest) | `pip install pytest` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- kit\python.cmd -m pytest --junitxml=.metrics/<ID>/run-NN.xml` |
+| Java, Kotlin (Maven) | nothing | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test` |
+| Java, Kotlin (Gradle) | nothing | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit-dir build/test-results/test -- gradlew test` (macOS and Linux: `./gradlew test`) |
+| C# (.NET) | `dotnet add <TestProject> package JunitXml.TestLogger` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- dotnet test --results-directory .metrics/<ID> --logger "junit;LogFileName=run-NN.xml"` |
+| JS, TS, React, Vue (Vitest) | nothing | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx vitest run --reporter=junit --outputFile=.metrics/<ID>/run-NN.xml` |
+| JS, TS, React (Jest) | `npm i -D jest-junit cross-env` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx cross-env JEST_JUNIT_OUTPUT_FILE=.metrics/<ID>/run-NN.xml jest --ci --reporters=default --reporters=jest-junit` |
+| Go | `go install gotest.tools/gotestsum@latest` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- gotestsum --junitfile .metrics/<ID>/run-NN.xml` |
+| Rust | `cargo install cargo-nextest` and a profile with `junit` in `.config/nextest.toml` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit-dir target/nextest -- cargo nextest run` |
+| PHP (PHPUnit) | nothing | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- vendor/bin/phpunit --log-junit .metrics/<ID>/run-NN.xml` |
 
 Rules not to break:
 
@@ -383,7 +384,7 @@ Rules not to break:
 After writing the command, check it once:
 
 ```bash
-py kit/task_metrics.py check <same report flags> -- <same test command>
+kit\python.cmd kit/task_metrics.py check <same report flags> -- <same test command>
 ```
 
 `CHECK OK` — ready to work. `CHECK FAILED` — hints appear below the line. Details:

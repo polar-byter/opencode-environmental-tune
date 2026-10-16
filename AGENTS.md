@@ -71,14 +71,14 @@ Loop guards (defaults; set others at `start` with `--max-reworks`, `--max-no-res
 ## Isolated workers and bounded correction
 
 This section refines the sequential snapshot protocol only for attempts created
-by `python -m kit.execution_controller`. The ordinary delegate/subagent path stays
+by `kit\python.cmd -m kit.execution_controller`. The ordinary delegate/subagent path stays
 sequential. Setting a number in the configurator does not isolate direct edits.
 
 - Freeze applicable public contracts first: interfaces, `.h`/`.hpp`, shared types,
   API/database formats, units, errors, ownership and threading rules. Record each
   module's dependencies. Publish the complete named function plan before workers start.
 - Read the selected policy and models. Launch each ready work item with
-  `python -m kit.execution_controller --task <ID> launch --work-item <item> --file <file> --requirements .metrics/<ID>/<item>-requirements.json --contracts <shared-contract-file> --dependencies <accepted-item> ...`.
+  `kit\python.cmd -m kit.execution_controller --task <ID> launch --work-item <item> --file <file> --requirements .metrics/<ID>/<item>-requirements.json --contracts <shared-contract-file> --dependencies <accepted-item> ...`.
   Omit dependencies when none. The controller registers the delegation, copies a
   plain isolated source snapshot, creates the exact child session with restricted
   file permissions, and verifies its bounded watcher is ready before admitting
@@ -93,7 +93,7 @@ sequential. Setting a number in the configurator does not isolate direct edits.
   the attempt's workspace, add review tests there if needed, and run the wrapper
   with `--attempt <delegation-ID> --scope <item>`. Root tests or another attempt's
   green result cannot satisfy acceptance. Review evidence remains task-local.
-- After accepted review run `python -m kit.execution_controller --task <ID> integrate --attempt <ID>`.
+- After accepted review run `kit\python.cmd -m kit.execution_controller --task <ID> integrate --attempt <ID>`.
   It checks original source/shared-contract hashes and applies one accepted file
   sequentially. A conflicting main file is a decision to rebase/review, not a
   reason to overwrite user work. Run final unfiltered tests on the integrated root.
@@ -113,47 +113,56 @@ sequential. Setting a number in the configurator does not isolate direct edits.
   HTML comments inside a prompt are still visible to a model.
 
 ## Kit utilities (independent of the project's language)
-Before using a local executor, select an already loaded LM Studio instance. Start OpenCode through `py kit/run_opencode.py`. At task startup inspect the launcher environment: `OPENCODE_KIT_ROOT`, `OPENCODE_KIT_INSTANCE`, and `OPENCODE_KIT_SERVER_MODE`. If the root matches this project and the mode is `standalone`, the launcher selected the instance and wrote the overlay before this private server started. Verify the loaded instance and connection with `check_env.py`; do not run `--reload` or restart that session. Reloading the background service does not reload a private server. For an existing desktop/background-service session without these launch facts, run `py kit/run_opencode.py --prepare-only --reload` before the first executor call. See LOCAL_MODELS.ru.md. Never load/unload a model or change its load settings automatically. If selection is ambiguous, show the loaded instance IDs and ask the user to choose; if none is loaded, ask them to load one. Both executor roles use the selected instance. Rerun preparation before a new task after the user changes the loaded model. If `OPENCODE_KIT_EXECUTORS` is `opencode` or `api`, the executors use a model that OpenCode already knows (for example a model connected with `/connect`) or an own API chosen in `.opencode/kit-models.json`: skip the LM Studio checks and do not ask the user to load a model.
+Before using a local executor, select an already loaded LM Studio instance. Start OpenCode through `kit\python.cmd kit/run_opencode.py`. At task startup inspect the launcher environment: `OPENCODE_KIT_ROOT`, `OPENCODE_KIT_INSTANCE`, and `OPENCODE_KIT_SERVER_MODE`. If the root matches this project and the mode is `standalone`, the launcher selected the instance and wrote the overlay before this private server started. Verify the loaded instance and connection with `check_env.py`; do not run `--reload` or restart that session. Reloading the background service does not reload a private server. For an existing desktop/background-service session without these launch facts, run `kit\python.cmd kit/run_opencode.py --prepare-only --reload` before the first executor call. See LOCAL_MODELS.ru.md. Never load/unload a model or change its load settings automatically. If selection is ambiguous, show the loaded instance IDs and ask the user to choose; if none is loaded, ask them to load one. Both executor roles use the selected instance. Rerun preparation before a new task after the user changes the loaded model. If `OPENCODE_KIT_EXECUTORS` is `opencode` or `api`, the executors use a model that OpenCode already knows (for example a model connected with `/connect`) or an own API chosen in `.opencode/kit-models.json`: skip the LM Studio checks and do not ask the user to load a model.
 
-These tools live in `kit/`. They belong to the kit, not to the project. They are written in
-Python, so they need Python on the machine whatever language the project uses.
-Run them from the project root with the Python launcher: `py` on Windows, `python3` on macOS and Linux.
-Commands in this file are written with `py`; on macOS and Linux replace `py` with `python3`.
-- `kit/find_vault.py` — locate the Obsidian vault and the work plan: `py kit/find_vault.py`
-- `kit/check_env.py` — check `opencode.jsonc` and the LM Studio connection: `py kit/check_env.py`
-- `kit/pipeline_smoke.py` — offline smoke test of the Master Chief → executor flow: `py kit/pipeline_smoke.py`
-- Kit tests: `py -m unittest discover -s kit/tests -v`
-- Task metrics: `py kit/task_metrics.py --help`; protocol below and details in `METRICS.ru.md`.
+These tools live in `kit/` and use the pinned version from `kit/runtime/python.lock`.
+Run from the project root with `.\kit\python.cmd` on Windows, or `sh kit/python.sh`
+on Debian/Ubuntu/Mint. Replace `kit\python.cmd` in examples with `sh kit/python.sh`
+on Linux. The native bootstrap works without an existing Python installation,
+downloads only the locked version, verifies SHA256 and prepares a private runtime.
+Never use `py`, a generic `python`/`python3`, or install another Python for kit commands.
+Child processes must use `sys.executable`, which inherits this exact runtime.
+For a Python application, provide mouse launchers that invoke this wrapper; do not
+require the user to install Python or rely on PATH. Install application dependencies
+in a project virtual environment created with this runtime, never in the shared
+runtime. Pin them in the application's requirements/lock file. Other application
+languages still require their own documented runtime or packaged distribution.
+See docs/PYTHON_RUNTIME.ru.md for bootstrap architecture and supported systems.
+- `kit/find_vault.py` — locate the Obsidian vault and the work plan: `kit\python.cmd kit/find_vault.py`
+- `kit/check_env.py` — check `opencode.jsonc` and the LM Studio connection: `kit\python.cmd kit/check_env.py`
+- `kit/pipeline_smoke.py` — offline smoke test of the Master Chief → executor flow: `kit\python.cmd kit/pipeline_smoke.py`
+- Kit tests: `kit\python.cmd -m unittest discover -s kit/tests -v`
+- Task metrics: `kit\python.cmd kit/task_metrics.py --help`; protocol below and details in `METRICS.ru.md`.
 
 ## Task metrics
-- Publish dashboard architecture and the function registry before delegation: write `ARCHITECTURE.md` and a JSON array with `id`, `name`, project-relative `file`, and `work_item` for every planned function. Run `py -m kit.dashboard.tracking --task <ID> --architecture ARCHITECTURE.md --functions .metrics/<ID>/functions.json`. The kit stores an immutable document snapshot per revision; do not publish while an executor attempt awaits review. Existing function IDs must keep their identity; additions receive new IDs. A missing registry means an unknown total, not zero.
+- Publish dashboard architecture and the function registry before delegation: write `ARCHITECTURE.md` and a JSON array with `id`, `name`, project-relative `file`, and `work_item` for every planned function. Run `kit\python.cmd -m kit.dashboard.tracking --task <ID> --architecture ARCHITECTURE.md --functions .metrics/<ID>/functions.json`. The kit stores an immutable document snapshot per revision; do not publish while an executor attempt awaits review. Existing function IDs must keep their identity; additions receive new IDs. A missing registry means an unknown total, not zero.
 - After `delegate`, use its actual event ID to assign the executor exactly one auxiliary file `.metrics/<ID>/progress/<delegation_id>.json` plus the function IDs for this work item. Create its parent directory before the call. In the executor prompt explicitly authorize this one file and give the current Unix time. Via its file tool, the executor reports `{ "delegation_id": "<actual-id>", "implemented_ids": ["<function-id>"], "current_id": "<function-id-or-null>", "updated_at": 1234567890 }` before work and after completing a function. Use `null` (not the string) when finished. No shell, metrics journal edits, other progress files or tests. If no fresh time is available, keep the supplied time; the dashboard expires current-function claims after 90 seconds. Reported implementation is provisional; only an accepted work-item review marks its functions accepted. A rework clears completion from the rejected attempt. Do not fabricate progress records retroactively for completed tasks.
 - The dashboard's Settings button starts the existing project-local configurator, without saving or applying settings automatically. Actual session models come from OpenCode exports; configured choices are labeled as such. Settings affect preparation for the next task/server; an existing session is not silently reloaded.
 - Honor dashboard task controls in `.metrics/.task-controls/<ID>.json`. Pausing/paused/cancelling/cancelled/deleting/error block new execution; do not bypass them by starting another ID. A user pause interrupts the root and its descendant sessions. Resume uses the same task and requires inspection of partial edits before proceeding; it does not reset protective loop guards. Cancel is not successful completion. See `kit/dashboard/CONTROLS.ru.md`.
 - At completion, provide a usable launch file in the project. Conventional root names (`run.ps1`, `start.ps1`, `run.sh`, `start.sh`, `run.cmd`, `start.cmd`, `run.bat`, `start.bat`, `run.py`, `start.py`) are discovered automatically. For a different file, write `{ "launcher": "tools/start.py" }` to `.metrics/<ID>/progress/result.json` before finish, creating its parent if needed. Only a real project-relative script is accepted. The dashboard opens the project folder and provides a read-only launch-file viewer; it never executes the script automatically. Token details use the frozen finish usage snapshot, or completed-message exports while work continues; missing usage stays unknown.
-- In a project with `opencode.jsonc` and `kit/`, the CLI `start` automatically starts/reuses the local dashboard and opens that task. The user does not run dashboard commands. Read the returned `dashboard` status: `ready` confirms the server, and `opened` confirms the browser request. Report an unavailable dashboard or a failed browser opening with the returned address/error. The journal remains saved; never repeat `start` with the same ID to retry the viewer. Use `py -m kit.dashboard.launcher --task <ID>` to retry viewing. `--no-dashboard`, `--no-browser`, and `OPENCODE_KIT_DASHBOARD=off` are for tests/headless diagnostics, not the normal local user workflow. The viewer does not prepare models or reload OpenCode.
-- For each implementation task, choose a unique ASCII task ID and run `py kit/task_metrics.py start --task <ID> --session <current-session-ID> --title "<task title>"` as soon as the actual session ID is known, before environment setup, planning work and implementation. Add `--track-delegations` for implementation tasks. Keep this ID in the work plan. Do not reuse a finished task ID.
+- In a project with `opencode.jsonc` and `kit/`, the CLI `start` automatically starts/reuses the local dashboard and opens that task. The user does not run dashboard commands. Read the returned `dashboard` status: `ready` confirms the server, and `opened` confirms the browser request. Report an unavailable dashboard or a failed browser opening with the returned address/error. The journal remains saved; never repeat `start` with the same ID to retry the viewer. Use `kit\python.cmd -m kit.dashboard.launcher --task <ID>` to retry viewing. `--no-dashboard`, `--no-browser`, and `OPENCODE_KIT_DASHBOARD=off` are for tests/headless diagnostics, not the normal local user workflow. The viewer does not prepare models or reload OpenCode.
+- For each implementation task, choose a unique ASCII task ID and run `kit\python.cmd kit/task_metrics.py start --task <ID> --session <current-session-ID> --title "<task title>"` as soon as the actual session ID is known, before environment setup, planning work and implementation. Add `--track-delegations` for implementation tasks. Keep this ID in the work plan. Do not reuse a finished task ID.
 - Use the actual OpenCode session ID from context. If unavailable, inspect `opencode session list --format json` and match the current project and task; never guess or pick the latest automatically. If still unknown, omit `--session` and report missing token data.
 - Before each executor call register it with `delegate` as described above. The script reports registered attempts without a matching review. It cannot detect calls that bypass this protocol.
-- After each code review, run `py kit/task_metrics.py review --task <ID> --work-item <function-or-class> --result accepted` with `--checks <path>` for acceptance, or `--result rework`. One return for corrections is one rework, regardless of the number of comments.
+- After each code review, run `kit\python.cmd kit/task_metrics.py review --task <ID> --work-item <function-or-class> --result accepted` with `--checks <path>` for acceptance, or `--result rework`. One return for corrections is one rework, regardless of the number of comments.
 - For isolated API/setup interruptions, record `review --result blocked` after a confirmed infrastructure attempt_end; partial source is allowed and retained. Explicit continuation uses the same role and `--previous <attempt-ID>` after the blocker is resolved. Never reclassify a code failure as blocked. For legacy sequential attempts, if the executor returned no work and changed no files (an error, a rate limit, an unavailable model), record `--result failed` instead: it is not a rework, and the runner refuses it when files changed. Then follow Task intake: report the blocker to the user instead of retrying an unavailable executor or implementing the work item yourself.
-- Before the first implementation step of every task, run the test command once through `py kit/task_metrics.py check [--junit <file> | --junit-dir <folder>] -- <test command>`. Exit code 0 means the runner can read the results (failing tests are fine at this point). Exit code 4 means it cannot: do not write code; show the user the hints and ask them to fix the setup.
+- Before the first implementation step of every task, run the test command once through `kit\python.cmd kit/task_metrics.py check [--junit <file> | --junit-dir <folder>] -- <test command>`. Exit code 0 means the runner can read the results (failing tests are fine at this point). Exit code 4 means it cannot: do not write code; show the user the hints and ask them to fix the setup.
 - During work use a documented work-item/module test filter and stable `--scope <work_item-or-module>`; store reports inside generated directories. Once per scope before delegation, an initial red run may use `--phase baseline`. At completion run the unfiltered project command with `--scope full`.
-- Run the project's test command through `py kit/task_metrics.py test --task <ID> [--junit <file> | --junit-dir <folder>] -- <test command>`, using the **Project stack** tool and a filter for the current scope; the final full run uses the unfiltered command. React to its exit code as described in **Review loop and stop rules**.
+- Run the project's test command through `kit\python.cmd kit/task_metrics.py test --task <ID> [--junit <file> | --junit-dir <folder>] -- <test command>`, using the **Project stack** tool and a filter for the current scope; the final full run uses the unfiltered command. React to its exit code as described in **Review loop and stop rules**.
 - The runner recognizes unittest summaries and JUnit XML. `--junit <file>`: one report file; it must not exist before the run, so use a new name for every run (run-01.xml, run-02.xml, ...). `--junit-dir <folder>`: a folder where the tool writes one file per test class or project (Maven `target/surefire-reports`, Gradle `build/test-results/test`); only files written during the run are read. Unknown output, zero tests and skipped tests do not count as fully successful.
 - Do not claim completion with pending delegated attempts or a missing/failing full suite. Resolve the warning first.
-- At the end, after all executors have returned, run `py kit/task_metrics.py finish --task <ID>`. Insert its Markdown statistics in the final answer. If another agent writes the final answer, give it `.metrics/<ID>/report.md`; it must not invent or recompute counters.
+- At the end, after all executors have returned, run `kit\python.cmd kit/task_metrics.py finish --task <ID>`. Insert its Markdown statistics in the final answer. If another agent writes the final answer, give it `.metrics/<ID>/report.md`; it must not invent or recompute counters.
 - All `lmstudio` providers are local/free of API fees; `openrouter` models ending in `:free` and `opencode` models ending in `-free` are free cloud models; every other known provider is paid by default. Missing usage must remain unknown. Token counts are a snapshot before the final answer, not a billing statement.
 - These commands are required for ordinary text requests too, not only `/module`. Logging is instruction-driven, not an automatic plugin. Planning-only tasks may have no tests; never describe that as a successful test run.
 
 ## Project stack  # EDIT: language, build tool, test command
 > The only language-specific part of the kit. Replace the example below for your language.
 > The test command must give the runner a readable result: Python unittest output, or JUnit XML
-> through `--junit` / `--junit-dir`. Check it once with `py kit/task_metrics.py check ...`.
+> through `--junit` / `--junit-dir`. Check it once with `kit\python.cmd kit/task_metrics.py check ...`.
 > Examples (see the table "Подключение своего языка" in README.md for more):
-> - Python unittest: `py kit/task_metrics.py test --task <ID> -- py -m unittest discover -s tests -v`
-> - Java, Maven: `py kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test`
-> - C#: `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- dotnet test --results-directory .metrics/<ID> --logger "junit;LogFileName=run-NN.xml"`
+> - Python unittest: `kit\python.cmd kit/task_metrics.py test --task <ID> -- kit\python.cmd -m unittest discover -s tests -v`
+> - Java, Maven: `kit\python.cmd kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test`
+> - C#: `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- dotnet test --results-directory .metrics/<ID> --logger "junit;LogFileName=run-NN.xml"`
 >   (needs the NuGet package `JunitXml.TestLogger` in the test project)
 
 ## Project layout  # EDIT: folders and files of this project
@@ -164,7 +173,7 @@ Commands in this file are written with `py`; on macOS and Linux replace `py` wit
 
 ## Work plan (memory)  # EDIT: plan file name
 - Plan file name: `currentsteps.md`.
-- Locate the vault: run `py kit/find_vault.py --no-scan` (fast) or `py kit/find_vault.py` (with filesystem scan).
+- Locate the vault: run `kit\python.cmd kit/find_vault.py --no-scan` (fast) or `kit\python.cmd kit/find_vault.py` (with filesystem scan).
   - If it prints a vault: keep the plan at `<vault>/currentsteps.md` (create it if missing).
   - If no vault is found: use `currentsteps.md` in the project root.
 - This section is the single source of truth for the plan location; agent prompts and commands must refer here rather than hard-code another note.

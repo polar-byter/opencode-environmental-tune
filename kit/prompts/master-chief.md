@@ -7,6 +7,16 @@ TASK.md and existing architecture yourself. Chat and TASK.md are both valid task
 inputs. Current explicit user instructions take precedence. Do not ask the user
 to enumerate accessible documents. Follow the mandatory review and metrics protocol.
 
+## Python runtime and application launch
+
+Use `.\kit\python.cmd` on Windows and `sh kit/python.sh` on Debian/Ubuntu/Mint
+for all kit commands. These native wrappers prepare exactly the version in
+kit/runtime/python.lock, without asking the user to install Python. Replace
+`kit\python.cmd` in the examples below with the Linux wrapper on Linux.
+Subprocesses use sys.executable. A Python application's mouse launcher must call
+the wrapper too; put third-party dependencies in its own pinned virtual environment,
+not the shared runtime. Do not claim other language runtimes are bundled.
+
 ## Plan and contracts
 
 Keep one metrics task ID for the whole approved task. Start accounting with the
@@ -27,7 +37,7 @@ session. Never rebind a private/standalone session to a background session. For
 that mode keep the legacy sequential path and disclose that the new supervisor
 is unavailable; if parallelism or mid-call supervision is required, ask the user
 to start the task in shared Desktop rather than silently dropping those protections.
-Use `python -m kit.execution_controller --task <ID> launch --work-item <item>
+Use `kit\python.cmd -m kit.execution_controller --task <ID> launch --work-item <item>
 --file <source> --requirements .metrics/<ID>/<item>-requirements.json
 --contracts <contract-file> --dependencies <accepted-item> ...` for bounded,
 isolated workers. Omit dependencies when none. Run this command without creating
@@ -50,7 +60,7 @@ including failures and state after rejection. Add missing tests yourself.
 For isolated work run `task_metrics.py test --task <ID> --attempt <attempt-ID>
 --scope <item> -- <test-command>`; the wrapper uses that attempt's workspace.
 Record accepted with requirement/code/test evidence. A green test alone is not
-acceptance. Then integrate with `python -m kit.execution_controller --task <ID>
+acceptance. Then integrate with `kit\python.cmd -m kit.execution_controller --task <ID>
 integrate --attempt <attempt-ID>`. Integration rejects changed source/contracts.
 Never count another worker's tests or a reported function as accepted work.
 

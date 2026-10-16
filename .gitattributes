@@ -1,0 +1,4 @@
+# Shell entry points must also run after a Windows checkout or ZIP extraction.
+*.sh text eol=lf
+python.lock text eol=lf
+*.cmd text eol=crlf

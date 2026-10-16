@@ -1,0 +1,8 @@
+# Official CPython artifacts. Update version and all digests together after testing.
+version=3.13.16
+windows_x64_url=https://www.python.org/ftp/python/3.13.16/python-3.13.16-amd64.zip
+windows_x64_sha256=bbf675bb5e763c1efbb09a3a461b259d81598a63c30c4b0d7ea11b9f063df159
+windows_arm64_url=https://www.python.org/ftp/python/3.13.16/python-3.13.16-arm64.zip
+windows_arm64_sha256=49b24a002efcf7451fe47a52ad9bc57a012a0c987eb6a635973ede200c421044
+linux_source_url=https://www.python.org/ftp/python/3.13.16/Python-3.13.16.tar.xz
+linux_source_sha256=f4b1bfb3c79b5bb11b8d228a12504163b4c0dab4d679828d8f5f26b6cb6ab35d

@@ -20,7 +20,8 @@ MANIFEST = Path('.metrics/.kit-installation.json')
 IGNORE_LINES = ('.metrics/', '.opencode/kit-models.json', '.opencode/opencode.jsonc',
                 '.opencode/opencode.jsonc.tmp', '__pycache__/', '*.pyc')
 ROOT_FILES = ('AGENTS.md', 'opencode.jsonc', 'LOCAL_MODELS.ru.md', 'METRICS.ru.md',
-              'QUICKSTART.ru.md', 'QUICKSTART.en.md', 'OPENCODE_KIT.ru.md', 'OPENCODE_KIT.en.md')
+              'QUICKSTART.ru.md', 'QUICKSTART.en.md', 'OPENCODE_KIT.ru.md', 'OPENCODE_KIT.en.md',
+              'install.py', 'install.cmd', 'install.sh')
 TREES = ('kit', '.opencode/commands', 'docs')
 SKIP = {'.git', '.metrics', '__pycache__', '.venv', 'node_modules', '.aws', '.ssh',
         '.codex', '.agents', 'auth.json', 'credentials.json'}

@@ -22,8 +22,9 @@
 
 ### 1. Установка за четыре шага
 
-Нужны три вещи: [OpenCode Desktop](https://opencode.ai/download), [Python 3.13 с Tk](https://www.python.org/downloads/windows/)
-и ZIP этого репозитория (**Code → Download ZIP**). Распакуй архив и дважды щёлкни
+Нужны [OpenCode Desktop](https://opencode.ai/download) и ZIP этого репозитория
+(**Code → Download ZIP**). Python 3.13.16 с Tk установщик подготовит автоматически
+с официального python.org; при первом запуске нужен интернет. Распакуй архив и дважды щёлкни
 **install.cmd**. Мастер установки сам найдёт Desktop, создаст папку проекта, скопирует
 туда кит и откроет окно настроек моделей. Там уже стоят бесплатные модели — достаточно
 нажать «Сохранить настройки» и «Подготовить OpenCode». Потом проект открывается в Desktop:
@@ -258,12 +259,12 @@ Desktop. В частном режиме `--standalone` кит работает �
    ```
 
 2. Если Desktop установлен, кит возьмёт его CLI, даже когда в `PATH` лежит другой `opencode`. Старую команду из `PATH` лучше обновить или удалить, чтобы не запускать её вручную по ошибке. Команды с другим именем (например `opencode2`) кит сам не вызывает.
-3. Чтобы использовать конкретный CLI, укажи путь явно: `py kit/run_opencode.py --opencode "C:\путь\opencode-cli.exe"`, а для статистики — `task_metrics.py finish --opencode ...`.
+3. Чтобы использовать конкретный CLI, укажи путь явно: `kit\python.cmd kit/run_opencode.py --opencode "C:\путь\opencode-cli.exe"`, а для статистики — `task_metrics.py finish --opencode ...`.
 4. После смены моделей проверь, что OpenCode их принял. `debug agents` для этого недостаточно: он показывает модели агентов, а основная сессия запускается на верхнем ключе `model` конфига. Надёжная проверка — короткая настоящая сессия и модель из её экспорта:
 
    ```powershell
    $cli = "$env:LOCALAPPDATA\Programs\@opencodedesktop\resources\opencode-cli.exe"
-   $out = py kit/run_opencode.py -- run --format json "Reply with the single word OK." | Out-String
+   $out = kit\python.cmd kit/run_opencode.py -- run --format json "Reply with the single word OK." | Out-String
    $session = [regex]::Match($out, '"sessionID":"(ses_[A-Za-z0-9]+)"').Groups[1].Value
    (& $cli session export $session | ConvertFrom-Json).messages.model | Select-Object -Unique providerID, id
    ```
@@ -303,16 +304,16 @@ Desktop. В частном режиме `--standalone` кит работает �
 
 | Язык | Что поставить один раз | Команда тестов для `Project stack` |
 | --- | --- | --- |
-| Python (unittest) | ничего | `py kit/task_metrics.py test --task <ID> -- py -m unittest discover -s tests -v` |
-| Python (pytest) | `pip install pytest` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- py -m pytest --junitxml=.metrics/<ID>/run-NN.xml` |
-| Java, Kotlin (Maven) | ничего | `py kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test` |
-| Java, Kotlin (Gradle) | ничего | `py kit/task_metrics.py test --task <ID> --junit-dir build/test-results/test -- gradlew test` (на macOS и Linux — `./gradlew test`) |
-| C# (.NET) | `dotnet add <ТестовыйПроект> package JunitXml.TestLogger` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- dotnet test --results-directory .metrics/<ID> --logger "junit;LogFileName=run-NN.xml"` |
-| JS, TS, React, Vue (Vitest) | ничего | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx vitest run --reporter=junit --outputFile=.metrics/<ID>/run-NN.xml` |
-| JS, TS, React (Jest) | `npm i -D jest-junit cross-env` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx cross-env JEST_JUNIT_OUTPUT_FILE=.metrics/<ID>/run-NN.xml jest --ci --reporters=default --reporters=jest-junit` |
-| Go | `go install gotest.tools/gotestsum@latest` | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- gotestsum --junitfile .metrics/<ID>/run-NN.xml` |
-| Rust | `cargo install cargo-nextest` и профиль с `junit` в `.config/nextest.toml` | `py kit/task_metrics.py test --task <ID> --junit-dir target/nextest -- cargo nextest run` |
-| PHP (PHPUnit) | ничего | `py kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- vendor/bin/phpunit --log-junit .metrics/<ID>/run-NN.xml` |
+| Python (unittest) | ничего | `kit\python.cmd kit/task_metrics.py test --task <ID> -- kit\python.cmd -m unittest discover -s tests -v` |
+| Python (pytest) | `pip install pytest` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- kit\python.cmd -m pytest --junitxml=.metrics/<ID>/run-NN.xml` |
+| Java, Kotlin (Maven) | ничего | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test` |
+| Java, Kotlin (Gradle) | ничего | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit-dir build/test-results/test -- gradlew test` (на macOS и Linux — `./gradlew test`) |
+| C# (.NET) | `dotnet add <ТестовыйПроект> package JunitXml.TestLogger` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- dotnet test --results-directory .metrics/<ID> --logger "junit;LogFileName=run-NN.xml"` |
+| JS, TS, React, Vue (Vitest) | ничего | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx vitest run --reporter=junit --outputFile=.metrics/<ID>/run-NN.xml` |
+| JS, TS, React (Jest) | `npm i -D jest-junit cross-env` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- npx cross-env JEST_JUNIT_OUTPUT_FILE=.metrics/<ID>/run-NN.xml jest --ci --reporters=default --reporters=jest-junit` |
+| Go | `go install gotest.tools/gotestsum@latest` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- gotestsum --junitfile .metrics/<ID>/run-NN.xml` |
+| Rust | `cargo install cargo-nextest` и профиль с `junit` в `.config/nextest.toml` | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit-dir target/nextest -- cargo nextest run` |
+| PHP (PHPUnit) | ничего | `kit\python.cmd kit/task_metrics.py test --task <ID> --junit .metrics/<ID>/run-NN.xml -- vendor/bin/phpunit --log-junit .metrics/<ID>/run-NN.xml` |
 
 Правила, которые важно не нарушить:
 
@@ -324,7 +325,7 @@ Desktop. В частном режиме `--standalone` кит работает �
 После записи команды проверь её один раз:
 
 ```bash
-py kit/task_metrics.py check <те же флаги отчёта> -- <та же команда тестов>
+kit\python.cmd kit/task_metrics.py check <те же флаги отчёта> -- <та же команда тестов>
 ```
 
 `CHECK OK` — можно работать. `CHECK FAILED` — под строкой будут подсказки. Подробно — в `METRICS.ru.md`, раздел 3.

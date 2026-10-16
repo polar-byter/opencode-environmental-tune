@@ -15,9 +15,9 @@ tests and token usage. A token is a unit of text counted by a model.
 ![The setup wizard](readme_gif/en/01_install_live.gif)
 
 1. Install **OpenCode Desktop for Windows** from the [official download page](https://opencode.ai/download). Use Desktop 2.x. Installing only the terminal CLI does not install Desktop.
-2. Install [Python 3.13 or newer](https://www.python.org/downloads/windows/) with **Python Launcher**, **pip** and **Tcl/Tk** enabled. Tk provides the settings windows.
+2. No manual Python installation is needed. On first launch the kit downloads and verifies pinned **Python 3.13.16**, including Tk, from python.org. Internet access is required; other Python installations are preserved.
 3. On the [kit repository page](https://github.com/polar-byter/opencode-environmental-tune), choose **Code → Download ZIP**, then extract the entire archive. Do not run the installer inside the ZIP.
-4. Double-click **install.cmd** in the extracted folder. This is a Python setup wizard; a standalone `.exe` is not provided yet. If Python is missing, install it with Python Launcher, then retry.
+4. Double-click **install.cmd** in the extracted folder. Wait for Python preparation, then the graphical wizard opens. Subsequent launches reuse the private runtime.
 5. The wizard finds Desktop. Otherwise click **Download OpenCode**, install it, then **Check again**. For a custom installation, choose its `OpenCode.exe` using **Choose application…**.
 6. Enter a separate project folder, for example `D:\Projects\my-home-app`. Missing folders are created automatically. Keep it outside the downloaded kit. Existing application code is preserved; conflicting kit/configuration files are rejected with an explanation.
 7. Click **Create project and configure models**. The kit is copied and the model configurator opens.
@@ -89,9 +89,9 @@ change it. Your task controls the language of model-generated text. Re-running
 the wizard for its existing project reopens settings without upgrading the kit or
 replacing application code and model choices.
 
-For Ubuntu/Debian/Mint, open **opencode-kit_0.1.0_all.deb** with your graphical
+For Ubuntu/Debian/Mint, open **opencode-kit_0.2.0_all.deb** with your graphical
 package manager and click Install. Then launch **OpenCode Kit** from the application
-menu. Python and Tk are package dependencies; no terminal commands are needed in
+menu. First launch prepares private Python 3.13.16 with Tk; the system Python is preserved. No terminal commands are needed in
 the normal setup flow. The **Linux installer** GitHub Actions workflow also produces
 the **opencode-kit-linux-deb** artifact. See [Linux setup details](docs/LINUX_INSTALL.ru.md).
 On macOS the current entry point remains `python3 install.py`, requiring Python and Tk.

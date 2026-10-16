@@ -8,7 +8,7 @@
 
 ## Несколько исполнителей: точные попытки и сессии
 
-Изолированный режим запускается через `python -m kit.execution_controller`,
+Изолированный режим запускается через `kit\python.cmd -m kit.execution_controller`,
 а не снятием запрета на второе обычное делегирование. Каждая попытка хранит
 `workspace`, `worker_id`, роль и базовые хеши файла/контрактов. `attempt_session`
 связывает её с точным дочерним `session ID`. `attempt_admission` подтверждает,
@@ -94,11 +94,11 @@
 Для ручной проверки открой терминал в папке с `opencode.jsonc` и `kit/` — это корень проекта. В примере ниже задача называется `expenses-001`, а проверяемый класс — `ExpenseService`. `ses_...` — место для настоящего ID разговора в OpenCode, оставлять эти точки в команде нельзя. Пример показывает код, который сначала вернули на исправление, а после повторного ревью приняли. При реальной работе записывай только те ревью, которые действительно были.
 
 ```powershell
-py kit/task_metrics.py start --task expenses-001 --session ses_... --title "Учёт расходов"
-py kit/task_metrics.py review --task expenses-001 --work-item ExpenseService --result rework
-py kit/task_metrics.py review --task expenses-001 --work-item ExpenseService --result accepted
-py kit/task_metrics.py test --task expenses-001 -- py -m unittest discover -s kit/tests -v
-py kit/task_metrics.py finish --task expenses-001
+kit\python.cmd kit/task_metrics.py start --task expenses-001 --session ses_... --title "Учёт расходов"
+kit\python.cmd kit/task_metrics.py review --task expenses-001 --work-item ExpenseService --result rework
+kit\python.cmd kit/task_metrics.py review --task expenses-001 --work-item ExpenseService --result accepted
+kit\python.cmd kit/task_metrics.py test --task expenses-001 -- kit\python.cmd -m unittest discover -s kit/tests -v
+kit\python.cmd kit/task_metrics.py finish --task expenses-001
 ```
 
 Команды написаны для Windows. На macOS и Linux вместо `py` пишите `python3`.
@@ -143,7 +143,7 @@ ID сессии берётся из контекста OpenCode. Если он �
 JUnit XML — файл с результатами тестов в согласованном формате. Его умеют создавать разные инструменты, не только Java. Например, если в твоём проекте уже используется pytest, можно попросить его создать такой файл и передать путь скрипту:
 
 ```powershell
-py kit/task_metrics.py test --task expenses-001 --junit .metrics/expenses-001/run-01.xml -- py -m pytest --junitxml=.metrics/expenses-001/run-01.xml
+kit\python.cmd kit/task_metrics.py test --task expenses-001 --junit .metrics/expenses-001/run-01.xml -- kit\python.cmd -m pytest --junitxml=.metrics/expenses-001/run-01.xml
 ```
 
 Файл XML не должен существовать до запуска: так скрипт не примет старый отчёт за новый. Для следующего прогона используйте другое имя.
@@ -151,7 +151,7 @@ py kit/task_metrics.py test --task expenses-001 --junit .metrics/expenses-001/ru
 Maven и Gradle пишут не один файл, а отдельный файл на каждый тестовый класс. Для них есть `--junit-dir <папка>`: скрипт читает все XML-файлы в папке, но **только записанные во время этого прогона**. Файлы от прошлых запусков пропускаются по времени изменения. Папка может существовать заранее.
 
 ```powershell
-py kit/task_metrics.py test --task expenses-001 --junit-dir target/surefire-reports -- mvn -q test
+kit\python.cmd kit/task_metrics.py test --task expenses-001 --junit-dir target/surefire-reports -- mvn -q test
 ```
 
 Если хотя бы один файл из прогона повреждён, результат считается неизвестным: неполная сумма выглядела бы как меньший, но полный набор тестов.
@@ -179,7 +179,7 @@ py kit/task_metrics.py test --task expenses-001 --junit-dir target/surefire-repo
 `check` запускает команду тестов без задачи и без журнала. Он отвечает на один вопрос: сможет ли `test` прочитать результат.
 
 ```powershell
-py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
+kit\python.cmd kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
 ```
 
 - Код выхода 0 и строка `CHECK OK` — настройка в порядке. Упавшие тесты здесь не мешают: важно, что результат читается.
@@ -205,7 +205,7 @@ py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
 3. Продолжить можно только командой `resume` с причиной — решением пользователя. Причина попадает в журнал и в отчёт. После `resume` все счётчики начинаются с нуля.
 
 ```powershell
-py kit/task_metrics.py resume --task expenses-001 --reason "Пользователь уточнил задание: скидка больше 100% — ошибка"
+kit\python.cmd kit/task_metrics.py resume --task expenses-001 --reason "Пользователь уточнил задание: скидка больше 100% — ошибка"
 ```
 
 Лимиты задаются при `start`, если нужны другие: `--max-reworks 5 --max-runs 120`. Значения хранятся в событии `start`. Старые журналы без лимитов используют значения по умолчанию.
@@ -262,7 +262,7 @@ CLI — OpenCode, вызываемый из терминала. Если скр�
 На Windows скрипт сначала проверяет встроенный CLI Desktop в `%LOCALAPPDATA%\Programs\@opencodedesktop\resources\opencode-cli.exe`, затем команду `opencode` в `PATH`. Можно указать путь явно:
 
 ```powershell
-py kit/task_metrics.py finish --task expenses-001 --opencode "C:\путь\opencode-cli.exe"
+kit\python.cmd kit/task_metrics.py finish --task expenses-001 --opencode "C:\путь\opencode-cli.exe"
 ```
 
 Также можно передать готовые выгрузки: `finish --task expenses-001 --export root.json --export child.json`. Укажите основную сессию и всех нужных потомков. Такие файлы создавайте штатным экспортом, не придумывайте значения токенов. Экспорт может содержать переписку, поэтому храните его локально.
@@ -273,7 +273,7 @@ py kit/task_metrics.py finish --task expenses-001 --opencode "C:\путь\openco
 
 1. Посмотрите версию: `opencode --version`. Убедитесь, что CLI видит нужные сессии и подключён к тому же серверу, что Desktop.
 2. Проверьте справку `opencode session export --help` и наличие команды `opencode api`.
-3. Запустите `py -m unittest discover -s kit/tests -v`.
+3. Запустите `kit\python.cmd -m unittest discover -s kit/tests -v`.
 4. Проведите небольшую новую задачу с одним исполнителем и одним запуском тестов. Сверьте обе группы токенов с экспортами основной и дочерней сессий.
 5. При изменении JSON сначала поправьте `message_info`, `parse_exports` или `collect_exports`, затем добавьте тест с обезличенным примером нового формата.
 6. Только после этой проверки укажите новую проверенную версию в README и здесь. Пока данных нет, оставляйте предупреждение; не заменяйте его нулями.

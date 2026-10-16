@@ -97,13 +97,14 @@ decision.
 | What | Why | How to check |
 | --- | --- | --- |
 | OpenCode Desktop 2.x | the app where the agents live | the OpenCode window opens |
-| Python 3.13+ with Tk and the Python Launcher | for the kit scripts, the setup wizard and the settings window | `py --version` (macOS/Linux: `python3 --version`) |
+| Python 3.13.16 with Tk | prepared automatically on first launch | no manual installation needed |
 | Access to models | free OpenCode models are preselected in the template; LM Studio, OpenRouter or your own API also work | see section 6 |
 | Tools for your language | for the example below: JDK 21 and Maven | `java -version`, `mvn -v` |
 
-> Python is needed by the kit itself, not by your app. The standard Python installer
-> includes Tk and the Python Launcher — keep them enabled. Commands here are for
-> Windows, where Python starts with `py`; on macOS and Linux use `python3` instead.
+> The kit prepares its own private Python and preserves system installations.
+> Commands below use `kit\python.cmd` on Windows; on Ubuntu/Debian/Mint replace it
+> with `sh kit/python.sh`. Regular users do not need to enter these commands.
+> macOS still requires a manual installation of Python with Tk.
 
 ---
 
@@ -173,7 +174,7 @@ Add these lines to the project `.gitignore` so personal settings and journals st
 - Language: Java 21 (`java -version`). Build tool: Maven (`mvn`).
 - Tests: JUnit 5. Maven writes one JUnit XML file per test class into `target/surefire-reports`.
 - Test command (always through task_metrics):
-  `py kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test`
+  `kit\python.cmd kit/task_metrics.py test --task <ID> --junit-dir target/surefire-reports -- mvn -q test`
 - Compile only: `mvn -q compile`.
 - Run the app: `mvn spring-boot:run`.
 ```
@@ -196,14 +197,14 @@ Ready-made test commands for other languages are in
 **Check that the kit can read test results.** Run this once in the project root:
 
 ```bash
-py kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
+kit\python.cmd kit/task_metrics.py check --junit-dir target/surefire-reports -- mvn -q test
 ```
 
 - `CHECK OK` — all good. Failing tests do not matter at this step.
 - `CHECK FAILED` — the script cannot read the result; hints follow below the line.
 
 The Master Chief also runs this check before every task and writes no code until it
-passes. The model settings window runs with `py -m kit.configurator.app` from the
+passes. The model settings window runs with `kit\python.cmd -m kit.configurator.app` from the
 project root (or ask the Master Chief to open it).
 
 ---
@@ -270,7 +271,7 @@ The current chat does not switch models — open a **new build chat**. If you ju
 a new key, fully restart OpenCode Desktop.
 
 > Parallel executors and the watchdog run in the shared OpenCode Desktop service. If
-> you launch OpenCode separately (`py kit/run_opencode.py` in the private `--standalone`
+> you launch OpenCode separately (`kit\python.cmd kit/run_opencode.py` in the private `--standalone`
 > mode), the kit keeps the earlier sequential protocol.
 
 The configurator follows the system language (English or Russian) until you choose one
@@ -415,7 +416,7 @@ The Master Chief writes what is done, the decisions and the next steps into
 
 | What you see | Why | What to do |
 | --- | --- | --- |
-| The wizard cannot find Python | Python was installed without the Python Launcher | Reinstall Python with the standard components and run `install.cmd` again |
+| Python preparation failed | No internet, insufficient disk space or a corrupt download | Read the launch-window error, correct the cause and retry; do not install another Python version |
 | Desktop opened a different folder | Not every Desktop version selects a folder from the link | "Copy folder path" in the wizard → **Open Project** in Desktop |
 | The selected model is unavailable | Free models and limits change | Pick another model in the settings, "Prepare OpenCode", new chat |
 | Work stalls, the report shows a rate limit / `429` | Provider limit (free OpenRouter models have a daily one) | Wait or choose another model; the Bug Fixer is not started for this |

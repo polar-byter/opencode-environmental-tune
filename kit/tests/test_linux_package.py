@@ -49,7 +49,8 @@ class LinuxPackageTests(unittest.TestCase):
         with tarfile.open(fileobj=io.BytesIO(parts['control.tar.gz']), mode='r:gz') as archive:
             control = archive.extractfile('control').read().decode()
             self.assertIn('Architecture: all', control)
-            self.assertIn('python3 (>= 3.10), python3-tk, xdg-utils', control)
+            self.assertIn('Depends: ' + linux_package.DEPENDENCIES, control)
+            self.assertNotIn('Depends: python3', control)
         with tarfile.open(fileobj=io.BytesIO(parts['data.tar.gz']), mode='r:gz') as archive:
             launcher = archive.getmember('usr/bin/opencode-kit-installer')
             self.assertEqual(launcher.mode, 0o755)
