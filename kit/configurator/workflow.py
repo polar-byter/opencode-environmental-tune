@@ -45,10 +45,9 @@ def existing_key(name: str) -> str:
     """Read the persisted Windows key even if the process environment is stale."""
     if not keys.is_valid_env_name(name):
         return ''
-    if keys.winreg is not None:
-        saved = keys.read_user_variable(name)
-        if isinstance(saved, str) and saved.strip():
-            return saved.strip()
+    saved = keys.read_user_variable(name)
+    if isinstance(saved, str) and saved.strip():
+        return saved.strip()
     return os.environ.get(name, '').strip()
 
 

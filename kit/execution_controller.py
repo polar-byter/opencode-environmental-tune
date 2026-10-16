@@ -20,6 +20,7 @@ from .run_opencode import load_choices, strip_jsonc
 from .task_metrics import TaskMetrics, pending_attempts, message_info, is_halted
 from .dashboard.session_control import SessionControl
 from .task_control_state import blocking_reason, plain_path
+from .provider_limits import quota_error
 
 
 def worker_permissions(root, workspace, source, progress):
@@ -93,6 +94,11 @@ class ExecutionController:
             self.metrics.running(self.task)
             if path.exists():
                 choices = json.loads(path.read_text(encoding='utf-8'))
+                from .task_control_state import read_state
+                selected = read_state(self.root, self.task).get('settings_revision')
+                if selected:
+                    from .model_switch import revision
+                    choices = revision(self.root, self.task, selected)['choices']
             else:
                 choices = load_choices(self.root)
                 choices['execution'] = normalize_policy(choices.get('execution'))
@@ -304,7 +310,7 @@ class ExecutionController:
                 continue
             steps += 1
             if info.get('error'):
-                return 'rate_limit' if '429' in json.dumps(info['error']) else 'api_error'
+                return 'rate_limit' if quota_error(info['error']) else 'api_error'
             for index, part in enumerate(message.get('parts', message.get('content', []))):
                 if not isinstance(part, dict) or part.get('type') != 'tool':
                     continue

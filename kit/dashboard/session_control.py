@@ -1,5 +1,6 @@
 """Control the shared OpenCode Desktop service through its installed v2 CLI."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -138,6 +139,15 @@ class SessionControl:
                 self.call('session.inbox.cancel', {'sessionID': sid, 'inboxID': item['id']})
         raise ControlError('Очередь сессии не удалось очистить')
 
+    def prepare_resume(self, sid, task):
+        from ..task_control_state import read_state
+        reference = read_state(self.root, task).get('settings_revision')
+        if reference:
+            from ..model_switch import verify_revision
+            selected = verify_revision(self.root, task, reference)
+            self.prepare_models(selected['choices'], selected['models'])
+            self.switch_model(sid, selected['models']['masterChief'])
+
     def resume(self, sid, task, operation_id):
         text = (f'User resumed the paused task {task} from its dashboard. Continue this same task ID. '
                 'Read the saved work plan and task journal. Inspect partial edits and interrupted executor attempts '
@@ -147,6 +157,50 @@ class SessionControl:
                            {'id': 'msg_' + operation_id, 'text': text, 'delivery': 'steer', 'resume': True})
         if not isinstance(result, dict) or not isinstance(result.get('data'), dict) or result['data'].get('id') != 'msg_' + operation_id:
             raise ControlError('Продолжение не подтверждено; проверьте сессию перед повторной попыткой')
+
+    def prepare_models(self, choices, selected):
+        """Verify live provider registration; credentials never enter task journals."""
+        import time
+        from ..configurator.workflow import existing_key
+        wanted = {value.split('#', 1)[0] for value in selected.values()}
+        for _ in range(15):
+            rows = self.call('model.list').get('data', [])
+            found = {row['providerID'] + '/' + row['id'] for row in rows if isinstance(row, dict)}
+            if wanted <= found:
+                break
+            time.sleep(.2)
+        else:
+            raise ControlError('Selected models are not available in the running OpenCode service. The task remains paused.')
+        for field, provider in (('masterChief', 'kit-master-chief-api'), ('executors', 'kit-executor-api'), ('bugFixer', 'kit-bug-fixer-api')):
+            choice = choices.get(field)
+            if not choice or choice['source'] != 'api':
+                continue
+            key = existing_key(choice['keyEnv'])
+            if not key:
+                raise ControlError('An API key is missing. Save it in Model settings and prepare again.')
+            integrations = self.call('integration.list').get('data', [])
+            if not any(isinstance(item, dict) and item.get('id') == provider for item in integrations):
+                raise ControlError('The selected API integration is unavailable. The task remains paused.')
+            # Native credential storage refreshes the service without restarting Desktop.
+            identifier = 'cred_' + hashlib.sha256((str(self.root) + provider + key).encode()).hexdigest()[:24]
+            credentials = self.call('credential.list').get('data', [])
+            if any(isinstance(item, dict) and item.get('id') == identifier and item.get('integrationID') == provider for item in credentials):
+                self.call('credential.activate', {'credentialID': identifier})
+            else:
+                self.call('credential.create', data={'id': identifier, 'integrationID': provider, 'label': 'OpenCode Kit',
+                           'value': {'type': 'key', 'key': key}, 'activate': True})
+
+    def switch_model(self, sid, reference):
+        provider, model = reference.split('/', 1)
+        selection = {'providerID': provider, 'id': model}
+        if '#' in model:
+            selection['id'], selection['variant'] = model.rsplit('#', 1)
+        self.call('session.switchModel', {'sessionID': session_id(sid)}, {'model': selection})
+        actual = self.call('session.get', {'sessionID': sid}).get('data', {}).get('model')
+        if isinstance(actual, dict) and 'variant' not in selection and actual.get('variant') in (None, 'default'):
+            actual = {key: value for key, value in actual.items() if key != 'variant'}
+        if actual != selection:
+            raise ControlError('OpenCode did not confirm the selected model. The task remains paused.')
 
     def remove(self, sid):
         self.call('session.remove', {'sessionID': session_id(sid)})

@@ -722,7 +722,7 @@ class DesktopConfigurator:
         for button in (self.save_button, self.prepare_button, self.reset_button):
             button.state(['!disabled'])
         self.status_label.configure(foreground='#187047' if successful else '#b42338')
-        self.status.set('Saved settings prepared. A new kit session will use this selection.' if successful else
+        self.status.set('Settings prepared. Resume a paused task to use this selection; new sessions will use it too.' if successful else
                         'Selection saved, but preparation failed. Check OpenCode, API keys, or the loaded LM Studio model. The current session was not changed.')
         if successful and self.on_prepared:
             self.on_prepared()

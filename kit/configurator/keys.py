@@ -1,4 +1,4 @@
-"""API keys in Windows user environment variables.
+"""API keys in Windows user environment variables or a private POSIX user file.
 
 The choice file stores only the NAME of a variable. The key itself is saved in the
 user's environment (registry HKEY_CURRENT_USER\\Environment), like the command setx
@@ -7,6 +7,7 @@ does. New programs started after saving see the variable; already running ones
 
 Why the file is called keys.py and not secrets.py: Python already has a standard
 module "secrets", and a file with the same name can hide it.
+POSIX storage uses posix_keys.py, outside projects, without editing shell profiles.
 """
 from __future__ import annotations
 
@@ -55,6 +56,9 @@ def read_user_variable(key_name: str) -> str | None:
     Reads the registry, not os.environ: right after saving, this program's os.environ
     is already updated, but other programs only learn about the value from the registry.
     """
+    if winreg is None:
+        from . import posix_keys
+        return posix_keys.read().get(key_name)
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, ENVIRONMENT_KEY) as key:
             value, _ = winreg.QueryValueEx(key, key_name)
@@ -77,8 +81,12 @@ def save_user_variable(name: str, value: str) -> None:
     if not value:
         raise ValueError("Environment variable value cannot be empty")
     
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, ENVIRONMENT_KEY, 0, winreg.KEY_SET_VALUE) as registry_key:
-        winreg.SetValueEx(registry_key, name, 0, winreg.REG_SZ, value)
+    if winreg is None:
+        from . import posix_keys
+        posix_keys.save(name, value)
+    else:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, ENVIRONMENT_KEY, 0, winreg.KEY_SET_VALUE) as registry_key:
+            winreg.SetValueEx(registry_key, name, 0, winreg.REG_SZ, value)
     os.environ[name] = value
     notify_windows()
     return None

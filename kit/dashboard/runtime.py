@@ -21,6 +21,7 @@ from ..task_metrics import TaskMetrics
 from .. import task_control_state
 from .. import localization
 from .controls import TaskControls
+from .quota_monitor import QuotaMonitor
 
 PAGE = Path(__file__).resolve().parent / 'static' / 'runtime.html'
 
@@ -122,9 +123,17 @@ class DashboardServer(ThreadingHTTPServer):
         self.ui_token = secrets.token_urlsafe(32)
         self.reader = observations.SessionReader()
         self.controls = TaskControls(self.root)
+        self.quota_monitor = QuotaMonitor(self.root, self.reader, self.controls)
         self.configurator = None
         self.configurator_lock = threading.Lock()
         super().__init__(('127.0.0.1', port), Handler)
+
+    def serve_forever(self, poll_interval=.5):
+        self.quota_monitor.start()
+        try:
+            return super().serve_forever(poll_interval)
+        finally:
+            self.quota_monitor.stop()
 
     def open_configurator(self) -> dict:
         with self.configurator_lock:

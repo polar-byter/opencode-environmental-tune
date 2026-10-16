@@ -9,6 +9,7 @@ import threading
 import time
 
 from ..task_metrics import TaskMetrics, TOKEN_FIELDS, message_info, message_model, valid_number
+from ..provider_limits import quota_error
 
 
 class ObservedMetrics(TaskMetrics):
@@ -108,10 +109,11 @@ def token_view(events: list[dict], live: dict) -> dict:
 def observations(exports: list[dict], root_session: str, since: float, until: float) -> dict:
     """Project the actual session tree into public text/tools/models and current activity."""
     models = {'master_chief': [], 'executor': []}
-    feed, current, calls, session_models = [], [], [], {}
+    feed, current, calls, session_models, quota_errors = [], [], [], {}, []
     for export in exports:
         session = export.get('info', {}).get('id')
         role = 'master_chief' if session == root_session else 'executor'
+        newest = None
         for message in export.get('messages', []):
             info = message_info(message)
             if info.get('role', info.get('type')) != 'assistant':
@@ -120,6 +122,8 @@ def observations(exports: list[dict], root_session: str, since: float, until: fl
             created = stamp.get('created')
             if not valid_number(created) or not since - 5 <= created / 1000 <= until:
                 continue
+            if newest is None or created >= newest.get('time', {}).get('created', 0):
+                newest = info
             provider, model = message_model(info)
             reference = provider + '/' + model if provider != 'unknown' and model != 'unknown' else None
             if reference and reference not in models[role]:
@@ -162,8 +166,13 @@ def observations(exports: list[dict], root_session: str, since: float, until: fl
                 running = last_tool if last_tool and last_tool.get('status') in ('running', 'pending') else None
                 current.append(dict(running or {'at': created / 1000, 'kind': 'thinking'},
                                     role=role, model=reference, session=session))
+        if newest and quota_error(newest.get('error')):
+            quota_errors.append({'session': session, 'message': newest.get('id'),
+                                 'at': newest['time']['created'] / 1000,
+                                 'model': '/'.join(message_model(newest))})
     return {'available': True, 'models': models, 'feed': sorted(feed, key=lambda row: row['at'])[-100:],
-            'current': sorted(current, key=lambda row: row['at']), 'calls': calls, 'session_models': session_models}
+            'current': sorted(current, key=lambda row: row['at']), 'calls': calls, 'session_models': session_models,
+            'quota_errors': quota_errors}
 
 
 class SessionReader:

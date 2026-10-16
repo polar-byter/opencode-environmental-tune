@@ -167,6 +167,16 @@ def api_provider(choice: dict, name: str) -> dict:
 
 
 def prepare(root: Path, explicit: str | None = None):
+    if __package__:
+        from .model_switch import preparation
+    else:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from kit.model_switch import preparation
+    with preparation(root):
+        return _prepare(root, explicit)
+
+
+def _prepare(root: Path, explicit: str | None = None):
     """Write only our local overlay, preserving the source config and agent permissions.
 
     Returns the selected LM Studio instance, or None when the executors use a model
@@ -183,7 +193,7 @@ def prepare(root: Path, explicit: str | None = None):
         events = TaskMetrics(root).read(task)
         if (not any(e['kind'] == 'finish' for e in events)
                 and any(e.get('workspace') for e in pending_attempts(events))
-                and read_state(root, task).get('status') != 'cancelled'):
+                and read_state(root, task).get('status') not in ('cancelled', 'paused')):
             raise ValueError('Finish or cancel isolated work before preparing new model settings; saving a draft is allowed')
     config = json.loads(strip_jsonc((root / 'opencode.jsonc').read_text(encoding='utf-8-sig')))
     choices = load_choices(root)

@@ -16,6 +16,7 @@
     .badge { border-radius: 20px; padding: 6px 12px; font-size: 13px; white-space: nowrap; background: #20384a; }
     .online { color: #8bdfb2; }
     .offline { color: #ffb0a4; }
+    .provider-warning { color: #ffe1a6; background: #33291a; border: 1px solid #94733c; padding: 16px; border-radius: 10px; line-height: 1.5; }
     .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 20px 0; }
     select, button { font: inherit; padding: 10px 12px; border: 1px solid #3d4c63; border-radius: 8px; background: #1b2638; color: inherit; }
     select { flex: 1; min-width: 0; max-width: 100%; }
@@ -89,6 +90,8 @@
     <button id="delete-task" type="button" disabled data-i18n="Delete task…">Delete task…</button>
   </div>
   <p id="control-message" class="muted" role="status" aria-live="polite"></p>
+  <p id="provider-warning" class="provider-warning" role="alert" hidden></p>
+  <p id="reconfigure-hint" class="muted" hidden data-i18n="To change API or models: pause → Model settings → Save and Prepare OpenCode → Resume. The task history is preserved.">To change API or models: pause → Model settings → Save and Prepare OpenCode → Resume. The task history is preserved.</p>
   <p id="message" role="status" aria-live="polite"></p>
   <section id="live-work" class="live-work" hidden aria-labelledby="live-title">
     <div class="eyebrow muted" data-i18n="Current work">Current work</div>
@@ -182,6 +185,10 @@
   function renderControls(data) {
     selectedData = data;
     const state = data?.status, session = !!data?.session;
+    const warning = element('provider-warning');
+    warning.hidden = data?.control?.reason !== 'provider_limit';
+    warning.textContent = warning.hidden ? '' : `${t(data.control.warning || 'Provider quota or rate limit reached. Task paused; change models or wait before continuing.')}${data.control.quota_model ? ' · ' + data.control.quota_model : ''}`;
+    element('reconfigure-hint').hidden = state !== 'paused';
     const pending = controlPending || ['pausing', 'resuming', 'cancelling', 'deleting'].includes(state);
     element('pause-task').disabled = pending || !session || !['running', 'halted'].includes(state);
     element('resume-task').disabled = pending || !session || state !== 'paused';

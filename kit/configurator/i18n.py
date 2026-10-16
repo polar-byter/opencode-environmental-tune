@@ -7,6 +7,7 @@ from ..localization import PREFERENCES, load_language, save_language
 LANGUAGES = {'English': 'en', 'Russian': 'ru'}
 
 RU = {
+    'Settings prepared. Resume a paused task to use this selection; new sessions will use it too.': 'Настройки подготовлены. Продолжите приостановленную задачу — она использует новый выбор; новые сессии тоже.',
     'Bug Fixer': 'Исправитель ошибок',
     'Implement independent work items from the Master Chief architecture. One model for all executor slots.': 'Выполняют независимые поручения по архитектуре Чифа. Одна модель для всех исполнителей.',
     'Project defaults restored. Saved Windows keys were kept.': 'Восстановлены настройки проекта. Сохранённые ключи Windows оставлены.',

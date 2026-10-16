@@ -1,0 +1,39 @@
+name: Linux installer
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'kit/**'
+      - 'install.py'
+      - 'opencode.jsonc'
+      - 'AGENTS.md'
+      - 'docs/**'
+      - '.github/workflows/linux-installer.yml'
+permissions:
+  contents: read
+jobs:
+  debian-package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install GUI test dependencies
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb xauth desktop-file-utils
+      - name: Build installer
+        run: python3 -m kit.linux_package --output dist/opencode-kit_0.1.0_all.deb
+      - name: Validate and install package
+        run: |
+          dpkg-deb --info dist/opencode-kit_0.1.0_all.deb
+          sudo apt-get install -y ./dist/opencode-kit_0.1.0_all.deb
+      - name: Check package and real Linux windows
+        env:
+          OPENCODE_KIT_DASHBOARD: 'off'
+          XDG_CONFIG_HOME: '${{ runner.temp }}/opencode-kit-smoke'
+          PYTHONPATH: /usr/share/opencode-kit
+        run: |
+          python3 kit/task_metrics.py start --task linux-package-smoke --title 'Linux desktop package verification' --no-dashboard
+          python3 kit/task_metrics.py test --task linux-package-smoke --scope linux-package -- xvfb-run -a python3 -u /usr/share/opencode-kit/kit/tests/linux_desktop_smoke.py -v
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-kit-linux-deb
+          path: dist/*.deb

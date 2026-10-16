@@ -347,5 +347,13 @@
   "The project changed during installation. Try again.": "Проект изменился во время установки. Повторите попытку.",
   "Prepare the project models before opening OpenCode.": "Перед открытием OpenCode подготовьте модели проекта.",
   "OpenCode Desktop was not found. Install it or choose its application file.": "OpenCode Desktop не найден. Установите его или выберите файл приложения.",
-  "Could not save the interface language. The kit is installed; model setup can continue.": "Не удалось сохранить язык интерфейса. Кит установлен, настройку моделей можно продолжить."
+  "Could not save the interface language. The kit is installed; model setup can continue.": "Не удалось сохранить язык интерфейса. Кит установлен, настройку моделей можно продолжить.",
+  "Provider quota or rate limit reached. Task paused; change models or wait before continuing.": "Достигнут лимит запросов или квоты провайдера. Задача приостановлена. Смените модели или дождитесь восстановления лимита, затем нажмите «Продолжить».",
+  "To change API or models: pause → Model settings → Save and Prepare OpenCode → Resume. The task history is preserved.": "Чтобы сменить API или модели: пауза → «Настройки моделей» → сохранить и подготовить OpenCode → «Продолжить». История задачи сохраняется.",
+  "Models prepared for this paused task. Click Resume to continue the same session.": "Модели подготовлены для приостановленной задачи. Нажмите «Продолжить», чтобы продолжить ту же сессию.",
+  "Selected models are not available in the running OpenCode service. The task remains paused.": "Выбранные модели пока недоступны в работающем OpenCode. Задача остаётся на паузе.",
+  "OpenCode did not confirm the selected model. The task remains paused.": "OpenCode не подтвердил выбор модели. Задача остаётся на паузе.",
+  "Model settings changed. Prepare OpenCode again before continuing.": "Настройки моделей изменились. Перед продолжением снова подготовьте OpenCode.",
+  "An API key is missing. Save it in Model settings and prepare again.": "Не найден API-ключ. Сохраните его в настройках моделей и повторите подготовку.",
+  "The selected API integration is unavailable. The task remains paused.": "Выбранная API-интеграция недоступна. Задача остаётся на паузе."
 }

@@ -28,13 +28,23 @@ def is_wrapper(executable: str) -> bool:
 def desktop_cli() -> str | None:
     """Path of the CLI inside OpenCode Desktop, or None when it is not installed."""
     local = os.environ.get('LOCALAPPDATA')
-    if not local:
-        return None
-    path = Path(local) / DESKTOP_CLI
-    try:
-        return str(path) if path.is_file() else None
-    except OSError:
-        return None
+    if local:
+        path = Path(local) / DESKTOP_CLI
+        try:
+            if path.is_file():
+                return str(path)
+        except OSError:
+            pass
+    if os.name != 'nt':
+        if __package__:
+            from .installer import find_desktop
+        else:
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from kit.installer import find_desktop
+        found = find_desktop()
+        return str(found.cli) if found else None
+    return None
 
 
 def locate_opencode(command: str = DEFAULT_COMMAND) -> str | None:

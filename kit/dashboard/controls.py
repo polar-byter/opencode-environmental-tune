@@ -6,7 +6,7 @@ import threading
 import uuid
 
 from .. import task_control_state as state
-from ..task_metrics import TaskMetrics, is_halted, session_id
+from ..task_metrics import TaskMetrics, is_halted, session_id, valid_number
 from .session_control import ControlError, SessionControl
 
 ACTIONS = {'pause': 'pausing', 'resume': 'resuming', 'cancel': 'cancelling', 'delete': 'deleting'}
@@ -64,13 +64,29 @@ class TaskControls:
             raise ValueError('Сработал защитный лимит. Сначала требуется решение пользователя по этому лимиту')
         return events, sid
 
-    def request(self, task, action):
+    def pause_for_limit(self, task, signal):
+        """Pause once for a bound failure; ignore failures predating a resume."""
+        events, sid = self.context(task, 'pause')
+        current = self.view(task)
+        allowed = {sid, *(e['session'] for e in events if e['kind'] == 'attempt_session')}
+        if (not isinstance(signal, dict) or signal.get('session') not in allowed
+                or not valid_number(signal.get('at')) or signal['at'] < events[0]['at']
+                or not isinstance(signal.get('message'), str) or not signal['message'].startswith('msg_')
+                or not isinstance(signal.get('model'), str) or len(signal['model']) > 250):
+            raise ValueError('Invalid quota observation')
+        if current.get('status') not in (None, 'running') or signal['at'] <= current.get('quota_after', current.get('updated_at', 0)):
+            return current
+        return self.request(task, 'pause', limit=signal)
+
+    def request(self, task, action, *, limit=None):
         if action not in ACTIONS:
             raise ValueError('Неизвестное действие')
         # Recovery is performed before taking the worker mutex again.
         self.view(task)
         with self._lock:
             current = state.read_state(self.root, task)
+            if limit is not None and (current.get('status') not in (None, 'running') or limit['at'] <= current.get('quota_after', current.get('updated_at', 0))):
+                return current
             if task in self._workers:
                 if current.get('action') == action:
                     return current
@@ -90,8 +106,15 @@ class TaskControls:
             lease = state.operation_lock(self.root, task)
             lease.__enter__()
             try:
+                details = {}
+                if current.get('settings_revision'):
+                    details['settings_revision'] = current['settings_revision']
+                if limit is not None:
+                    details.update(reason='provider_limit', quota_message=limit['message'],
+                                   quota_session=limit['session'], quota_model=limit['model'],
+                                   warning='Provider quota or rate limit reached. Task paused; change models or wait before continuing.')
                 value = state.write_state(self.root, task, status=ACTIONS[action], action=action,
-                                          operation_id=operation, session=sid,
+                                          operation_id=operation, session=sid, **details,
                                           session_removed=current.get('session_removed', False), allow_execution=False)
                 worker = threading.Thread(target=self._run, args=(task, action, value, lease), daemon=True)
                 self._workers[task] = worker
@@ -134,6 +157,9 @@ class TaskControls:
 
     def _run(self, task, action, value, lease):
         details = {key: item for key, item in value.items() if key not in ('task', 'updated_at', 'status')}
+        if action == 'resume':
+            details['quota_after'] = value['updated_at']
+        resume_issued = False
         try:
             sid = value['session']
             if sid:
@@ -144,13 +170,16 @@ class TaskControls:
                 self.gateway.tree(sid)
                 if self.gateway.active() & set(self.gateway.tree(sid)):
                     raise ControlError('Сессия уже активна; продолжение не отправлено')
+                if value.get('settings_revision'):
+                    self.gateway.prepare_resume(sid, task)
                 # Let the metrics CLI run as soon as the admitted prompt starts.
                 state.write_state(self.root, task, **dict(details, status='resuming', allow_execution=True))
+                resume_issued = True
                 self.gateway.resume(sid, task, value['operation_id'])
                 status, message = 'running', 'Продолжение передано основной модели; частичные изменения требуют проверки.'
             else:
                 if sid and not value.get('session_removed'):
-                    tree = self.stopped_tree(sid, clear_queue=action != 'pause')
+                    tree = self.stopped_tree(sid, clear_queue=action != 'pause' or value.get('reason') == 'provider_limit')
                     details['sessions'] = tree
                     if action == 'delete':
                         self.gateway.remove(sid)
@@ -164,10 +193,13 @@ class TaskControls:
                 message = {'pause': 'Основная модель и все связанные исполнители приостановлены.',
                            'cancel': 'Задача отменена. Связанные сессии остановлены, очередь очищена.',
                            'delete': 'Сессии и метрики задачи удалены. Файлы приложения сохранены.'}[action]
+            if action == 'pause' and value.get('reason') == 'provider_limit':
+                message = value['warning']
             state.write_state(self.root, task, **dict(details, status=status, message=message, allow_execution=False))
         except Exception as error:
             message = str(error) if isinstance(error, (ControlError, ValueError)) else 'Не удалось выполнить действие. Результат не подтверждён.'
-            state.write_state(self.root, task, **dict(details, status='error', allow_execution=False, error=message[:500]))
+            status = 'paused' if action == 'resume' and not resume_issued else 'error'
+            state.write_state(self.root, task, **dict(details, status=status, allow_execution=False, error=message[:500]))
         finally:
             lease.__exit__(None, None, None)
             with self._lock:

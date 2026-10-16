@@ -38,7 +38,7 @@ class InstallError(ValueError):
 
 def desktop_from_path(application: Path) -> Desktop | None:
     """Recognize a Desktop app and its bundled CLI, not a terminal-only install."""
-    path = Path(application).expanduser().absolute()
+    path = Path(application).expanduser().resolve()
     if path.name.endswith('.app') and path.is_dir():
         cli = path / 'Contents/Resources/opencode-cli'
     elif path.is_file() and path.name.lower() in ('opencode.exe', 'opencode', 'opencode-desktop', 'opencode.appimage'):
@@ -70,7 +70,8 @@ def find_desktop() -> Desktop | None:
     elif sys.platform == 'darwin':
         candidates += [Path('/Applications/OpenCode.app'), Path.home() / 'Applications/OpenCode.app']
     else:
-        candidates += [Path('/opt/OpenCode/opencode'), Path('/opt/opencode/opencode')]
+        candidates += [Path(prefix) / name for prefix in ('/opt/OpenCode', '/opt/opencode', '/usr/lib/opencode')
+                       for name in ('opencode', 'opencode-desktop')]
     for name in ('OpenCode.exe', 'opencode-desktop'):
         if executable := shutil.which(name):
             candidates.append(Path(executable))

@@ -1,10 +1,18 @@
 # Your first OpenCode Kit project
 
+To change models or API during a task: **Pause → Model settings → Save → Prepare
+OpenCode → Resume**. The same task, session, accepted work and usage history are
+preserved. A provider quota/rate-limit error automatically pauses the task and
+shows a warning. Failed preparation keeps the task paused. See the
+[architecture and detailed guide (Russian)](docs/LIVE_MODELS.ru.md).
+
 The kit coordinates a Chief (architecture and review), executors (implementation),
 and an optional Bug Fixer (one correction attempt). Its dashboard shows progress,
 tests and token usage. A token is a unit of text counted by a model.
 
 ## Windows setup
+
+![The setup wizard](readme_gif/en/01_install_live.gif)
 
 1. Install **OpenCode Desktop for Windows** from the [official download page](https://opencode.ai/download). Use Desktop 2.x. Installing only the terminal CLI does not install Desktop.
 2. Install [Python 3.13 or newer](https://www.python.org/downloads/windows/) with **Python Launcher**, **pip** and **Tcl/Tk** enabled. Tk provides the settings windows.
@@ -81,6 +89,9 @@ change it. Your task controls the language of model-generated text. Re-running
 the wizard for its existing project reopens settings without upgrading the kit or
 replacing application code and model choices.
 
-On Linux/macOS run `python3 install.py` from the extracted kit with Python and Tk
-installed. This release was tested on Windows; application discovery on other
-systems depends on the Desktop installation layout.
+For Ubuntu/Debian/Mint, open **opencode-kit_0.1.0_all.deb** with your graphical
+package manager and click Install. Then launch **OpenCode Kit** from the application
+menu. Python and Tk are package dependencies; no terminal commands are needed in
+the normal setup flow. The **Linux installer** GitHub Actions workflow also produces
+the **opencode-kit-linux-deb** artifact. See [Linux setup details](docs/LINUX_INSTALL.ru.md).
+On macOS the current entry point remains `python3 install.py`, requiring Python and Tk.
