@@ -48,7 +48,7 @@ FONT_FILES = {
     'mb': 'C:/Windows/Fonts/consolab.ttf',
     'sym': 'C:/Windows/Fonts/seguisym.ttf',
 }
-SYMBOLS = set('✓✗⏸▶▸↻⟳✎')
+SYMBOLS = set('✓✗⏸▶▸↻⟳✎⚙⚠☑✔✖⏱⛔⧉▣◆')
 
 
 def _runs(s):
@@ -335,6 +335,36 @@ class Cv:
             self.rr(x, y, max(h, w * frac), h, color, None, 0, h // 2, a, bg=bg)
 
 
+def avatar(c, cx, cy, r, label, color, a=1.0, ring=False):
+    """Round role badge with a short label, e.g. MC / E / BF."""
+    if a <= 0:
+        return
+    if ring:
+        c.d.ellipse([cx - r - 7, cy - r - 7, cx + r + 7, cy + r + 7], outline=mix(color, 0.45 * a), width=4)
+    c.d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=mix(color, a))
+    size = int(r * 1.15) if (len(label) == 1 and label in SYMBOLS) else int(r * 0.78)
+    c.t(cx, cy, label, size, 'b', (255, 255, 255), a, anchor='mm', bg=mix(color, a))
+
+
+def card(c, x, y, w, h, title, sub='', color=BLUE, a=1.0, active=False, badge=None, tsize=22, ssize=16):
+    """Large, airy card: optional round badge on the left, title and one short line."""
+    if a <= 0:
+        return
+    if active:
+        c.glow(x, y, w, h, color, a)
+    c.rr(x, y, w, h, PANEL, color if active else BORDER, 3 if active else 2, 16, a)
+    tx = x + 22
+    if badge:
+        r = min(26, h // 2 - 12)
+        avatar(c, x + 22 + r, y + h / 2, r, badge, color, a)
+        tx = x + 22 + 2 * r + 18
+    if sub:
+        c.t(tx, y + h / 2 - 4, title, tsize, 's', TEXT, a, anchor='ls', bg=PANEL)
+        c.para(tx, y + h / 2 + 6, sub, w - (tx - x) - 18, ssize, 'r', MUTED, a, lh=1.25, bg=PANEL)
+    else:
+        c.t(tx, y + h / 2, title, tsize, 's', TEXT, a, anchor='lm', bg=PANEL)
+
+
 def chrome(c, num, title, s, steps, p):
     """Header, step dots and caption bar shared by every GIF."""
     c.t(30, 22, num, 15, 's', BLUE)
@@ -355,11 +385,11 @@ def chrome(c, num, title, s, steps, p):
     lab = f'{s + 1}/{n}'
     c.rr(36, y0 + 22, 52, 28, BLUE, None, 0, 14)
     c.t(62, y0 + 36, lab, 15, 'b', (255, 255, 255), anchor='mm', bg=BLUE)
-    lines = c.wrap(cap, 19, 'r', W - 160)
+    lines = c.wrap(cap, 20, 'r', W - 160)
     yy = y0 + 36 - (len(lines) * 26) / 2 + 2
     for line in lines[:2]:
-        c.t(104, yy, line, 19, 'r', TEXT, a, bg=(17, 23, 31))
-        yy += 26
+        c.t(104, yy, line, 20, 'r', TEXT, a, bg=(17, 23, 31))
+        yy += 27
     total = sum(1 for _ in steps)
     frac = (s + p) / total
     c.d.rectangle([0, H - 4, int(W * frac), H], fill=BLUE)

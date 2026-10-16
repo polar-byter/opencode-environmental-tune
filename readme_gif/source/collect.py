@@ -6,7 +6,7 @@ import sys
 os.environ['GIF_LANG'] = 'en'
 import gifkit  # noqa: E402
 
-MODS = ['gif1_planning', 'gif2_delegation', 'gif3_setup', 'gif4_models', 'gif5_dashboard']
+MODS = ['s01_install', 's02_team', 's03_plan', 's04_parallel', 's05_bugfixer', 's06_final', 's07_models', 's08_dashboard']
 for name in MODS:
     m = importlib.import_module(name)
     for s in range(len(m.STEPS)):

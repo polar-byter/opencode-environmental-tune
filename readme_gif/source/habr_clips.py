@@ -16,33 +16,32 @@ SCALE = 960 / W
 
 CLIPS = {
     '01_osnovy_agentov': [
-        ('planirovanie', 'gif1_planning', [1, 3, 4, 7, 9, 10], 'GIF 1', 'Как Мастер Чиф планирует'),
-        ('dva_sposoba', 'gif3_setup', [7, 8], 'GIF 3', 'Два способа поставить задачу'),
-        ('istochniki_modeley', 'gif3_setup', [2], 'GIF 3', 'Откуда берутся модели'),
-        ('lmstudio_ili_openrouter', 'gif4_models', [0, 2, 7, 10], 'GIF 4', 'LM Studio и OpenRouter'),
+        ('komanda', 's02_team', [0, 1, 2, 3, 4], 'GIF', 'Кто в команде'),
+        ('podgotovka', 's03_plan', [0, 2, 3, 4], 'GIF', 'Как Мастер Чиф готовит работу'),
+        ('ustanovka', 's01_install', [0, 3, 4, 5], 'GIF', 'Установка за четыре шага'),
+        ('modeli', 's07_models', [1, 2, 3], 'GIF', 'Модели, лимиты и ключи'),
     ],
     '02_podhod_i_uroki': [
-        ('cikl_poruchenia', 'gif2_delegation', [1, 3, 4, 5], 'GIF 2', 'Поручение исполнителю'),
-        ('revyu_i_vozvrat', 'gif2_delegation', [6, 7, 8], 'GIF 2', 'Ревью и возврат'),
-        ('stop', 'gif2_delegation', [9], 'GIF 2', 'Защита от зацикливания'),
-        ('itog', 'gif2_delegation', [10], 'GIF 2', 'Итог и отчёт'),
+        ('parallelno', 's04_parallel', [1, 2, 4, 5], 'GIF', 'Несколько исполнителей одновременно'),
+        ('ispravitel', 's05_bugfixer', [0, 2, 3], 'GIF', 'Исправитель ошибок'),
+        ('stop', 's05_bugfixer', [4, 5], 'GIF', 'Когда исправителя не зовут'),
+        ('final_ux', 's06_final', [1, 2, 3], 'GIF', 'Проверка интерфейса'),
     ],
     '03_proverka_i_pult': [
-        ('snimok_i_inspect', 'gif2_delegation', [3, 5], 'GIF 2', 'Снимок и inspect'),
-        ('dashboard_vkladki', 'gif5_dashboard', [1, 2, 3, 4], 'GIF 5', 'Вкладки дашборда'),
-        ('pauza_i_prodolzhenie', 'gif5_dashboard', [6, 7, 8], 'GIF 5', 'Пауза и продолжение'),
-        ('ostanovka_i_udalenie', 'gif5_dashboard', [9, 10], 'GIF 5', 'Остановка и удаление'),
-        ('vybor_modeli_lmstudio', 'gif4_models', [1, 2, 3], 'GIF 4', 'Как кит выбирает модель'),
+        ('kopii_i_storozh', 's04_parallel', [1, 3], 'GIF', 'Копии и сторож'),
+        ('perenos', 's04_parallel', [4, 5, 6], 'GIF', 'Проверка и перенос'),
+        ('dashboard', 's08_dashboard', [1, 2, 3], 'GIF', 'Дашборд'),
+        ('pauza', 's08_dashboard', [4], 'GIF', 'Пауза всей команды'),
     ],
 }
 
 COVERS = {
-    '01_osnovy_agentov': ('gif1_planning', 11, 'ИИ-агенты без магии',
-                          'прораб, бригада и журнал работ'),
-    '02_podhod_i_uroki': ('gif2_delegation', 10, 'Дорогая модель проектирует, дешёвая пишет',
+    '01_osnovy_agentov': ('s02_team', 5, 'ИИ-агенты без магии',
+                          'прораб, бригада, исправитель и журнал работ'),
+    '02_podhod_i_uroki': ('s04_parallel', 6, 'Дорогая модель проектирует, дешёвая пишет',
                           'что сломалось и что мы поправили'),
-    '03_proverka_i_pult': ('gif5_dashboard', 7, 'Не верь агенту на слово',
-                           'снимки файлов, STOP и пульт управления'),
+    '03_proverka_i_pult': ('s08_dashboard', 1, 'Не верь агенту на слово',
+                           'копии файлов, сторож, STOP и пульт управления'),
 }
 
 

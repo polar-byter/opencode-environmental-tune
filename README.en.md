@@ -1,115 +1,136 @@
 # OpenCode: the Master Chief and executors
 
-**First setup without manual copying:** install [OpenCode Desktop](https://opencode.ai/download)
-and [Python with Tk](https://www.python.org/downloads/windows/), download and extract
-this repository's ZIP, then double-click **install.cmd**. The wizard creates your
-project folder, installs the kit, opens model/API settings, and launches Desktop
-with a request to open the project. Follow the [beginner guide and sample prompt](OPENCODE_KIT.en.md)
-for each step, model roles, and the manual folder-selection fallback.
-[Installer architecture with diagrams (Russian)](docs/INSTALLER.ru.md).
+> Русская версия: [README.md](README.md) · Step-by-step start: [QUICKSTART.en.md](QUICKSTART.en.md) · [Быстрый старт (RU)](QUICKSTART.ru.md) · [Beginner guide](OPENCODE_KIT.en.md)
 
-The configurator includes an optional Bug Fixer role, worker concurrency and
-bounded execution limits. New template defaults: OpenCode DeepSeek V4.1 Flash Free
-for the Chief/fixer and MiMo V2.6 Flash Free for executors; concurrency defaults to one.
-The controller isolates each attempt, binds tests and usage to its exact session,
-and permits one correction handoff after a code defect or an execution limit.
-API/429, setup failures and cancellation never trigger an automatic model switch.
-Existing saved choices and sequential journals remain readable.
+You describe a task in OpenCode, and a team of AI agents takes it from there. The
+**Master Chief** (the main `build` agent) plans the work and the contracts between
+parts of the program, writes blanks and tests, hands implementation to **executors**,
+reviews their work and, at the end, checks the application interface.
+If an executor makes a mistake or hits a limit, the **Bug Fixer** steps in once.
+Every step goes into a journal, and a browser dashboard shows the progress.
 
-See the [developer guide with diagrams (Russian)](docs/EXECUTION_GUIDE.ru.md) and
-[readable role prompts](kit/prompts/README.ru.md).
+**It works like a building site.** The Master Chief is the foreman: reads the
+order, draws the plan, hands out work and accepts the result. Executors are the workers:
+each builds a small section exactly as drawn, and several can work at the same time.
+The Bug Fixer redoes a section that did not work out.
+Your part is to say what you need, answer questions and accept the result.
 
-> Русская версия: [README.md](README.md) · Step-by-step start: [QUICKSTART.en.md](QUICKSTART.en.md) · [Быстрый старт (RU)](QUICKSTART.ru.md)
+## How it works — in eight diagrams
 
-You describe a task in OpenCode. The main agent `build`, which we call the Master Chief, organizes the work: it makes a plan, hands implementation to the chosen executors, reviews the code and runs the tests. At the end it shows the result and the task statistics.
+The diagrams are animated; their data is sample data. The same diagrams with detailed
+steps are in the [quick start](QUICKSTART.en.md).
 
-This repository contains the settings for that way of working. You can add them to your own project, for example a Java application. The Master Chief is responsible for decisions and review. Executors carry out small jobs through LM Studio, models connected in OpenCode, or your own OpenAI-compatible API.
+### 1. Installation in four steps
 
-**In short, it is like a building site.** The Master Chief is the foreman: it reads
-the order, draws the plan, hands out work and accepts the result. Executors are the
-workers: they carry out small, clear jobs exactly as drawn. A tracking journal records
-every step, and a browser dashboard shows what is happening right now. Your part is to
-say what you need, answer questions and accept the result.
+You need three things: [OpenCode Desktop](https://opencode.ai/download),
+[Python 3.13 with Tk](https://www.python.org/downloads/windows/) and this repository's
+ZIP (**Code → Download ZIP**). Extract it and double-click **install.cmd**. The setup
+wizard finds Desktop, creates the project folder, copies the kit there and opens the
+model settings. Free models are already filled in — just click "Save settings" and
+"Prepare OpenCode". Then the project opens in Desktop: copy the example prompt, paste
+it into a new **build** chat and send it. The wizard never sends anything to a model itself.
 
-## How it works — in five diagrams
+![Installation in four steps](readme_gif/en/01_install.gif)
 
-The diagrams are animated; their data is sample data. A detailed guide with the
-same diagrams is in the [quick start](QUICKSTART.en.md).
+Here is how it looks in the wizard itself:
 
-### 1. The Master Chief reads the documents and prepares a plan
+![The setup wizard](readme_gif/en/01_install_live.gif)
 
-When it gets a task, the Master Chief first gets oriented: it reads your requirements
-(a chat message or a `TASK.md` file), the kit rules (`AGENTS.md`), the plan from
-earlier sessions (`currentsteps.md`) and what already exists in the project. Then it
-decides which parts the program needs and in what order. For each part it writes a
-blank: function names and a detailed description of what each one must do. It writes
-the tests right away — automatic checks. While the functions are empty the tests are
-"red", and that is expected: they are waiting for the work to be done.
+### 2. Who is in the team
 
-![How the Master Chief plans](readme_gif/en/01_master_chief_planning.gif)
+Everyone has a role. The Master Chief thinks and reviews. Executors write code from
+ready descriptions — from one to eight of them, each in its own copy of the files.
+The Bug Fixer makes one attempt when an executor did not manage. The **controller** is not AI but
+a plain kit program: it hands out file copies, watches the limits and moves accepted
+code into the project. The journal and dashboard make all of this visible.
 
-### 2. The executor does the work, the Master Chief checks it
+![Who is in the team](readme_gif/en/02_team.gif)
 
-Before each job the Master Chief writes down the list of requirements and takes a
-"snapshot" of all files. The executor gets one file and fills in the empty functions.
-The script immediately compares the files with the snapshot: if anything else was
-touched, the work goes back. Then the Master Chief checks every requirement against
-the code and tests: something missing means a rework, everything right means the work
-is accepted and the dashboard's count of finished functions grows. If the same job
-keeps coming back, a `STOP` guard fires and the Master Chief waits for your decision,
-so there is no endless loop.
+### 3. How the Master Chief prepares the work
 
-![Handing off to the executor, review and the dashboard](readme_gif/en/02_delegation_review_dashboard.gif)
+Write the task straight into chat, or put it in `TASK.md` and send "Start"; if they
+disagree, chat wins. The Master Chief reads the kit rules (`AGENTS.md`), the plan from
+earlier sessions (`currentsteps.md`) and what the project already has. It decides
+which parts the program needs and in what order, and fixes the contracts between parts
+up front — which functions exist, what they take and return. It writes blanks with
+detailed descriptions and the tests right away. While the functions are empty the tests
+fail.
 
-### 3. Preparing a project and giving a task
+![How the Master Chief prepares the work](readme_gif/en/03_plan.gif)
 
-Once, you copy four things from this repository into your project and state in
-`AGENTS.md` how to run the tests. Then, in the settings window, you choose models for
-the Master Chief and the executors. You can give a task in two ways: write it straight
-into chat, or fill in a `TASK.md` file and send one word, "Start". If they disagree,
-the chat message wins. The Master Chief finds the other documents itself.
+### 4. Several executors at once
 
-![Setting up a project for a new task](readme_gif/en/03_project_setup.gif)
+If two parts of the program do not depend on each other, they can be built in parallel.
+The controller gives each executor **its own copy of the files** — they never touch the
+main project or each other. A watchdog guards every attempt: how many steps, how long,
+whether the model keeps repeating the same actions. The Master Chief reviews each
+copy separately — its changes, its tests, every requirement. Accepted files are moved
+into the project one by one, and if a file changed there meanwhile, nothing is
+overwritten. Finally the full test suite runs on the main project. There is one
+executor by default; the number is set in the settings.
 
-### 4. Where models come from: LM Studio and OpenRouter
+![Several executors at once](readme_gif/en/04_parallel.gif)
 
-**LM Studio** runs a model on your own computer: free and offline, but it needs a
-strong graphics card. You load the model yourself; the kit only uses it.
-**OpenRouter** is a catalog of cloud models, including free ones (the name ends with
-`:free`). In the settings window you can filter models for coding, click the one you
-want and it fills in the chosen role. The key lives in a Windows user variable; if it
-is already saved the window says "Key found", and "Check connection" confirms the
-service accepted it.
+### 5. The Bug Fixer: when and how
 
-![LM Studio and OpenRouter](readme_gif/en/04_lmstudio_openrouter.gif)
+If review finds a bug in an executor's code, or the executor runs out of steps or time,
+the work goes to the Bug Fixer once: the same file, the same requirements and the test
+error output. It only repairs function bodies, and the Master Chief reviews again.
+A service error (including a `429` rate limit), a broken test setup, a pause or a cancel
+never calls the Bug Fixer — those are not code bugs. If the Bug Fixer fails too, work
+stops with `STOP` and waits for your decision; it never bounces back to the executor.
 
-### 5. The dashboard: watch and control
+![The Bug Fixer](readme_gif/en/05_bugfixer.gif)
 
-The dashboard opens by itself when the Master Chief starts a task. It shows who is
-working on what, how many parts are done, how often work was sent back, token usage
-and every executor job. Buttons let you **pause** the task (everything is kept),
-**resume** it, **stop** it (cancel) or **delete** the task journal — your application
-code stays. At the end a summary appears with links to the project folder, the launch
-file and the report. The dashboard supports English and Russian, initially follows
-the browser language, and saves a manual Language selection for the project.
+### 6. The finish: interface, tests, report
 
-![Using the dashboard](readme_gif/en/05_dashboard_controls.gif)
+When every part is accepted and integrated, the Master Chief runs the application and
+walks through normal scenarios: add a record, edit it, delete it. It notes what gets in
+the user's way — faint text, an unlabeled button, a cryptic error message — and fixes
+the interface as a separate phase without touching the logic. Then the full test suite,
+the final report and a launch file. If the interface could not be checked, the
+report notes it.
+
+![The finish](readme_gif/en/06_final.gif)
+
+### 7. Models, limits and keys
+
+In the "Project models" window every role has its own model: from the OpenCode catalog,
+through your own API or — for executors — locally in LM Studio. This is also where you
+set how many executors run at once and the limits of one attempt (steps, seconds,
+repeats), the Bug Fixer's own limits, or switch the Bug Fixer off. The OpenRouter
+catalog shows prices and fills a role with one click. The API key lives in a Windows
+variable; the project stores only its name. "Check connection" never generates anything.
+After "Prepare OpenCode", open a new build chat.
+
+![Models, limits and keys](readme_gif/en/07_models.gif)
+
+### 8. The dashboard: every executor in view
+
+The dashboard opens by itself. "Working now" shows every participant and the function
+it is working on. "Work details" lists every attempt: who did it, how it ended, whether
+it was integrated. "Tokens" shows usage per model and per attempt; if some data is
+missing, the sum is marked "≥" and zero is never substituted. Buttons pause, resume,
+cancel or delete the whole task with all its executors. The interface is in English or
+Russian, following the browser, with a manual switch.
+
+![The dashboard](readme_gif/en/08_dashboard.gif)
 
 Diagram files and how to rebuild them: [readme_gif/README.md](readme_gif/README.md).
+To look inside: [developer guide with diagrams and a map of modules, classes and
+functions (Russian)](docs/EXECUTION_GUIDE.ru.md), [installer architecture (Russian)](docs/INSTALLER.ru.md),
+[localization (Russian)](docs/LOCALIZATION.ru.md), [role prompts](kit/prompts/README.ru.md).
 
 ## How to use it
+
+The easiest path is the setup wizard (diagram 1) and the [beginner guide](OPENCODE_KIT.en.md).
+To add the kit to an existing project by hand, use the [quick start](QUICKSTART.en.md).
+Tools are installed once per computer.
 
 You can write the requirements straight into chat, or save them in `TASK.md` and send
 a short "Start". The file is optional when the task is already in chat. Your current
 instructions take priority. The Master Chief reads the kit rules, the plan and other
-needed documents itself; you do not have to list them.
-
-After connecting the settings, open the project in OpenCode and describe what you
-want. If the executors use LM Studio, the model must be loaded and its server running;
-other executor sources do not need that. The Master Chief prepares the selected models
-as described in AGENTS.md. `run_opencode.py` remains the configuration preparer and an
-alternative way to launch OpenCode; an already open Desktop uses the preparation mode.
-For example:
+needed documents itself; you do not have to list them. For example:
 
 > Add expense tracking: amount, category and date. Negative amounts are not allowed. Show me the plan first.
 
@@ -117,20 +138,22 @@ The Master Chief proposes a solution. You discuss the requirements and approve t
 plan. After that it assigns jobs, calls the needed scripts and checks the result. If
 it lacks information or access, it explains what it needs from you.
 
-Your role is to set the task, decide how the application should behave and judge the
-result. Managing executors, recording reviews, running tests and collecting statistics
-are the Master Chief's job.
+New model settings take effect in a new session. If the executors use LM Studio, the
+model must be loaded and its server running; other sources do not need that. The
+Master Chief prepares the selected models as described in `AGENTS.md`;
+`kit/run_opencode.py` remains the configuration preparer and an alternative launcher.
+
+Parallel executors and the watchdog run in the shared OpenCode Desktop service. In the
+private `--standalone` mode the kit keeps the earlier sequential protocol. Existing
+saved choices and journals remain readable.
 
 In the dashboard you can pause the task with all its executors, resume it, cancel it,
 or delete its sessions and metrics while keeping the source code.
 Semantics and limits: [task controls](kit/dashboard/CONTROLS.ru.md) (Russian).
-
-For the first setup there is a [quick start](QUICKSTART.en.md) ([Russian version](QUICKSTART.ru.md)).
-Installing tools and setting up access are done once per computer; you do not repeat
-them before each task.
+The dashboard and configurator support **EN/RU**; agent messages stay in their original language.
 
 To repeat our experiment from Desktop there is a [short guide](DESKTOP_EXPERIMENT.ru.md) (Russian).
-Own API, the OpenRouter catalog with prices, role and language choice are described in
+Own API, the OpenRouter catalog with prices, roles and language are described in
 the [configurator guide](kit/configurator/UX.ru.md) (Russian).
 
 ## What the Master Chief does during the work
@@ -145,11 +168,13 @@ single function is handed out for a targeted fix or when a class is too large.
 3. Creates the code skeleton and writes tests. Until the functions are implemented,
    these tests are expected to fail.
 4. Hands the executor a small class or related file with requirements written down in advance.
-5. Reviews the returned code. If fixes are needed, records a rework and gives the
-   executor a new job.
-6. Runs tests through the tracking script and checks the results. Keeps working until
-   the required checks pass.
-7. Updates the plan, collects statistics and shows the outcome.
+   With more than one executor selected, independent parts run in parallel, each in its own copy of the files.
+5. Reviews the returned code. If fixes are needed, records a rework; after a code bug or an
+   attempt limit it may hand the work to the Bug Fixer once.
+6. Runs tests through the tracking script and checks the results. Integrates accepted
+   files into the main project one by one.
+7. Reviews the interface in real scenarios when the tools allow it and fixes it as a separate phase.
+8. Runs the full test suite, updates the plan, collects statistics and shows the outcome.
 
 These steps are written into the agent's instructions. The full cycle was tested on
 two Spring tic-tac-toe implementations. The repeat run passed 85 tests and 27 external
@@ -174,7 +199,8 @@ A separate block shows:
 - task time;
 - tokens of paid models;
 - tokens of free / local models — everything running through `lmstudio`;
-- tokens of free cloud models — OpenRouter models ending in `:free`;
+- tokens of free cloud models — OpenRouter models ending in `:free` and OpenCode models ending in `-free`;
+- usage per executor and Bug Fixer attempt — included in the total;
 - the number of code reworks after review;
 - how many full test runs succeeded and how the last one ended.
 
