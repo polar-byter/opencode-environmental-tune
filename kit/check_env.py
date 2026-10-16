@@ -3,7 +3,7 @@
 check_env.py — agentic environment checker.
 It is not an automated test, but a manual check that can be run from the command line.
 It checks the configuration and the LM Studio server, and it performs a trial request to a loaded language model instance.
-Nothing calls it automatically: the real launcher is run_opencode.py, and it skips LM Studio
+Nothing calls it automatically. run_opencode.py, which prepares the OpenCode config, skips LM Studio
 when executors run on a cloud model (opencode) or an own API. This script always checks LM Studio.
 
 It checks generally that the environment is ready for use, and it prints a summary of the results.
