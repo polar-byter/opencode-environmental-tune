@@ -201,7 +201,7 @@ class ExecutionController:
             if self.binding(previous) in self.service.active():
                 raise ValueError('Previous executor has not stopped')
             if read_requirements(requirement_path) != prior['requirements'] or sorted(contracts) != prior.get('contracts', []):
-                raise ValueError('A bug fixer must preserve frozen requirements and contracts')
+                raise ValueError('A bug fixer must preserve recorded requirements and contracts')
         elif role == 'bug_fixer':
             raise ValueError('A bug fixer requires the exact previous attempt')
         allowed = normalize_delegated_path(self.root, file)
@@ -514,9 +514,9 @@ class ExecutionController:
             if not runs or take_project_snapshot(workspace) != json.loads((self.metrics.task_dir(self.task) / runs[-1]['snapshot']).read_text(encoding='utf-8')):
                 raise ValueError('Workspace changed after its accepted green test')
             inspection = next(e for e in reversed(events) if e['kind'] == 'inspection' and e['delegation_id'] == identifier)
-            frozen = json.loads((self.metrics.task_dir(self.task) / inspection['snapshot']).read_text(encoding='utf-8'))
+            inspected_snapshot = json.loads((self.metrics.task_dir(self.task) / inspection['snapshot']).read_text(encoding='utf-8'))
             name = attempt['files'][0]
-            if take_project_snapshot(workspace).get(name) != frozen.get(name):
+            if take_project_snapshot(workspace).get(name) != inspected_snapshot.get(name):
                 raise ValueError('Accepted source changed after inspection')
             target = self.root / name
             temporary = target.with_name(target.name + '.kit-' + uuid.uuid4().hex + '.tmp')

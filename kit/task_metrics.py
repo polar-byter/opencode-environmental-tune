@@ -4,7 +4,7 @@ Why this module is the core of the control loop:
 the Master Chief runs the executor, checks its work and tests it,
 but .metrics/<ID>/events.jsonl is the only source of truth for what happened.
 The Master Chief is a model too: it can be restarted, forget things or bend the rules,
-so the journal, not its memory, decides what was frozen, changed, tested and accepted.
+so the journal, not its memory, decides what was recorded, changed, tested and accepted.
 task_metrics.py is the command line to read and write that journal, and to produce a usage report at the end.
 
 The journal is append-only: one JSON event per line (start, delegation, inspect, review,
@@ -14,7 +14,7 @@ test, halt, resume, finish ...). Events are never edited or removed; every answe
 What the commands enforce:
   - delegate freezes the allowed files, the requirements and a snapshot of the project;
   - inspect detects edits outside the allowed files (delegation_guard.py);
-  - review --result accepted needs evidence for every frozen requirement and a green test.
+  - review --result accepted needs evidence for every recorded requirement and a green test.
 
 But it is not only a journal: it also enforces loop guards. After every test run and
 review, task_metrics.py itself checks the guards against the journal (limit_breach()).
@@ -120,7 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     delegation.add_argument('--work-item', '--piece', dest='work_item', required=True)
     delegation.add_argument('--files', nargs='+', required=True)
     delegation.add_argument('--scope', help='test scope; defaults to the work item name')
-    delegation.add_argument('--requirements', type=Path, required=True, help='JSON list frozen before the executor call')
+    delegation.add_argument('--requirements', type=Path, required=True, help='JSON list recorded before the executor call')
     inspect = sub.add_parser('inspect')
     inspect.add_argument('--work-item', '--piece', dest='work_item', required=True)
     resume = sub.add_parser('resume')
@@ -208,7 +208,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         return path
 
     def delegate(self, task: str, work_item: str, files: list[str], scope: str | None = None,
-                 requirements: Path | None = None, *, workspace: str | None = None,
+                 requirements_file: Path | None = None, *, workspace: str | None = None,
                  worker_id: str | None = None, role: str = 'executor', contracts: list[str] | None = None) -> dict:
 
         """Log one executor attempt and save pre-execution file hashes.
@@ -228,10 +228,10 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         # Allow exactly one unique file per attempt.
         if len(allowed) != 1:
             raise ValueError('Delegate exactly one source file per executor attempt')
-        frozen = read_requirements(self.root / requirements) if requirements else []
+        requirement_texts = read_requirements(self.root / requirements_file) if requirements_file else []
         with self.lock(task):
             events = self.running(task)
-            if events[0].get('track_delegations') and not frozen:
+            if events[0].get('track_delegations') and not requirement_texts:
                 raise ValueError('Tracked delegation requires a requirements file')
             # Any review (accepted, rework or failed) closes an attempt.
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
@@ -272,7 +272,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
             filename = 'before-' + uuid.uuid4().hex + '.json'
             (self.task_dir(task) / filename).write_text(json.dumps(before), encoding='utf-8')
             return self.append(task, 'delegation', work_item=work_item.strip(), files=allowed,
-                               scope=(scope or work_item).strip(), snapshot=filename, requirements=frozen, **details)
+                               scope=(scope or work_item).strip(), snapshot=filename, requirements=requirement_texts, **details)
 
     def inspect(self, task: str, work_item: str) -> dict:
         """Save file changes for the pending attempt; refuse a second inspection.
@@ -341,8 +341,8 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
                 if inspections:
                     inspected = inspections[-1]
                     changes = {k: inspected[k] for k in ('changed', 'unexpected')}
-                    frozen = json.loads((self.task_dir(task) / inspected['snapshot']).read_text(encoding='utf-8'))
-                    subsequent = compare_project_snapshots(frozen, after, [])['changed']
+                    inspected_snapshot = json.loads((self.task_dir(task) / inspected['snapshot']).read_text(encoding='utf-8'))
+                    subsequent = compare_project_snapshots(inspected_snapshot, after, [])['changed']
                     changes['reviewer_changes'] = subsequent
                     if result == 'accepted' and any(p in attempt['files'] for p in subsequent):
                         raise ValueError('Delegated source changed after inspection; register a fresh attempt')
@@ -366,15 +366,15 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
                 if result == 'accepted':
                     if changes['unexpected']:
                         raise ValueError('Executor changed unexpected files: ' + ', '.join(changes['unexpected']))
-                    # check that the review checks cover every frozen requirement exactly once
+                    # check that the review checks cover every recorded requirement exactly once
                     if checks is None:
                         raise ValueError('Acceptance needs --checks with requirement/code/test evidence')
                     evidence['checks'] = review_checks(self.root / checks)
-                    # validate that the review checks cover every frozen requirement exactly once
+                    # validate that the review checks cover every recorded requirement exactly once
                     if attempt.get('requirements') and (
                             len(evidence['checks']) != len(attempt['requirements']) or
                             {c['requirement'] for c in evidence['checks']} != set(attempt['requirements'])):
-                        raise ValueError('Review checks must cover every frozen requirement exactly once')
+                        raise ValueError('Review checks must cover every recorded requirement exactly once')
                     anchor = inspections[-1] if inspections else attempt
 
                     # find all test runs after the delegation (or inspection) for this scope, ignoring baseline runs

@@ -28,7 +28,7 @@ import uuid
 KNOWN_EVENT_TYPES = {
     # 1. Main task cycle, written by task_metrics.py.
     'start',        # the task is opened: title, OpenCode session ID, loop guard limits; always the first event
-    'delegation',   # work is given to the executor: the one allowed file, frozen requirements, "before" snapshot
+    'delegation',   # work is given to the executor: the one allowed file, recorded requirements, "before" snapshot
     'inspection',   # right after the executor returns, before any reviewer edits: changed and unexpected files
     'test',         # one run of the test command: counts, category (passed/tests_failed/no_result/timeout), scope, log
     'review',       # the Master Chief's decision: accepted (with evidence), rework, failed (no work done) or blocked

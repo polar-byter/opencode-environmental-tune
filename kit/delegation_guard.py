@@ -103,7 +103,7 @@ def review_checks(checks_file: Path) -> list[dict]:
     checks_file is .metrics/<ID>/<work_item>-checks.json: the Master Chief writes it during
     the review and passes it as `task_metrics.py review --result accepted --checks <file>`.
     This function checks only the form of every entry; task_metrics.py then checks that
-    the entries cover every frozen requirement exactly once.
+    the entries cover every recorded requirement exactly once.
     """
     # utf-8-sig also accepts a BOM: PowerShell writes UTF-8 files with one by default.
     checks = json.loads(checks_file.read_text(encoding='utf-8-sig'))
@@ -120,7 +120,7 @@ def review_checks(checks_file: Path) -> list[dict]:
 def read_requirements(requirements_file: Path) -> list[str]:
     """Read and validate unique, non-blank requirements; delegate saves them.
     The file is plain JSON (.metrics/<ID>/<work_item>-requirements.json), no comments allowed.
-    The main idea is to have a single source of truth for requirements, frozen before
+    The main idea is to have a single source of truth for requirements, recorded before
     the executor starts: the executor gets them in its task, and the reviewer must
     prove every one of them in the checks file before the work can be accepted.
     Requirements must be unique, because the review compares them as a set.

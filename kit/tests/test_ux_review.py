@@ -101,7 +101,7 @@ class UxReviewTests(unittest.TestCase):
         self.metrics.start('t', track_delegations=True)
         (self.root / 'app.py').write_text('value = 1\n', encoding='utf-8')
         requirements = self.write('req.json', ['value is one'])
-        self.metrics.delegate('t', 'App', ['app.py'], requirements=requirements)
+        self.metrics.delegate('t', 'App', ['app.py'], requirements_file=requirements)
         with self.assertRaisesRegex(ValueError, 'review'):
             self.metrics.ux_review('t', skipped='no browser')
 

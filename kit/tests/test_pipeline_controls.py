@@ -134,11 +134,11 @@ class PipelineControls(unittest.TestCase):
     def test_review_cannot_drop_a_requirement_from_the_original_spec(self):
         path = self.root / '.metrics/task/requirements.json'
         path.write_text('["null checked before map access", "unknown ID rejected"]')
-        self.metrics.delegate('task', 'App', ['app.py'], requirements=path)
+        self.metrics.delegate('task', 'App', ['app.py'], requirements_file=path)
         self.metrics.test('task', self.command, scope='App')
         (self.root / self.checks).write_text(json.dumps([
             {'requirement': 'unknown ID rejected', 'code': 'app.py', 'test': 'test_unknown', 'verified': True}]))
-        with self.assertRaisesRegex(ValueError, 'every frozen requirement'):
+        with self.assertRaisesRegex(ValueError, 'every recorded requirement'):
             self.metrics.review('task', 'App', 'accepted', self.checks)
 
     def test_tracked_tasks_cannot_record_reviews_without_a_delegation(self):
