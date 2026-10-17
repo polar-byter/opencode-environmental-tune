@@ -266,8 +266,12 @@ USD по [официальной справке OpenCode](https://opencode.ai/v2
 | `kit/execution_policy.py` | `normalize_policy`, `limit_reason`, `next_action` | Чистые правила: проверить лимиты и выбрать разрешённое действие; никаких API и окон |
 | `kit/execution_controller.py:worker_permissions` | Функция построения правил | Переводит разрешённые файлы в относительные ресурсы OpenCode; сохраняет общий запрет |
 | `kit/execution_controller.py:ExecutionController` | `settings`, `launch`, `verify_permissions`, `binding`, `spawn_watch`, `observe`, `watch`, `stop`, `integrate` | Зафиксированный профиль задачи, проверка реальных прав до модели, жизненный цикл попытки и объединение |
-| `kit/task_metrics.py:TaskMetrics` | `delegate`, `attempt_root`, `inspect`, `test`, `review`, `parse_exports`, `finish` | Достоверный журнал, проверки, расход и отчёт |
-| `kit/delegation_guard.py` | `snapshot`, `compare`, `review_checks` | Снимки файлов и формальная полнота доказательств ревью |
+| `kit/task_metrics.py:TaskMetrics` | `delegate`, `attempt_root`, `inspect`, `test`, `review`, `finish` | Команды задачи и CLI: проверить правила и дописать событие в журнал |
+| `kit/journal.py:TaskJournal` | `read`, `append`, `lock`, `task_dir`, `corrected_events` | Журнал событий `events.jsonl`: только дописывание, один писатель на задачу |
+| `kit/loop_guards.py` | `limit_breach`, `is_halted`, `DEFAULT_LIMITS` | Защитные остановки: когда задачу нужно остановить и спросить пользователя |
+| `kit/suite_runner.py` | `run_command`, `parse_unittest`, `parse_junit_files`, `run_category` | Запуск тестовой команды и разбор результата |
+| `kit/usage_report.py` | `collect_exports`, `parse_exports`, `render` | Расход токенов из выгрузок OpenCode и отчёт `report.md` |
+| `kit/delegation_guard.py` | `take_project_snapshot`, `compare_project_snapshots`, `review_checks` | Снимки файлов и формальная полнота доказательств ревью |
 | `kit/dashboard/session_control.py:SessionControl` | `call`, `active`, `interrupt`, `clear_inbox`, `tree` | Общение с установленным OpenCode и проверка семьи сессий |
 | `kit/task_control_state.py` | `blocking_reason` | Запрет новых действий при пользовательской паузе/отмене |
 | `kit/dashboard/tracking.py` | `work_items`, `function_progress` | Проекции журнала для интерфейса; проекция — удобное представление исходных фактов |

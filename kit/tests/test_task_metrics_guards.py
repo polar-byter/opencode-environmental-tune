@@ -44,12 +44,12 @@ class GuardCase(unittest.TestCase):
     # --- Windows programs started through .cmd / .bat ---
 
     def test_resolve_command_uses_full_path_on_windows(self):
-        with patch.object(task_metrics.shutil, 'which', return_value=r'C:\maven\bin\mvn.cmd'):
+        with patch('shutil.which', return_value=r'C:\maven\bin\mvn.cmd'):
             self.assertEqual(resolve_command(['mvn', 'test'], windows=True), [r'C:\maven\bin\mvn.cmd', 'test'])
 
     def test_resolve_command_keeps_command_elsewhere_or_when_not_found(self):
         self.assertEqual(resolve_command(['mvn', 'test'], windows=False), ['mvn', 'test'])
-        with patch.object(task_metrics.shutil, 'which', return_value=None):
+        with patch('shutil.which', return_value=None):
             self.assertEqual(resolve_command(['mvn', 'test'], windows=True), ['mvn', 'test'])
 
     # --- JUnit reports ---

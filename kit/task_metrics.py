@@ -31,19 +31,13 @@ Dashboard controls (pause, cancel) also block new work (blocking_reason()).
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
 import json
-import math
 import os
 from pathlib import Path
-import re
-import shutil
-import signal
 import subprocess
 import sys
 import time
 import uuid
-import xml.etree.ElementTree as ET
 
 # The same file is loaded in two ways, and each needs its own import form:
 # - as part of the kit package (python -m kit..., or "from ..task_metrics import" in the dashboard):
@@ -51,43 +45,50 @@ import xml.etree.ElementTree as ET
 #   ".delegation_guard" ("from the same package as this module") can find the neighbour;
 # - as a script (kit/task_metrics.py) or from the tests, which put kit/ on sys.path:
 #   __package__ is empty, a relative import fails, and the plain "delegation_guard" works.
+#
+# The module is split by responsibility; this file keeps only the task commands and the CLI:
+#   journal.py       the append-only event log (TaskJournal) and event helpers
+#   loop_guards.py   when a task must STOP (limit_breach, is_halted, DEFAULT_LIMITS)
+#   suite_runner.py  running the test command and reading its result (SuiteRunnerMixin)
+#   usage_report.py  token usage from OpenCode exports and report.md (UsageReportMixin)
+# Names that used to live here are imported back, so "from task_metrics import X" keeps working.
 if __package__:
-    from .delegation_guard import compare_project_snapshots, read_requirements, review_checks, take_project_snapshot, normalize_delegated_path
-    from .opencode_cli import locate_opencode
+    from .delegation_guard import (compare_project_snapshots, normalize_delegated_path, read_requirements,
+                                   review_checks, take_project_snapshot)
+    from .journal import (EVENT_KINDS, WINDOWS_RESERVED, TaskJournal, corrected_events, normalize_work_item,
+                          pending_attempts, session_id, valid_number)
+    from .loop_guards import (DEFAULT_LIMITS, TaskHalted, is_halted, limit_breach, since_last_resume,
+                              task_limits, trailing)
+    from .suite_runner import (CATEGORY_FAILED, CATEGORY_INCOMPLETE, CATEGORY_NO_RESULT, CATEGORY_PASSED,
+                               CATEGORY_TIMEOUT, SuiteRunnerMixin, diagnose, final_status, fresh_xml_files,
+                               local_tag, parse_junit_files, parse_unittest, resolve_command, run_category,
+                               run_command)
     from .task_control_state import blocking_reason
+    from .usage_report import (TOKEN_FIELDS, UsageReportMixin, add_usage, descendants,
+                               master_chief_tool_child_references, message_info, message_model,
+                               message_tokens, new_usage_row, resolve_opencode, text_or_unknown)
 else:
-    from delegation_guard import compare_project_snapshots, read_requirements, review_checks, take_project_snapshot, normalize_delegated_path
-    from opencode_cli import locate_opencode
+    from delegation_guard import (compare_project_snapshots, normalize_delegated_path, read_requirements,
+                                  review_checks, take_project_snapshot)
+    from journal import (EVENT_KINDS, WINDOWS_RESERVED, TaskJournal, corrected_events, normalize_work_item,
+                         pending_attempts, session_id, valid_number)
+    from loop_guards import (DEFAULT_LIMITS, TaskHalted, is_halted, limit_breach, since_last_resume,
+                             task_limits, trailing)
+    from suite_runner import (CATEGORY_FAILED, CATEGORY_INCOMPLETE, CATEGORY_NO_RESULT, CATEGORY_PASSED,
+                              CATEGORY_TIMEOUT, SuiteRunnerMixin, diagnose, final_status, fresh_xml_files,
+                              local_tag, parse_junit_files, parse_unittest, resolve_command, run_category,
+                              run_command)
     from task_control_state import blocking_reason
+    from usage_report import (TOKEN_FIELDS, UsageReportMixin, add_usage, descendants,
+                              master_chief_tool_child_references, message_info, message_model,
+                              message_tokens, new_usage_row, resolve_opencode, text_or_unknown)
 
-TOKEN_FIELDS = ('input', 'output', 'reasoning', 'cache_read', 'cache_write')
-EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish',
-               'attempt_session', 'attempt_admission', 'attempt_end', 'integration', 'attempt_reclassification',
-               'ux_review'}
 # Final UI/UX improvement stage of the Master Chief: done with evidence, skipped with a reason,
 # or not applicable because the product has no user interface.
 UX_OUTCOMES = ('completed', 'skipped', 'not_applicable')
 UX_REASON_LIMIT = 300
 # failed: the executor returned no work (error, rate limit, unavailable model) and changed no files.
 REVIEW_RESULTS = {'accepted', 'rework', 'failed', 'blocked'}
-WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
-                              *(f'COM{n}' for n in range(1, 10)), *(f'LPT{n}' for n in range(1, 10))})
-
-# Loop guards. Any of them stops the task until the user decides how to continue.
-DEFAULT_LIMITS = dict(
-    max_reworks=3,      # returns of one work item to the executor
-    max_no_result=3,    # test runs in a row without readable test results (setup or build problem)
-    max_failed_runs=12, # test runs in a row that are not fully green (a module of several
-                        # functions stays red until its last function is done, so this is generous)
-    max_runs=60,        # test runs in total; raise it with --max-runs for a large project
-)
-
-# What a test run means for the build loop.
-CATEGORY_PASSED = 'passed'          # tests ran, all green
-CATEGORY_FAILED = 'tests_failed'    # tests ran, some failed: a code or test problem
-CATEGORY_INCOMPLETE = 'incomplete'  # tests ran without failures, but some were skipped
-CATEGORY_NO_RESULT = 'no_result'    # no readable test results: setup, build or tool problem
-CATEGORY_TIMEOUT = 'timeout'        # the command did not finish in time
 
 # Exit codes of the command line, so the Master Chief can react without parsing text.
 EXIT_OK = 0
@@ -96,452 +97,6 @@ EXIT_USAGE = 2
 EXIT_STOP = 3
 EXIT_NO_RESULT = 4
 
-
-class TaskHalted(Exception):
-    """The task reached a loop guard. The Master Chief must stop and ask the user."""
-
-
-def valid_number(value):
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0
-
-
-def pending_attempts(events, work_item=None):
-    """Select open attempts by identity rather than a global last delegation."""
-    closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
-    return [e for e in events if e['kind'] == 'delegation' and e['event_id'] not in closed
-            and (work_item is None or e['work_item'] == work_item)]
-
-
-def normalize_work_item(event: dict) -> dict:
-    """Read the legacy journal field without changing the original event.
-
-    Events without 'piece' are returned unchanged. Otherwise a shallow copy
-    replaces 'piece' with 'work_item'. Equal old/new names are accepted;
-    conflicting names raise ValueError rather than attaching work to the wrong item.
-    """
-    if 'piece' not in event:
-        return event
-    if 'work_item' in event and event['work_item'] != event['piece']:
-        raise ValueError('Conflicting work_item and legacy piece fields')
-    normalized = dict(event)
-    normalized['work_item'] = normalized.pop('piece')
-    return normalized
-
-
-def session_id(value):
-    if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,159}', value):
-        raise ValueError('Invalid session ID')
-    return value
-
-
-def corrected_events(events):
-    """Project an audited timeout correction without rewriting original journal rows.
-
-    Only an api_error/blocked pair can become deadline/rework. Acceptance, file
-    evidence and timestamps are never changed. References must precede the correction.
-    """
-    result, positions = [], {}
-    for source in events:
-        event = dict(normalize_work_item(source))
-        if event['kind'] == 'attempt_reclassification':
-            if any(not isinstance(event.get(key), str) or not event[key].strip()
-                   for key in ('end_event', 'review_event', 'delegation_id', 'explanation')):
-                raise ValueError('Timeout correction requires exact references and an explanation')
-            end_index = positions.get(event.get('end_event'))
-            review_index = positions.get(event.get('review_event'))
-            if end_index is None or review_index is None or event.get('reason') != 'deadline':
-                raise ValueError('Invalid timeout correction references')
-            end, review = result[end_index], result[review_index]
-            identifier = event.get('delegation_id')
-            if (end['kind'] != 'attempt_end' or review['kind'] != 'review'
-                    or end.get('delegation_id') != identifier or review.get('delegation_id') != identifier
-                    or end.get('original_reason', end.get('reason')) != 'api_error'
-                    or review.get('original_result', review.get('result')) != 'blocked'
-                    or not end.get('stopped') or event['at'] < max(end['at'], review['at'])
-                    or end.get('classification_event') not in (None, event['event_id'])):
-                raise ValueError('Only a stopped API/blocked attempt can be corrected')
-            result[end_index] = dict(end, reason='deadline', original_reason='api_error', classification_event=event['event_id'])
-            result[review_index] = dict(review, result='rework', reason='deadline', original_result='blocked', classification_event=event['event_id'])
-        positions[event.get('event_id')] = len(result)
-        result.append(event)
-    return result
-
-
-def message_info(message):
-    """V2 messages are direct objects; legacy messages wrap data in info/parts."""
-    if not isinstance(message, dict):
-        raise ValueError('Unsupported message structure')
-    info = message.get('info', message)
-    if not isinstance(info, dict):
-        raise ValueError('Unsupported message info')
-    return info
-
-
-def master_chief_tool_child_references(export):
-    """Find child sessions that the Master Chief started through its tools.
-
-    When the Master Chief calls an executor, OpenCode runs the executor in a separate
-    child session. Its messages and tokens are not part of the Master Chief's export,
-    so the report must find every child to count all usage.
-
-    The main source of children is the OpenCode API (session.list, see
-    collect_exports). This function is the fallback: it scans tool parts of the
-    export for state.metadata.sessionID (or sessionId). Session IDs are taken
-    only from tool metadata, never from text written by a model.
-
-    Returns a set of session IDs.
-    """
-    found = set()
-    for message in export['messages']:
-        message_info(message)
-        for part in message.get('parts', message.get('content', [])):
-            if not isinstance(part, dict) or part.get('type') != 'tool':
-                continue
-            metadata = part.get('state', {}).get('metadata', {})
-            if isinstance(metadata, dict):
-                for key in ('sessionID', 'sessionId'):
-                    if metadata.get(key):
-                        found.add(session_id(metadata[key]))
-    return found
-
-
-def run_command(command: list[str], cwd: Path, timeout: float) -> tuple[str, int, bool]:
-    """
-    Runs a command and returns (combined output, exit code, timed_out).
-
-    Exit code 124 means the timeout was reached, 127 means the program was not found.
-    On timeout the whole process tree is killed, not only the parent process:
-    Maven, Gradle and dotnet start child processes that would otherwise keep running.
-    """
-    env = dict(os.environ, PYTHONIOENCODING='utf-8')
-    try:
-        process = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                   text=True, encoding='utf-8', errors='replace',
-                                   start_new_session=os.name != 'nt')
-    except OSError as error:
-        return str(error), 127, False
-    try:
-        output, _ = process.communicate(timeout=timeout)
-        return output, process.returncode, False
-    except subprocess.TimeoutExpired:
-        if os.name == 'nt':
-            subprocess.run(['taskkill', '/PID', str(process.pid), '/T', '/F'],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-        else:
-            os.killpg(process.pid, signal.SIGKILL)
-        if process.poll() is None:
-            process.kill()
-        output, _ = process.communicate(timeout=10)
-        return output, 124, True
-    finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait(timeout=10)
-
-
-def resolve_command(command: list[str], windows: bool = os.name == 'nt') -> list[str]:
-    """
-    On Windows, replace the program name with its full path found through PATH and PATHEXT.
-
-    Programs such as npx, npm, mvn and gradlew are .cmd or .bat files on Windows. Without a
-    shell, Windows does not find them by the bare name, so 'mvn test' would fail with
-    "program not found". shutil.which knows PATHEXT and returns e.g. C:\\...\\mvn.cmd.
-    On other systems, or when nothing is found, the command is returned unchanged.
-    """
-    if not windows or not command:
-        return list(command)
-    found = shutil.which(command[0])
-    return [found, *command[1:]] if found else list(command)
-
-
-def resolve_opencode(executable: str) -> str:
-    """Find the OpenCode CLI (order in kit/opencode_cli.py).
-
-    Reading exports only needs plain arguments, so a .cmd wrapper on PATH is still accepted
-    as the last resort. Unknown names are returned as is.
-    """
-    return locate_opencode(executable) or shutil.which(executable) or executable
-
-
-def local_tag(element) -> str:
-    """Tag name without an XML namespace: '{ns}testcase' -> 'testcase'."""
-    return element.tag.rsplit('}', 1)[-1]
-
-
-def parse_junit_files(paths: list[Path]) -> dict:
-    """
-    Counts test cases and their outcomes in one or more JUnit XML reports.
-
-    Maven and Gradle write one file per test class, so several files are summed.
-    A file that cannot be read makes the whole result unknown (diagnostic), because
-    a partial sum would look like a smaller but complete test suite.
-    """
-    if not paths:
-        return dict(diagnostic='No JUnit XML report was written by the test command')
-    result = dict(tests=0, failures=0, errors=0, skipped=0)
-    for path in paths:
-        try:
-            tree = ET.parse(path)
-        except (OSError, ET.ParseError) as error:
-            return dict(diagnostic=f'JUnit report unavailable: {path.name}: {error}')
-        for case in (e for e in tree.iter() if local_tag(e) == 'testcase'):
-            tags = {local_tag(e) for e in case}
-            result['tests'] += 1
-            for tag, key in [('failure', 'failures'), ('error', 'errors'), ('skipped', 'skipped')]:
-                result[key] += int(tag in tags)
-    return result
-
-
-def parse_unittest(output: str) -> dict:
-    """Reads the final 'Ran N tests ... OK/FAILED (...)' summary of Python unittest."""
-    matches = list(re.finditer(r'^Ran (\d+) tests? in [^\r\n]+\r?\n', output, re.M))
-    # Multiple summaries could conceal earlier failures; require one run per command.
-    if len(matches) != 1:
-        return {}
-    summary = output[matches[0].end():].strip()
-    end = re.fullmatch(r'(OK|FAILED)(?: \(([^\r\n]*)\))?', summary)
-    if not end:
-        return {}
-    result = dict(tests=int(matches[0][1]), failures=0, errors=0, skipped=0)
-    for key, value in re.findall(r'([a-z ]+)=(\d+)', end[2] or ''):
-        key = key.strip()
-        if key in result:
-            result[key] = int(value)
-        elif key in {'expected failures', 'unexpected successes'}:
-            result['skipped'] += int(value)
-        else:
-            result['diagnostic'] = 'Unrecognized unittest outcome'
-    if end[1] == 'FAILED' and not result['failures'] and not result['errors']:
-        result['errors'] = 1
-    return result
-
-
-def final_status(result: dict, returncode: int) -> str:
-    """Final status of one test run. The order of checks matters: the first match wins."""
-    if returncode != 0:
-        return 'failed'
-    if result.get('diagnostic') or result['tests'] is None:
-        return 'unknown'
-    if result['failures'] or result['errors']:
-        return 'failed'
-    if result['tests'] == 0:
-        return 'empty'
-    if result['skipped']:
-        return 'skipped'
-    return 'passed'
-
-
-def descendants(sessions: dict, root: str) -> set[str]:
-    """Returns root and every session below it (children, grandchildren, ...)."""
-    allowed = {root}
-    while True:
-        more = {sid for sid, items in sessions.items() if items[0]['info'].get('parentID') in allowed}
-        if more <= allowed:
-            return allowed
-        allowed |= more
-
-
-def text_or_unknown(value) -> str:
-    """Returns a non-empty string as is, anything else as 'unknown'."""
-    return value if isinstance(value, str) and value else 'unknown'
-
-
-def message_model(info: dict) -> tuple[str, str]:
-    """Provider and model of one assistant message, in the legacy or the V2 format."""
-    model_ref = info.get('model') if isinstance(info.get('model'), dict) else {}
-    provider = info.get('providerID', model_ref.get('providerID'))
-    model = info.get('modelID', model_ref.get('id'))
-    return text_or_unknown(provider), text_or_unknown(model)
-
-
-def new_usage_row(provider: str, model: str) -> dict:
-    """An empty report row for one provider/model pair."""
-    if provider == 'lmstudio':
-        group = 'local'
-    elif (provider == 'openrouter' and model.endswith(':free')) or (provider == 'opencode' and model.endswith('-free')):
-        # OpenRouter marks its zero-price variants with ":free" (rate limited, no API fee).
-        group = 'free'
-    elif provider == 'unknown':
-        group = 'unknown'
-    else:
-        group = 'paid'
-    return dict(provider=provider, model=model, group=group, messages=0, missing_usage=0,
-                known=dict.fromkeys(TOKEN_FIELDS, 0), known_messages=dict.fromkeys(TOKEN_FIELDS, 0),
-                **dict.fromkeys(TOKEN_FIELDS, 0))
-
-
-def message_tokens(info: dict) -> dict:
-    """Five token counters of one message; a missing or invalid counter becomes None."""
-    tokens = info.get('tokens') if isinstance(info.get('tokens'), dict) else {}
-    cache = tokens.get('cache') if isinstance(tokens.get('cache'), dict) else {}
-    values = dict(input=tokens.get('input'), output=tokens.get('output'), reasoning=tokens.get('reasoning'),
-                  cache_read=cache.get('read'), cache_write=cache.get('write'))
-    return {k: v if type(v) is int and v >= 0 else None for k, v in values.items()}
-
-
-def add_usage(row: dict, values: dict) -> None:
-    """Adds one message to a row. One unknown value makes that column's sum unknown for good."""
-    row['messages'] += 1
-    row['missing_usage'] += int(values['input'] is None or values['output'] is None)
-    for field, value in values.items():
-        if value is not None:
-            row['known'][field] += value
-            row['known_messages'][field] += 1
-        row[field] = None if value is None or row[field] is None else row[field] + value
-
-
-def fresh_xml_files(folder: Path, since: float) -> list[Path]:
-    """
-    XML files under folder (recursively) written at or after `since` (Unix time).
-
-    Older files are left from previous runs and must not be counted again.
-    Two seconds of tolerance cover file systems that store time with low precision.
-    """
-    if not folder.is_dir():
-        return []
-    return sorted(p for p in folder.rglob('*.xml') if p.is_file() and p.stat().st_mtime >= since - 2)
-
-
-def run_category(parsed: dict, returncode: int) -> str:
-    """
-    What a test run means for the build loop.
-
-    The key question is whether the tests actually ran. Failing tests are a code or
-    test problem and can be sent back to the executor. No readable result means the
-    project could not be built or the test tool is not set up; the executor cannot fix that
-    unless the log shows a compile error in its own code.
-    """
-    if parsed['status'] == 'timeout':
-        return CATEGORY_TIMEOUT
-    if parsed['status'] == 'passed':
-        return CATEGORY_PASSED
-    ran = parsed.get('tests') and not parsed.get('diagnostic')
-    if ran and (parsed.get('failures') or parsed.get('errors')):
-        return CATEGORY_FAILED
-    if ran and returncode == 0 and parsed.get('skipped'):
-        return CATEGORY_INCOMPLETE
-    return CATEGORY_NO_RESULT
-
-
-def since_last_resume(events: list[dict]) -> list[dict]:
-    """Events after the last 'resume'; all events if the task was never resumed."""
-    for index in range(len(events) - 1, -1, -1):
-        if events[index]['kind'] == 'resume':
-            return events[index + 1:]
-    return events
-
-
-def is_halted(events: list[dict]) -> dict | None:
-    """The active 'halt' event, or None. A later 'resume' cancels a halt."""
-    for event in reversed(events):
-        if event['kind'] == 'resume':
-            return None
-        if event['kind'] == 'halt':
-            return event
-    return None
-
-
-def trailing(tests: list[dict], categories: set[str]) -> int:
-    """How many of the last test runs in a row fall into the given categories."""
-    count = 0
-    for event in reversed(tests):
-        if event.get('category') not in categories:
-            break
-        count += 1
-    return count
-
-
-def limit_breach(events: list[dict], limits: dict) -> str | None:
-    """
-    Checks the loop guards against the journal. Returns a human-readable reason or None.
-
-    Only events after the last 'resume' count: after the user's decision every guard
-    starts from zero.
-    """
-    recent = [normalize_work_item(event) for event in since_last_resume(events)]
-    tests = [e for e in recent if e['kind'] == 'test']
-    if __package__:
-        from .execution_policy import attempt_counts, budget_reason
-    else:
-        from execution_policy import attempt_counts, budget_reason
-    isolated = {e['event_id']: e for e in events if e['kind'] == 'delegation' and e.get('workspace')}
-    for item in {e['work_item'] for e in isolated.values()}:
-        bindings = [e for e in events if e['kind'] == 'attempt_session'
-                    and e.get('delegation_id') in isolated and isolated[e['delegation_id']]['work_item'] == item]
-        if bindings:
-            role = 'executor' if bindings[-1].get('fixer_enabled') is False else None
-            reason = budget_reason(attempt_counts(events, item), bindings[-1].get('policy'), role)
-            if reason:
-                return item + ': ' + reason
-    reworks, failures = {}, {}
-    for event in recent:
-        if event.get('delegation_id') in isolated:
-            continue
-        if event['kind'] == 'review' and event['result'] == 'rework':
-            reworks[event['work_item']] = reworks.get(event['work_item'], 0) + 1
-        elif event['kind'] == 'review' and event['result'] == 'failed':
-            failures[event['work_item']] = failures.get(event['work_item'], 0) + 1
-    for work_item, count in reworks.items():
-        if count >= limits['max_reworks']:
-            return (f'{work_item} was sent back {count} times (limit {limits["max_reworks"]}). '
-                    f'The spec or the tests may be wrong.')
-    # A failed attempt is not a rework, but endless retries of a broken executor must stop too.
-    for work_item, count in failures.items():
-        if count >= limits['max_reworks']:
-            return (f'The executor failed {count} times on {work_item} without changing files '
-                    f'(limit {limits["max_reworks"]}). Check that the executor model is available.')
-    no_result = trailing(tests, {CATEGORY_NO_RESULT, CATEGORY_TIMEOUT})
-    if no_result >= limits['max_no_result']:
-        return (f'{no_result} test runs in a row gave no readable result (limit {limits["max_no_result"]}). '
-                f'The project does not build or the test tool is not set up.')
-    # A module's red tests must not accumulate with unrelated modules or the initial baseline.
-    for scope in sorted({e.get('scope', 'full') for e in tests}):
-        scoped = [e for e in tests if e.get('phase') != 'baseline' and
-                  (e.get('scope', 'full') == scope or
-                   (e.get('scope', 'full') == 'full' and e['status'] == 'passed'))]
-        failed = trailing(scoped, {CATEGORY_FAILED, CATEGORY_INCOMPLETE, CATEGORY_NO_RESULT, CATEGORY_TIMEOUT})
-        if failed >= limits['max_failed_runs']:
-            return (f'{failed} test runs in a row were not green in {scope} '
-                    f'(limit {limits["max_failed_runs"]}).')
-    if len(tests) >= limits['max_runs']:
-        return f'{len(tests)} test runs in this task (limit {limits["max_runs"]}).'
-    return None
-
-
-def task_limits(events: list[dict]) -> dict:
-    """Limits stored in the start event; defaults for journals written before limits existed."""
-    stored = events[0].get('limits')
-    return dict(DEFAULT_LIMITS, **(stored if isinstance(stored, dict) else {}))
-
-
-def diagnose(output: str, returncode: int, parsed: dict, category: str, junit_given: bool) -> list[str]:
-    """Plain hints for a test run that gave no readable result. Used by `check` and `test`."""
-    if category not in {CATEGORY_NO_RESULT, CATEGORY_TIMEOUT} and parsed['status'] != 'empty':
-        return []
-    text = output.lower()
-    hints = []
-    if returncode == 127:
-        hints.append('The test program was not found. Check that it is installed and on PATH.')
-    if category == CATEGORY_TIMEOUT:
-        hints.append('The command did not finish. Test tools in watch mode never exit: '
-                     'use "vitest run", "jest --ci" or "--watchAll=false"; or raise --timeout.')
-    if 'could not find a test logger' in text:
-        hints.append('dotnet test cannot find the JUnit logger: '
-                     'run "dotnet add <TestProject> package JunitXml.TestLogger".')
-    if any(marker in text for marker in ('build failed', 'build error', 'compilation error', 'compilation failed')) \
-            or re.search(r'error (cs|ts)\d+', text):
-        hints.append('The project does not compile. If the error is in code the executor just wrote, '
-                     'send that work_item back; otherwise fix the project or ask the user.')
-    if parsed['status'] == 'empty':
-        hints.append('No tests were found. Check the test folder, file names and test filters.')
-    if parsed.get('diagnostic', '').startswith('No JUnit XML'):
-        hints.append('The command did not write a JUnit XML report. Check the report flag and path '
-                     'in the test command (Project stack in AGENTS.md).')
-    elif not junit_given and parsed['tests'] is None:
-        hints.append('The output format is not recognized. Use --junit <file> or --junit-dir <folder> '
-                     'so the runner can read a JUnit XML report.')
-    return hints or ['Read the test log to find the cause.']
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -596,71 +151,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-class TaskMetrics:
-    """One writer per task. Data is stored in project/.metrics/task/.
+class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
+    """The task commands: start, delegate, inspect, review, test, resume, ux-review, finish.
 
-    The class provides methods to start a task, record reviews and test runs,
-    and finish the task with a usage report.
-    It handles file locking to prevent concurrent writes
-    and validates input data for correctness.
+    Each command reads the journal, checks its rules and appends one event.
+    The journal itself (read, append, lock) comes from TaskJournal; running tests
+    from SuiteRunnerMixin; token usage and report.md from UsageReportMixin.
 
     Calling finish again for a finished task returns the same report without
     recounting; the report is written to report.md in the task directory.
     """
-
-    # root is the project root; metrics are stored in root/.metrics/
-    def __init__(self, root: Path):
-        self.root = Path(root).resolve()
-
-    # get the directory for a specific task, validating the task name and ensuring no symlinks
-    def task_dir(self, task: str) -> Path:
-        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,79}', task) or task.upper() in WINDOWS_RESERVED:
-            raise ValueError('Task ID: 1-80 ASCII letters/digits/_/-, not a reserved Windows name')
-
-        base = self.root / '.metrics'
-        result = base / task
-
-        if base.resolve() != base or result.resolve() != result:
-            raise ValueError('Metrics directories must not be symlinks or junctions')
-        return result
-
-    def read(self, task: str) -> list[dict]:
-        try:
-            lines = (self.task_dir(task) / 'events.jsonl').read_text(encoding='utf-8').splitlines()
-            events = [json.loads(line) for line in lines]
-
-            if (not events or events[0].get('kind') != 'start' or
-                    any(not isinstance(e, dict) or not valid_number(e.get('at')) or
-                        e.get('kind') not in EVENT_KINDS for e in events)):
-                raise ValueError('Invalid journal events')
-
-            return corrected_events(events)
-        except (OSError, ValueError, AttributeError) as error:
-            raise ValueError(f'Cannot read task {task}; start it first or inspect events.jsonl: {error}') from error
-
-    # to use with statement for locking a task directory to prevent concurrent writes
-    @contextmanager
-    def lock(self, task: str):
-        path = self.task_dir(task) / '.lock'
-        try:
-            handle = path.open('x', encoding='ascii')
-        except FileExistsError as error:
-            raise ValueError(f'Task {task} is locked; inspect its process before removing .lock') from error
-        try:
-            handle.write(str(os.getpid()))
-            handle.close()
-            yield
-        finally:
-            handle.close()
-            path.unlink()
-
-    def append(self, task: str, kind: str, **data) -> dict:
-        event = dict(data, kind=kind, at=time.time(), event_id=uuid.uuid4().hex)
-        with (self.task_dir(task) / 'events.jsonl').open('a', encoding='utf-8') as handle:
-            handle.write(json.dumps(event, ensure_ascii=False, allow_nan=False) + '\n')
-            handle.flush()
-            os.fsync(handle.fileno())
-        return event
 
     def start(self, task: str, session: str | None = None, title: str | None = None,
               limits: dict | None = None, track_delegations: bool = False) -> dict:
@@ -680,12 +180,6 @@ class TaskMetrics:
                                track_delegations=track_delegations, ux_review_required=track_delegations,
                                **server)
 
-    # check if the task is active (not finished) and return its events
-    def active(self, task):
-        events = self.read(task)
-        if any(e['kind'] == 'finish' for e in events):
-            raise ValueError('Task is finished; start a new task ID')
-        return events
 
     def running(self, task):
         """Events of an active task that is not stopped by a loop guard; raises TaskHalted otherwise."""
@@ -975,49 +469,6 @@ class TaskMetrics:
                 raise ValueError('Record a review for every executor attempt before the UI/UX stage')
             return self.append(task, 'ux_review', **data)
 
-    # parse the output of a test run, optionally using JUnit XML reports to extract test results
-    def parse_tests(self, output: str, returncode: int, junit: Path | list[Path] | None = None) -> dict:
-        if junit is not None:
-            counts = parse_junit_files([junit] if isinstance(junit, Path) else list(junit))
-        else:
-            counts = parse_unittest(output)
-        result = dict(tests=None, failures=None, errors=None, skipped=None)
-        result.update(counts)
-        result['status'] = final_status(result, returncode)
-        return result
-
-    def report_source(self, junit: str | None, junit_dir: str | None):
-        """
-        Validates where JUnit results come from. Returns (file, folder): at most one is set.
-
-        A single file must not exist before the run, so an old green report is never read
-        as a new one. A folder may exist: only files written during the run are read.
-        """
-        if junit and junit_dir:
-            raise ValueError('Use either --junit or --junit-dir, not both')
-        target = (self.root / (junit or junit_dir)).resolve() if (junit or junit_dir) else None
-        if target and not target.is_relative_to(self.root):
-            raise ValueError('JUnit path must be inside the project')
-        if junit and target.exists():
-            raise ValueError('JUnit file must not exist before the run; use a new name for every run')
-        return (target, None) if junit else (None, target)
-
-    def execute(self, command: list[str], timeout: float, xml: Path | None, folder: Path | None):
-        """Runs the test command once and reads its results. Returns (output, code, parsed, category)."""
-        if not command or not valid_number(timeout) or timeout == 0:
-            raise ValueError('Provide a command and a finite positive timeout')
-        started_wall = time.time()
-        output, code, timed_out = run_command(resolve_command(command), self.root, timeout)
-        if folder is not None:
-            report = fresh_xml_files(folder, started_wall)
-        elif xml is not None:
-            report = [xml] if xml.exists() else []
-        else:
-            report = None
-        parsed = self.parse_tests(output, code, report)
-        if timed_out:
-            parsed['status'] = 'timeout'
-        return output, code, parsed, run_category(parsed, code)
 
     # run a test command for a task, capturing its output and return code, and optionally parsing JUnit XML reports
     def test(self, task: str, command: list[str], timeout: float = 300, junit: str | None = None,
@@ -1073,255 +524,6 @@ class TaskMetrics:
         readable = category in {CATEGORY_PASSED, CATEGORY_FAILED, CATEGORY_INCOMPLETE}
         return dict(readable=readable, category=category, returncode=code, output=output,
                     hints=diagnose(output, code, parsed, category, bool(xml or folder)), **parsed)
-
-    # parse OpenCode exports for a task, filtering messages by time and collecting token usage statistics
-    def parse_exports(self, exports: list[dict], session: str, since: float, until: float) -> dict:
-        sessions = {}
-        for export in exports:
-            if (not isinstance(export, dict) or not isinstance(export.get('info'), dict) or
-                    not isinstance(export.get('messages'), list)):
-                raise ValueError('Unsupported OpenCode export: expected info and messages')
-            sid = session_id(export['info'].get('id'))
-            sessions.setdefault(sid, []).append(export)
-
-        if session not in sessions:
-            raise ValueError('Root session export is missing')
-        allowed = descendants(sessions, session)
-
-        warnings_list = []
-        for sid in sessions.keys() - allowed:
-            warnings_list.append(f'Посторонняя сессия исключена: {sid}')
-        rows, seen, session_rows = {}, {}, {}
-
-        for sid in sorted(allowed):
-            for export in sessions[sid]:
-                warnings_list.extend(export.get('_metrics_warnings', []))
-                for child in master_chief_tool_child_references(export) - allowed:
-                    warnings_list.append(f'Нет выгрузки дочерней сессии: {child}')
-                for message in export['messages']:
-                    info = message_info(message)
-                    if info.get('role', info.get('type')) != 'assistant':
-                        continue
-                    mid = info.get('id')
-                    stamp = info.get('time', {})
-                    if not isinstance(stamp, dict) or not isinstance(mid, str) or not valid_number(stamp.get('created')):
-                        warnings_list.append(f'Пропущено сообщение без ID/времени: {sid}')
-                        continue
-                    if not since <= stamp['created']/1000 <= until:
-                        continue
-                    if not valid_number(stamp.get('completed')) or stamp['completed']/1000 > until:
-                        warnings_list.append('Незавершённые на момент отчёта сообщения не включены.')
-                        continue
-                    key = (sid, mid)
-                    if key in seen:
-                        if seen[key] != info:
-                            raise ValueError(f'Conflicting duplicate message: {sid}/{mid}')
-                        continue
-                    seen[key] = info
-                    provider, model = message_model(info)
-                    row = rows.setdefault((provider, model), new_usage_row(provider, model))
-                    add_usage(row, message_tokens(info))
-                    per_session = session_rows.setdefault((sid, provider, model), dict(new_usage_row(provider, model), session=sid, cost_usd=0))
-                    add_usage(per_session, message_tokens(info))
-                    cost = info.get('cost')
-                    per_session['cost_usd'] = (per_session['cost_usd'] + cost
-                        if per_session['cost_usd'] is not None and valid_number(cost) else None)
-        warnings_list.append('Учтены сообщения в интервале задачи; служебные вызовы вне экспорта могут отсутствовать.')
-        if any(r['missing_usage'] for r in rows.values()):
-            warnings_list.append('В части сообщений нет корректного расхода токенов; соответствующие суммы неизвестны.')
-        return dict(models=list(rows.values()), warnings=list(dict.fromkeys(warnings_list)), sessions=sorted(allowed),
-                    session_usage=list(session_rows.values()))
-
-    # run an OpenCode CLI command and parse its JSON output, raising an error if the command fails or returns non-JSON output
-    # for instance: opencode session export ses_abc123
-    # it will execute the command and return the parsed JSON output, or raise a ValueError if the command fails or returns invalid JSON
-    # this command is used to collect exports for a session and its children, which are then parsed to generate a usage report
-    # opencode runs this command and returns the JSON output, which is then processed by collect_exports to gather all relevant data for the task
-    def cli_json(self, executable: str, args: list[str]):
-        result = subprocess.run([executable, *args], cwd=self.root, stdin=subprocess.DEVNULL,
-                                capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30)
-        if result.returncode:
-            raise ValueError(f'OpenCode {args[0]} failed (exit {result.returncode})')
-        try:
-            return json.loads(result.stdout.lstrip('\ufeff'))
-        except ValueError as error:
-            raise ValueError('OpenCode returned non-JSON output; check CLI version/server') from error
-
-    def export_session(self, executable: str, sid: str) -> dict:
-        """Export one session, trying the newer CLI command before the legacy one."""
-        try:
-            export = self.cli_json(executable, ['session', 'export', sid])
-        except ValueError:
-            export = self.cli_json(executable, ['export', sid])
-        if not isinstance(export, dict) or export.get('info', {}).get('id') != sid:
-            raise ValueError('Export session ID mismatch')
-        if not isinstance(export.get('messages'), list):
-            raise ValueError('Export messages missing')
-        return export
-
-    def api_children(self, executable: str, sid: str, children: set[str] | None = None) -> set[str]:
-        """Read child sessions, preserving discovered IDs in the supplied set on failure."""
-        if children is None:
-            children = set()
-        cursor, cursors = None, set()
-        for _ in range(100):
-            args = ['api', 'session.list', '--param', f'parentID={sid}', '--param', 'limit=100']
-            if cursor:
-                args += ['--param', f'cursor={cursor}']
-            page = self.cli_json(executable, args)
-            if not isinstance(page, dict) or not isinstance(page.get('data'), list):
-                raise ValueError('Unsupported session.list response')
-            for item in page['data']:
-                if not isinstance(item, dict) or item.get('parentID') != sid:
-                    raise ValueError('Child session parent mismatch')
-                children.add(session_id(item.get('id')))
-            cursor = page.get('cursor', {}).get('next')
-            if not cursor:
-                return children
-            if cursor in cursors:
-                raise ValueError('Repeated pagination cursor')
-            cursors.add(cursor)
-        raise ValueError('Too many session pages')
-
-    # collect OpenCode exports for a session and its children, using the CLI to fetch data and handling pagination and errors
-    def collect_exports(self, session: str, executable: str = 'opencode') -> list[dict]:
-        session_id(session)
-        executable = resolve_opencode(executable)
-        queue, seen, exports = [session], set(), []
-        while queue:
-            sid = session_id(queue.pop(0))
-            if sid in seen:
-                continue
-            if len(seen) >= 100:
-                raise ValueError('More than 100 sessions; narrow task scope')
-            seen.add(sid)
-            try:
-                export = self.export_session(executable, sid)
-                children = master_chief_tool_child_references(export)
-                try:
-                    self.api_children(executable, sid, children)
-                except (ValueError, OSError, subprocess.TimeoutExpired) as error:
-                    export['_metrics_warnings'] = [f'Поиск дочерних сессий неполон: {error}']
-                queue.extend(sorted(children - seen))
-                exports.append(export)
-            except (OSError, subprocess.TimeoutExpired) as error:
-                raise ValueError(f'Cannot collect OpenCode session {sid}: {error}') from error
-        return exports
-
-    # We print a Markdown report for a task, summarizing its events, usage statistics, and test results
-    # The report includes sections for paid models, local models, and unknown providers, as well as counts of reviews and test outcomes.
-    def render(self, task: str, events: list[dict], usage: dict, ended: float, language: str = 'ru') -> str:
-        """Render frozen facts in one language; never translate task or worker text."""
-        if __package__:
-            from . import localization
-        else:
-            import localization
-        def t(key, **values):
-            return localization.text(key, language, **values)
-        def label(value):
-            return str(value).replace('|', '\\|').replace('\r', ' ').replace('\n', ' ').replace('<', '&lt;').replace('>', '&gt;')
-        def count(value):
-            return t('no data') if value is None else f'{value:,}'.replace(',', ' ' if language == 'ru' else ',')
-        duration = max(0, int(ended - events[0]['at']))
-        reviews = [e for e in events if e['kind'] == 'review']
-        tests = [e for e in events if e['kind'] == 'test']
-        lines = [t('## 📊 Task report · {title}', title=label(events[0]['title'])), '',
-                 t('⏱ Time: **{minutes} min {seconds} sec**', minutes=duration // 60, seconds=duration % 60), '']
-        for group, heading in [('paid', 'Paid models'), ('local', 'Free / local · LM Studio'),
-                               ('free', 'Free cloud · OpenRouter / OpenCode'), ('unknown', 'Unknown provider')]:
-            rows = [r for r in usage['models'] if r['group'] == group]
-            if group in ('free', 'unknown') and not rows:
-                continue
-            lines += ['### ' + t(heading), '']
-            if not rows:
-                lines += [t('No calls recorded for this group in the selected interval.'), '']
-                continue
-            lines += [t('| Model | Input | Output | Reasoning | Cache: read | Cache: write |'), '|---|---:|---:|---:|---:|---:|']
-            for row in rows:
-                lines.append('| ' + label(row['provider'] + '/' + row['model']) + ' | ' +
-                             ' | '.join(count(row[f]) for f in TOKEN_FIELDS) + ' |')
-            lines.append('')
-        work_tests = [e for e in tests if e.get('phase') != 'baseline']
-        lines += [t('🔁 Rework requests: **{reworks}** · Reviews recorded: **{reviews}**',
-                    reworks=sum(e['result'] == 'rework' for e in reviews), reviews=len(reviews)), '']
-        failed_attempts = sum(e['result'] == 'failed' for e in reviews)
-        blocked_attempts = sum(e['result'] == 'blocked' for e in reviews)
-        if blocked_attempts:
-            lines += [t('Infrastructure interruptions: **{count}**. Partial source is preserved; code repair budgets are unchanged.', count=blocked_attempts), '']
-        if failed_attempts:
-            lines += [t('⚠️ Executor failures without a result (error, limit, unavailable model): **{count}**. These are not reworks: no files changed.', count=failed_attempts), '']
-        lines += [t('🧪 Fully successful runs: **{passed} of {total}**', passed=sum(e['status'] == 'passed' for e in work_tests), total=len(work_tests)), '']
-        if len(work_tests) != len(tests):
-            lines += [t('Initial checks before implementation (baseline): **{count}**; excluded from successful work runs.', count=len(tests) - len(work_tests)), '']
-        full = [e for e in tests if e.get('scope', 'full') == 'full' and e.get('phase') != 'baseline']
-        lines += [t('Full suite: **{passed} of {total}**. Other runs may cover a selected class or module.', passed=sum(e['status'] == 'passed' for e in full), total=len(full)), '']
-        ux = next((e for e in reversed(events) if e['kind'] == 'ux_review'), None)
-        if ux and ux.get('outcome') == 'completed':
-            lines += [t('🎨 UI/UX improvement stage completed: {scenarios} scenarios checked, {fixed} issues fixed.',
-                        scenarios=ux.get('scenarios', 0), fixed=ux.get('fixed', 0)), '']
-            for item in ux.get('checks', []):
-                line = '- ' + label(item['scenario']) + ' — ' + label(item['result'])
-                if item.get('fixed'):
-                    line += ' ' + t('(fixed: {change})', change=label(item['fixed']))
-                lines.append(line)
-            lines.append('')
-        elif ux and ux.get('outcome') == 'skipped':
-            lines += [t('🎨 UI/UX improvement stage skipped due to {reason}.', reason=label(ux['reason'])), '']
-        elif ux and ux.get('outcome') == 'not_applicable':
-            lines += [t('🎨 UI/UX improvement stage not required: {reason}.', reason=label(ux['reason'])), '']
-        attempts = [e for e in events if e['kind'] == 'delegation']
-        if attempts or events[0].get('track_delegations'):
-            closed = {e.get('delegation_id') for e in reviews}
-            pending = [e['work_item'] for e in attempts if e['event_id'] not in closed]
-            lines += [t('Executor assignments registered: **{total}** · without a recorded review: **{pending}**.', total=len(attempts), pending=len(pending)), '']
-            if pending:
-                lines += [t('⚠️ Pending reviews: {items}.', items=', '.join(label(p) for p in pending)), '']
-        if not full or full[-1]['status'] != 'passed':
-            lines += [t('⚠️ The latest full run failed or is missing; overall readiness is unconfirmed.'), '']
-        no_result = [e for e in tests if e.get('category') in {CATEGORY_NO_RESULT, CATEGORY_TIMEOUT}]
-        if no_result:
-            lines += [t('⚙️ Runs without a readable result (build, environment or timeout): **{count}**. These are not executor errors.', count=len(no_result)), '']
-        halts = [e for e in events if e['kind'] == 'halt']
-        if halts:
-            resumes = [e for e in events if e['kind'] == 'resume']
-            lines += [t('⛔ Protective stops: **{stops}** · resumes after user decisions: **{resumes}**', stops=len(halts), resumes=len(resumes)), '']
-            lines += [t('- Stop: {reason}', reason=label(e['reason'])) for e in halts]
-            lines += [t('- Resume: {reason}', reason=label(e['reason'])) for e in resumes]
-            lines.append('')
-        if tests:
-            last = tests[-1]
-            lines += [t('Last run: **{status}** · tests: {tests} · failures: {failures} · errors: {errors} · skipped: {skipped}.',
-                        status=label(last['status']), **{key: count(last[key]) for key in ('tests', 'failures', 'errors', 'skipped')}), '']
-        else:
-            lines += [t('No tests were run through the utility; success is unconfirmed.'), '']
-        bindings = [e for e in events if e['kind'] == 'attempt_session']
-        if bindings:
-            lines += [t('### Usage by attempt (included in the total)'), '',
-                      t('| Role / worker | Attempt | Actual model | Input | Output | Cost USD |'), '|---|---|---|---:|---:|---:|']
-            for binding in bindings:
-                rows = [row for row in usage.get('session_usage', []) if row['session'] == binding['session']]
-                totals = {field: sum(row[field] for row in rows) if rows and all(row[field] is not None for row in rows) else None
-                          for field in ('input', 'output', 'cost_usd')}
-                models = ', '.join(row['provider'] + '/' + row['model'] for row in rows) or t('no data')
-                cost = t('no data') if totals['cost_usd'] is None else f'{totals["cost_usd"]:.6f}'
-                lines.append(f'| {label(binding["role"])} / {label(binding["worker_id"])} | {label(binding["delegation_id"])} | '
-                             f'{label(models)} | {count(totals["input"])} | {count(totals["output"])} | {cost} |')
-            lines += ['', t('This breakdown is not added to the total again. Missing cost remains unknown.'), '']
-        lines += [t('Time is measured from `start` to `finish`; earlier work is excluded.'),
-                  t('Reviews and assignments follow the journal; unregistered actions cannot be detected.'),
-                  t('All `lmstudio` models have no API fee; OpenRouter `:free` and OpenCode `-free` models are free cloud models; other known providers are classified as paid by default.'),
-                  t('Reasoning and cache tokens are shown separately without adding overlapping counters.'),
-                  t('Snapshot taken before the final answer; its tokens are excluded. Catalog-based cost and savings were not calculated.'), '']
-        if usage['warnings']:
-            warnings = []
-            for warning in usage['warnings']:
-                if warning.startswith('Токены — нет данных: '):
-                    warning = t('Tokens unavailable: {reason}', reason=localization.diagnostic(warning.split(': ', 1)[1], language))
-                else:
-                    warning = localization.diagnostic(warning, language)
-                warnings.append('- ' + label(warning))
-            lines += [t('Notes:'), ''] + warnings + ['']
-        return '\n'.join(lines)
 
 
     # it is our final step to finish a task, collect exports, parse usage, and write a Markdown report to report.md in the task directory
