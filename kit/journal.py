@@ -1,8 +1,15 @@
-"""Task journal: the append-only event log in .metrics/<ID>/events.jsonl.
+"""Task journal: event log in .metrics/<ID>/events.jsonl.
+It is the append-only record of what happened to a task,
+including cycle steps: delegation, inspection, review and test events.
 
+The state of a task (running, halted, finished, who is waiting for review) is computed
+from these events by other parts of the kit; the journal itself is a simple append-only log.
 Every other part of the kit reads the state of a task from this journal.
-One JSON event per line; events are never edited or removed. A later event can
-only add facts (for example an audited timeout correction, see corrected_events).
+
+It is JSON Lines: one JSON event per line.
+Events are never edited or removed; a later event can only add facts.
+Why: to make sure that the journal is a faithful record of what happened,
+even if the Master Chief makes a mistake. Event types are listed in EVENT_KINDS.
 """
 from __future__ import annotations
 
@@ -15,9 +22,33 @@ import re
 import time
 import uuid
 
-EVENT_KINDS = {'start', 'delegation', 'inspection', 'review', 'test', 'halt', 'resume', 'finish',
-               'attempt_session', 'attempt_admission', 'attempt_end', 'integration', 'attempt_reclassification',
-               'ux_review'}
+# Every allowed value of the "kind" field of a journal event; read() rejects any other.
+# These are types of facts, not states: events repeat (one test event per run) and the
+# order is checked by the commands themselves, not by this set.
+EVENT_KINDS = {
+    # 1. Main task cycle, written by task_metrics.py.
+    'start',        # the task is opened: title, OpenCode session ID, loop guard limits; always the first event
+    'delegation',   # work is given to the executor: the one allowed file, frozen requirements, "before" snapshot
+    'inspection',   # right after the executor returns, before any reviewer edits: changed and unexpected files
+    'test',         # one run of the test command: counts, category (passed/tests_failed/no_result/timeout), scope, log
+    'review',       # the Master Chief's decision: accepted (with evidence), rework, failed (no work done) or blocked
+    'ux_review',    # final interface pass before finish: scenarios really checked, or why it was skipped/not needed
+    'finish',       # the task is closed: end time and frozen token usage; no events are allowed after it
+
+    # 2. Protective stop.
+    'halt',         # a loop guard fired (task_metrics.py writes it itself): work stops until the user decides
+    'resume',       # the user decided how to continue: lifts the halt, loop guard counters start from zero
+
+    # 3. Isolated worker, parallel mode only; written by execution_controller.py.
+    #    Each worker edits its own copy of the project in its own OpenCode child session.
+    'attempt_session',           # a child session is created for the attempt: session ID, role, worker, previous attempt
+    'attempt_admission',         # the task text is confirmed delivered to that session: the model has really started
+    'attempt_end',               # the attempt is over: reason (setup_error, api_error, deadline, pause ...) and
+                                 # whether the session is confirmed stopped; inspection requires stopped=True
+    'integration',               # the accepted file is copied from the worker's copy into the main project
+    'attempt_reclassification',  # an audited correction added later: an api_error/blocked attempt was really a
+                                 # timeout, so corrected_events() reads it as deadline/rework; old rows stay as written
+}
 WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL',
                               *(f'COM{n}' for n in range(1, 10)), *(f'LPT{n}' for n in range(1, 10))})
 
