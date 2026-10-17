@@ -163,6 +163,30 @@ class ParallelExecutionTests(unittest.TestCase):
             self.controller.integrate(a['event_id'])
         self.assertIn('return 0', (self.root / 'a.py').read_text())
 
+    def test_default_policy_allows_two_workers(self):
+        del self.choices['execution']
+        self.save_choices()
+        self.launch('a'), self.launch('b')
+        with self.assertRaisesRegex(ValueError, 'slot'):
+            self.launch('c')
+
+    def test_lone_attempt_needs_no_contracts_but_overlap_does(self):
+        a = self.controller.launch('a', 'a.py', '.metrics/demo/a-requirements.json', [])
+        self.assertEqual(a['contracts'], [])
+        with self.assertRaisesRegex(ValueError, 'shared contracts'):
+            self.launch('b')
+        with self.assertRaisesRegex(ValueError, 'shared contracts'):
+            self.controller.launch('b', 'b.py', '.metrics/demo/b-requirements.json', [])
+        self.accept(a, 1)
+        self.launch('b')
+
+    def test_private_server_points_to_the_sequential_protocol(self):
+        rows = (self.home / 'events.jsonl').read_text(encoding='utf-8').splitlines()
+        rows[0] = json.dumps(dict(json.loads(rows[0]), server_mode='standalone'))
+        (self.home / 'events.jsonl').write_text('\n'.join(rows) + '\n', encoding='utf-8')
+        with self.assertRaisesRegex(ValueError, 'Continue sequentially'):
+            self.launch('a')
+
     def test_same_source_cannot_be_assigned_under_another_work_item(self):
         self.launch('a')
         with self.assertRaisesRegex(ValueError, 'already assigned'):

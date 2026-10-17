@@ -6,19 +6,19 @@ from kit.execution_policy import DEFAULT_POLICY, limit_reason, next_action, norm
 
 
 class ExecutionPolicyTests(unittest.TestCase):
-    def test_legacy_defaults_and_independent_copy(self):
+    def test_parallel_defaults_and_independent_copy(self):
         first = normalize_policy()
         self.assertEqual(first, DEFAULT_POLICY)
-        self.assertEqual(first['maxExecutors'], 1)
+        self.assertEqual(first['maxExecutors'], 2)
         first['maxExecutors'] = 8
-        self.assertEqual(normalize_policy()['maxExecutors'], 1)
+        self.assertEqual(normalize_policy()['maxExecutors'], 2)
         self.assertEqual(normalize_policy({}), DEFAULT_POLICY)
 
     def test_partial_input_is_not_mutated(self):
-        value = {'maxExecutors': 2}
+        value = {'maxExecutors': 3}
         result = normalize_policy(value)
-        self.assertEqual(value, {'maxExecutors': 2})
-        self.assertEqual(result['maxExecutors'], 2)
+        self.assertEqual(value, {'maxExecutors': 3})
+        self.assertEqual(result['maxExecutors'], 3)
         self.assertEqual(result['maxSteps'], 24)
 
     def test_inclusive_bounds(self):

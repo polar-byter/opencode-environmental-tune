@@ -5,7 +5,7 @@ import math
 
 
 DEFAULT_POLICY = {
-    'maxExecutors': 1,
+    'maxExecutors': 2,
     'maxSteps': 24,
     'maxSeconds': 600,
     'maxRepeatedActions': 3,
@@ -18,7 +18,7 @@ DEFAULT_POLICY = {
 
 
 def normalize_policy(value: dict | None = None) -> dict:
-    """Return an independent complete policy, preserving legacy sequential defaults.
+    """Return an independent complete policy; the default allows two isolated executors.
 
     None and an empty dict use DEFAULT_POLICY. Accept a partial dict with only
     the default keys; do not mutate the input or DEFAULT_POLICY. Every supplied

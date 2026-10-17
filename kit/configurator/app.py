@@ -53,7 +53,7 @@ EMPTY_FORM = {
     'bug_fixer_model': 'opencode/deepseek-v4.1-flash-free',
     'bug_fixer_url': '',
     'bug_fixer_key_env': keys.BUG_FIXER_KEY_ENV,
-    'max_executors': '1',
+    'max_executors': '2',
     'max_steps': '24',
     'max_seconds': '600',
     'max_repeated_actions': '3',
@@ -109,7 +109,7 @@ def form_to_choices(form: dict) -> dict:
         raise ValueError('Unknown bug fixer source')
     from ..execution_policy import normalize_policy
     values = {}
-    for field, key, default in (('max_executors', 'maxExecutors', '1'), ('max_steps', 'maxSteps', '24'),
+    for field, key, default in (('max_executors', 'maxExecutors', '2'), ('max_steps', 'maxSteps', '24'),
                                 ('max_seconds', 'maxSeconds', '600'), ('max_repeated_actions', 'maxRepeatedActions', '3'),
                                 ('fixer_max_steps', 'fixerMaxSteps', '32'), ('fixer_max_seconds', 'fixerMaxSeconds', '600'),
                                 ('executor_max_attempts', 'executorMaxAttempts', '3'), ('fixer_max_attempts', 'fixerMaxAttempts', '6'),

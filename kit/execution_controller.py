@@ -157,7 +157,8 @@ class ExecutionController:
         if work_item == 'full':
             raise ValueError('full is reserved for final root-project tests')
         if events[0].get('server_mode') in ('standalone', 'unknown'):
-            raise ValueError('Isolated supervision requires the shared Desktop service; private sessions are not rebound automatically')
+            raise ValueError('Isolated supervision requires the shared Desktop service; private sessions are not rebound automatically. '
+                             'Continue sequentially: delegate one work item at a time to the executor subagent')
         if not events[0].get('session'):
             raise ValueError('Start task accounting with the actual OpenCode root session before launching workers')
         parent_info = self.service.call('session.get', {'sessionID': events[0]['session']})['data']

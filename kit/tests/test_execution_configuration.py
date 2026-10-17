@@ -14,13 +14,20 @@ from kit.dashboard.observations import attach_models
 class ConfigurationTests(unittest.TestCase):
     def test_third_role_and_every_limit_survive_form_round_trip(self):
         form = dict(app.EMPTY_FORM, bug_fixer_source='api', bug_fixer_url='https://fix.example/v1',
-                    bug_fixer_model='strong', bug_fixer_key_env='FIX_KEY', max_executors='2',
+                    bug_fixer_model='strong', bug_fixer_key_env='FIX_KEY', max_executors='3',
                     max_repeated_actions='5', fixer_max_steps='48', fixer_max_seconds='900',
                     executor_max_attempts='5', fixer_max_attempts='12', max_attempts='17')
         choice = app.form_to_choices(form)
         self.assertEqual(choice['bugFixer']['keyEnv'], 'FIX_KEY')
-        self.assertEqual(choice['execution']['maxExecutors'], 2)
+        self.assertEqual(choice['execution']['maxExecutors'], 3)
         self.assertEqual(app.choices_to_form(choice), form)
+
+    def test_two_executors_are_the_default_and_one_is_saved_explicitly(self):
+        self.assertEqual(app.choices_to_form({})['max_executors'], '2')
+        self.assertNotIn('execution', app.form_to_choices(dict(app.EMPTY_FORM)))
+        sequential = app.form_to_choices(dict(app.EMPTY_FORM, max_executors='1'))
+        self.assertEqual(sequential['execution']['maxExecutors'], 1)
+        self.assertEqual(app.choices_to_form(sequential)['max_executors'], '1')
 
     def test_disabled_fixer_ignores_old_key_draft(self):
         with patch.object(workflow, 'existing_key', return_value=''):

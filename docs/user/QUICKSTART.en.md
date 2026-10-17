@@ -239,7 +239,7 @@ in the dashboard, or when you ask the Master Chief. At the top there are four se
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| Concurrent executors | 1 | 1 = one after another; 2–8 = in parallel, but only for independent parts |
+| Concurrent executors | 2 | 1 = one after another; 2–8 = in parallel, but only for independent parts |
 | Steps per attempt | 24 | how many actions a model may take in one attempt |
 | Seconds per attempt | 600 | how much time one attempt gets |
 | Executor failures per work item | 3 | executor code-repair budget |

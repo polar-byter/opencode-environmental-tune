@@ -56,7 +56,7 @@ Loop guards (defaults; set others at `start` with `--max-reworks`, `--max-no-res
 ## Complex projects (many modules)
 1. Plan first: split the task into modules and write the checklist to the work plan resolved below. Resolve approval as described in Task intake before writing code.
 2. Interfaces first: for each module list its public functions/classes and its dependencies. Modules must fit together.
-3. Sequential by default: skeleton → requirement and edge-case tests → baseline → delegate small complete classes → evidence-based review → green module tests → mark done. With an explicitly configured concurrency above one, use the isolated controller protocol below for independent modules. Never remove the legacy guard to run several editors in the main checkout.
+3. Per module: skeleton → requirement and edge-case tests → baseline → delegate small complete classes → evidence-based review → green module tests → mark done. The default policy allows two executors: in the shared Desktop service use the isolated controller protocol below and run independent ready work items at the same time; launch a single ready item alone. An explicit `maxExecutors` of 1 or a private standalone server keeps the sequential delegate/subagent path. Never remove the legacy guard to run several editors in the main checkout.
 4. Track progress in that work plan (`- [ ]` / `- [x]`). Read it at session start, update it after each module.
 5. Never pass more than one module's context to a single executor call.
 6. Done means green per module; the project is done when all modules and the unfiltered full suite are green.
@@ -73,6 +73,8 @@ Loop guards (defaults; set others at `start` with `--max-reworks`, `--max-no-res
 This section refines the sequential snapshot protocol only for attempts created
 by `kit\python.cmd -m kit.execution_controller`. The ordinary delegate/subagent path stays
 sequential. Setting a number in the configurator does not isolate direct edits.
+The default `maxExecutors` is 2; the controller refuses a private standalone
+server, and there the task continues sequentially.
 
 - Freeze applicable public contracts first: interfaces, `.h`/`.hpp`, shared types,
   API/database formats, units, errors, ownership and threading rules. Record each

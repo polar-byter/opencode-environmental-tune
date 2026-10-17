@@ -294,7 +294,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         Rules: a known role and worker; a free worker slot (maxExecutors from the task's
         execution settings); this work item, worker and workspace are not in use; the file is
         not assigned to another worker or awaiting integration; shared contracts are given
-        when more than one executor may run. The returned base_hashes let integrate() detect
+        by this attempt and by every attempt still running beside it. The returned base_hashes let integrate() detect
         that the main project changed while the worker was busy.
         """
         if __package__:
@@ -328,8 +328,11 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         if any(set(e['files']) & set(allowed) for e in reserved):
             raise ValueError('Source file is already assigned or awaiting integration')
         contract_paths = sorted({normalize_delegated_path(self.root, p) for p in (contracts or [])})
-        if policy['maxExecutors'] > 1 and not contract_paths:
-            raise ValueError('Parallel work requires explicit shared contracts')
+        # Contracts are needed only when attempts really overlap: a lone attempt (a single-module
+        # task, or the last ready work item) runs without them even though two slots are allowed.
+        if pending and (not contract_paths or any(not e.get('contracts') for e in pending)):
+            raise ValueError('Parallel work requires explicit shared contracts for every running attempt; '
+                             'wait for the running attempt or launch both with --contracts')
         base = take_project_snapshot(self.root)
         return dict(workspace=workspace, worker_id=worker_id, role=role,
                     base_hashes={p: base.get(p) for p in allowed + contract_paths},

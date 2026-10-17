@@ -31,7 +31,9 @@ require irrelevant artifacts. Publish architecture and stable function IDs.
 
 ## Sequential or isolated execution
 
-Default concurrency is one. Read the project's selected execution policy.
+Default concurrency is two. Read the project's selected execution policy; an
+explicit `maxExecutors` of 1 keeps the legacy sequential path. With two or more,
+use the controller below; when only one work item is ready, launch it alone.
 The controller requires the shared Desktop service and the exact project's root
 session. Never rebind a private/standalone session to a background session. For
 that mode keep the legacy sequential path and disclose that the new supervisor
@@ -40,7 +42,8 @@ to start the task in shared Desktop rather than silently dropping those protecti
 Use `kit\python.cmd -m kit.execution_controller --task <ID> launch --work-item <item>
 --file <source> --requirements .metrics/<ID>/<item>-requirements.json
 --contracts <contract-file> --dependencies <accepted-item> ...` for bounded,
-isolated workers. Omit dependencies when none. Run this command without creating
+isolated workers. Omit dependencies when none. A lone attempt may omit contracts;
+attempts that run at the same time must all name them. Run this command without creating
 a second unregistered subagent: the controller creates the exact child itself.
 The command returns an attempt ID, workspace and worker ID and starts its watcher.
 
