@@ -1,4 +1,33 @@
-"""Local task journal, test runner and OpenCode usage report. See METRICS.ru.md."""
+"""Local task journal, test runner and OpenCode usage report. See METRICS.ru.md.
+
+Why this module is the core of the control loop:
+the Master Chief runs the executor, checks its work and tests it,
+but .metrics/<ID>/events.jsonl is the only source of truth for what happened.
+The Master Chief is a model too: it can be restarted, forget things or bend the rules,
+so the journal, not its memory, decides what was frozen, changed, tested and accepted.
+task_metrics.py is the command line to read and write that journal, and to produce a usage report at the end.
+
+The journal is append-only: one JSON event per line (start, delegation, inspect, review,
+test, halt, resume, finish ...). Events are never edited or removed; every answer
+("can this be accepted?", "is it time to stop?") is computed by reading all events.
+
+What the commands enforce:
+  - delegate freezes the allowed files, the requirements and a snapshot of the project;
+  - inspect detects edits outside the allowed files (delegation_guard.py);
+  - review --result accepted needs evidence for every frozen requirement and a green test.
+
+But it is not only a journal: it also enforces loop guards. After every test run and
+review, task_metrics.py itself checks the guards against the journal (limit_breach()).
+If any guard is breached, it appends a "halt" event and exits with code 3 (STOP);
+the task stays halted until the user decides and the Master Chief runs `resume`.
+The guards are (DEFAULT_LIMITS, they can be changed at `start`):
+  - max_reworks=3: one work item sent back to the executor, or failed without edits, 3 times;
+  - max_no_result=3: test runs in a row without a readable result (setup or build problem);
+  - max_failed_runs=12: test runs in a row that are not green in the same scope;
+  - max_runs=60: test runs in total since start or the last resume.
+Isolated controller attempts use per-role budgets instead (execution_policy.py).
+Dashboard controls (pause, cancel) also block new work (blocking_reason()).
+"""
 from __future__ import annotations
 
 import argparse
