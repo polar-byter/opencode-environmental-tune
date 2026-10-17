@@ -233,46 +233,69 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
             events = self.running(task)
             if events[0].get('track_delegations') and not requirement_texts:
                 raise ValueError('Tracked delegation requires a requirements file')
-            # Any review (accepted, rework or failed) closes an attempt.
-            closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             pending = pending_attempts(events)
             details = {}
             if workspace:
-                from .execution_policy import normalize_policy
-                from .run_opencode import load_choices
-                settings = self.task_dir(task) / 'execution-settings.json'
-                choices = json.loads(settings.read_text(encoding='utf-8')) if settings.exists() else load_choices(self.root)
-                from .task_control_state import read_state
-                selected = read_state(self.root, task).get('settings_revision')
-                if selected:
-                    from .model_switch import revision
-                    choices = revision(self.root, task, selected)['choices']
-                policy = normalize_policy(choices.get('execution'))
-                if role not in ('executor', 'bug_fixer') or not worker_id:
-                    raise ValueError('Isolated attempts need a worker identity and role')
-                if (any(not e.get('workspace') or e['work_item'] == work_item or e.get('worker_id') == worker_id for e in pending)
-                        or len(pending) >= policy['maxExecutors']
-                        or any(e.get('workspace') == workspace for e in events if e['kind'] == 'delegation')):
-                    raise ValueError('Worker slot, work item or workspace is already in use')
-                accepted = {e.get('delegation_id') for e in events if e['kind'] == 'review' and e['result'] == 'accepted'}
-                integrated = {e.get('delegation_id') for e in events if e['kind'] == 'integration'}
-                reserved = pending + [e for e in events if e['kind'] == 'delegation' and e['event_id'] in accepted - integrated]
-                if any(set(e['files']) & set(allowed) for e in reserved):
-                    raise ValueError('Source file is already assigned or awaiting integration')
-                contract_paths = sorted({normalize_delegated_path(self.root, p) for p in (contracts or [])})
-                if policy['maxExecutors'] > 1 and not contract_paths:
-                    raise ValueError('Parallel work requires explicit shared contracts')
-                base = take_project_snapshot(self.root)
-                details = dict(workspace=workspace, worker_id=worker_id, role=role,
-                               base_hashes={p: base.get(p) for p in allowed + contract_paths},
-                               contracts=contract_paths)
+                details = self.reserve_isolated_slot(task, events, pending, work_item, allowed,
+                                                     workspace, worker_id, role, contracts)
             elif pending:
+                # Sequential mode: one attempt at a time; any review closes the previous one.
                 raise ValueError('Review the pending delegation before starting another')
             before = take_project_snapshot(target)
             filename = 'before-' + uuid.uuid4().hex + '.json'
             (self.task_dir(task) / filename).write_text(json.dumps(before), encoding='utf-8')
             return self.append(task, 'delegation', work_item=work_item.strip(), files=allowed,
                                scope=(scope or work_item).strip(), snapshot=filename, requirements=requirement_texts, **details)
+
+    def reserve_isolated_slot(self, task: str, events: list[dict], pending: list[dict], work_item: str,
+                              allowed: list[str], workspace: str, worker_id: str | None, role: str,
+                              contracts: list[str] | None) -> dict:
+        """Check the parallel-mode rules for one isolated attempt; return its extra event fields.
+
+        Called by delegate() under the task lock, only for execution_controller.py attempts.
+        Rules: a known role and worker; a free worker slot (maxExecutors from the task's
+        execution settings); this work item, worker and workspace are not in use; the file is
+        not assigned to another worker or awaiting integration; shared contracts are given
+        when more than one executor may run. The returned base_hashes let integrate() detect
+        that the main project changed while the worker was busy.
+        """
+        if __package__:
+            from .execution_policy import normalize_policy
+            from .run_opencode import load_choices
+            from .task_control_state import read_state
+        else:
+            from execution_policy import normalize_policy
+            from run_opencode import load_choices
+            from task_control_state import read_state
+        settings = self.task_dir(task) / 'execution-settings.json'
+        choices = json.loads(settings.read_text(encoding='utf-8')) if settings.exists() else load_choices(self.root)
+        selected = read_state(self.root, task).get('settings_revision')
+        if selected:
+            # model_switch also loads the dashboard controls, so import it only when a revision is chosen.
+            if __package__:
+                from .model_switch import revision
+            else:
+                from model_switch import revision
+            choices = revision(self.root, task, selected)['choices']
+        policy = normalize_policy(choices.get('execution'))
+        if role not in ('executor', 'bug_fixer') or not worker_id:
+            raise ValueError('Isolated attempts need a worker identity and role')
+        if (any(not e.get('workspace') or e['work_item'] == work_item or e.get('worker_id') == worker_id for e in pending)
+                or len(pending) >= policy['maxExecutors']
+                or any(e.get('workspace') == workspace for e in events if e['kind'] == 'delegation')):
+            raise ValueError('Worker slot, work item or workspace is already in use')
+        accepted = {e.get('delegation_id') for e in events if e['kind'] == 'review' and e['result'] == 'accepted'}
+        integrated = {e.get('delegation_id') for e in events if e['kind'] == 'integration'}
+        reserved = pending + [e for e in events if e['kind'] == 'delegation' and e['event_id'] in accepted - integrated]
+        if any(set(e['files']) & set(allowed) for e in reserved):
+            raise ValueError('Source file is already assigned or awaiting integration')
+        contract_paths = sorted({normalize_delegated_path(self.root, p) for p in (contracts or [])})
+        if policy['maxExecutors'] > 1 and not contract_paths:
+            raise ValueError('Parallel work requires explicit shared contracts')
+        base = take_project_snapshot(self.root)
+        return dict(workspace=workspace, worker_id=worker_id, role=role,
+                    base_hashes={p: base.get(p) for p in allowed + contract_paths},
+                    contracts=contract_paths)
 
     def inspect(self, task: str, work_item: str) -> dict:
         """Save file changes for the pending attempt; refuse a second inspection.
@@ -281,7 +304,6 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         """
         with self.lock(task):
             events = self.running(task)
-            closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             attempts = pending_attempts(events, work_item)
             if len(attempts) != 1:
                 raise ValueError('Inspect must match the pending delegated work item')
@@ -316,7 +338,6 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         
         with self.lock(task):
             events = self.running(task)
-            closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             # pending delegations are those that have not been reviewed yet; we need to find the last one for this work item
             pending = pending_attempts(events, work_item)
             evidence = {}
@@ -493,7 +514,6 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
                     (e['kind'] == 'test' and e.get('scope', 'full') == scope) for e in events):
                 raise ValueError('Baseline is allowed only once per scope, before its delegations and tests')
             evidence = {}
-            closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             if pending_attempts(events) or any(e['kind'] == 'integration' for e in events):
                 filename = 'tested-' + uuid.uuid4().hex + '.json'
                 (self.task_dir(task) / filename).write_text(json.dumps(take_project_snapshot(runner.root)), encoding='utf-8')
