@@ -17,10 +17,13 @@ GENERATED = {'.git', '.metrics', '__pycache__', '.venv', 'node_modules', 'target
 
 def normalize_delegated_path(root: Path, name: str) -> str:
     """
-    Check the file the executor is allowed to edit and return its normalized path.
-    The returned path has the same form as the take_project_snapshot() keys:
+    Checks the file, the executor is allowed to edit, returns its normalized path.
+    The returned path - similar to the form as the take_project_snapshot() keys:
+
     project-relative with "/" separators, so compare_project_snapshots() can match it.
-    The file must already exist: the Master Chief creates the skeleton before delegation.
+
+    The file must already exist:
+    because the Master Chief already created the skeleton before delegation.
     Raises ValueError with the exact reason when the path is rejected.
     """
     path = Path(name)
@@ -110,7 +113,13 @@ def review_checks(path: Path) -> list[dict]:
 
 
 def read_requirements(path: Path) -> list[str]:
-    """Read and validate unique, non-blank requirements; delegate saves them."""
+    """Read and validate unique, non-blank requirements; delegate saves them.
+    The file is plain JSON (.metrics/<ID>/<work_item>-requirements.json), no comments allowed.
+    The main idea is to have a single source of truth for requirements, frozen before
+    the executor starts: the executor gets them in its task, and the reviewer must
+    prove every one of them in the checks file before the work can be accepted.
+    Requirements must be unique, because the review compares them as a set.
+    """
     import json
     items = json.loads(path.read_text(encoding='utf-8-sig'))  # BOM-tolerant, see review_checks
     if (not isinstance(items, list) or not items or
