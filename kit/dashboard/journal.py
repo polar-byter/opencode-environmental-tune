@@ -5,7 +5,7 @@ while a task runs, so every reader here must count on a writer that is working.
 Pure (for my unit tests) functions take the list of events; only
 read_events touches the disk.
 
-Events I created before (task_metrics.EVENT_KINDS): start, delegation, inspection, review, test,
+Events I created before (journal.KNOWN_EVENT_TYPES in kit/journal.py): start, delegation, inspection, review, test,
 halt, resume, finish. 
 Every event has kind, at Unix seconds and "event_id".
 inspection/review are related to their delegation through "delegation_id".

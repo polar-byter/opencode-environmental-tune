@@ -55,7 +55,7 @@ import uuid
 if __package__:
     from .delegation_guard import (compare_project_snapshots, normalize_delegated_path, read_requirements,
                                    review_checks, take_project_snapshot)
-    from .journal import (EVENT_KINDS, WINDOWS_RESERVED, TaskJournal, corrected_events, normalize_work_item,
+    from .journal import (KNOWN_EVENT_TYPES, WINDOWS_RESERVED, TaskJournal, corrected_events, normalize_work_item,
                           pending_attempts, session_id, valid_number)
     from .loop_guards import (DEFAULT_LIMITS, TaskHalted, is_halted, limit_breach, since_last_resume,
                               task_limits, trailing)
@@ -70,7 +70,7 @@ if __package__:
 else:
     from delegation_guard import (compare_project_snapshots, normalize_delegated_path, read_requirements,
                                   review_checks, take_project_snapshot)
-    from journal import (EVENT_KINDS, WINDOWS_RESERVED, TaskJournal, corrected_events, normalize_work_item,
+    from journal import (KNOWN_EVENT_TYPES, WINDOWS_RESERVED, TaskJournal, corrected_events, normalize_work_item,
                          pending_attempts, session_id, valid_number)
     from loop_guards import (DEFAULT_LIMITS, TaskHalted, is_halted, limit_breach, since_last_resume,
                              task_limits, trailing)

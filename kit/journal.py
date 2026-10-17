@@ -9,7 +9,7 @@ Every other part of the kit reads the state of a task from this journal.
 It is JSON Lines: one JSON event per line.
 Events are never edited or removed; a later event can only add facts.
 Why: to make sure that the journal is a faithful record of what happened,
-even if the Master Chief makes a mistake. Event types are listed in EVENT_KINDS.
+even if the Master Chief makes a mistake. Event types are listed in KNOWN_EVENT_TYPES.
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ import uuid
 # Every allowed value of the "kind" field of a journal event; read() rejects any other.
 # These are types of facts, not states: events repeat (one test event per run) and the
 # order is checked by the commands themselves, not by this set.
-EVENT_KINDS = {
+KNOWN_EVENT_TYPES = {
     # 1. Main task cycle, written by task_metrics.py.
     'start',        # the task is opened: title, OpenCode session ID, loop guard limits; always the first event
     'delegation',   # work is given to the executor: the one allowed file, frozen requirements, "before" snapshot
@@ -149,7 +149,7 @@ class TaskJournal:
 
             if (not events or events[0].get('kind') != 'start' or
                     any(not isinstance(e, dict) or not valid_number(e.get('at')) or
-                        e.get('kind') not in EVENT_KINDS for e in events)):
+                        e.get('kind') not in KNOWN_EVENT_TYPES for e in events)):
                 raise ValueError('Invalid journal events')
 
             return corrected_events(events)
