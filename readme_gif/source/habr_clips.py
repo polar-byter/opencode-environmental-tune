@@ -1,17 +1,23 @@
-"""Short GIF clips and covers for the Habr article drafts (habr_raw_docs/).
+"""Short GIF clips and covers for the Habr article drafts.
+
+The drafts live in the Obsidian vault, not in this repository, so the vault
+folder is passed explicitly:
+
+    py habr_clips.py "<vault>/ИИ агенты/Мультиагенты. Opencode/Хабр. Черновики статей"
 
 Each clip takes a few steps of an existing scene, shortens the pauses and
 scales the frame to 960 px so the article loads fast.
 """
 import importlib
 import os
+import sys
 
 from PIL import Image
 
 import gifkit
 from gifkit import Cv, W, H, chrome, F, mix, BLUE, TEXT, MUTED, BG
 
-OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'habr_raw_docs')
+OUT = None  # the drafts folder, set from the command line in __main__
 SCALE = 960 / W
 
 CLIPS = {
@@ -108,6 +114,9 @@ def cover(folder, module, step, title, subtitle):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) != 2 or not os.path.isdir(sys.argv[1]):
+        sys.exit('Usage: py habr_clips.py <folder with the Habr article drafts>')
+    OUT = sys.argv[1]
     for folder, items in CLIPS.items():
         for name, module, indices, num, title in items:
             path, secs = clip(folder, name, module, indices, num, title)

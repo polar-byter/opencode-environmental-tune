@@ -57,4 +57,5 @@ foreach ($f in 's01_install','s02_team','s03_plan','s04_parallel','s05_bugfixer'
 - `capture_installer.py` + `build_installer_gif.py` — запись экрана мастера
   (установка во временную папку, Desktop не запускается) и сборка `01_install_live.gif`:
   `py capture_installer.py ru <папка>` → `py build_installer_gif.py ru <папка>` (и то же с `en`).
-- `habr_clips.py` — короткие клипы и обложки для черновиков статей (`habr_raw_docs/`).
+- `habr_clips.py <папка черновиков>` — короткие клипы и обложки для черновиков статей.
+  Черновики лежат в Obsidian: `ИИ агенты/Мультиагенты. Opencode/Хабр. Черновики статей`.
