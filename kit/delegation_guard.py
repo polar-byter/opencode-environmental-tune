@@ -6,6 +6,7 @@ It is a black box to the executor, which is not trusted to modify source files c
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from pathlib import Path
 
@@ -99,7 +100,6 @@ def compare_project_snapshots(before: dict[str, str], after: dict[str, str], all
 
 def review_checks(path: Path) -> list[dict]:
     """Require explicit requirement/code/test evidence; correctness remains reviewer judgement."""
-    import json
     # utf-8-sig also accepts a BOM: PowerShell writes UTF-8 files with one by default.
     checks = json.loads(path.read_text(encoding='utf-8-sig'))
     if not isinstance(checks, list) or not checks:
@@ -120,10 +120,18 @@ def read_requirements(path: Path) -> list[str]:
     prove every one of them in the checks file before the work can be accepted.
     Requirements must be unique, because the review compares them as a set.
     """
-    import json
-    items = json.loads(path.read_text(encoding='utf-8-sig'))  # BOM-tolerant, see review_checks
-    if (not isinstance(items, list) or not items or
-            any(not isinstance(item, str) or not item.strip() for item in items) or
-            len(set(items)) != len(items)):
-        raise ValueError('Requirements must be a non-empty JSON list of unique strings')
-    return items
+    requirements = json.loads(path.read_text(encoding='utf-8-sig'))  # BOM-tolerant, see review_checks
+
+    if not isinstance(requirements, list):
+        raise ValueError(f'Requirements must be a JSON list: {path}')
+    if not requirements:
+        # An empty list would let any work be accepted without evidence.
+        raise ValueError(f'Requirements list is empty: {path}')
+    for requirement in requirements:
+        if not isinstance(requirement, str) or not requirement.strip():
+            raise ValueError(f'Each requirement must be a non-blank string, got {requirement!r}: {path}')
+    # set() drops repeats, so a shorter set means the list has duplicates.
+    if len(set(requirements)) != len(requirements):
+        raise ValueError(f'Requirements must be unique: {path}')
+
+    return requirements
