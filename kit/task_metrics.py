@@ -16,11 +16,11 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 if __package__:
-    from .delegation_guard import compare, read_requirements, review_checks, take_project_snapshot, source_path
+    from .delegation_guard import compare_project_snapshots, read_requirements, review_checks, take_project_snapshot, source_path
     from .opencode_cli import locate_opencode
     from .task_control_state import blocking_reason
 else:
-    from delegation_guard import compare, read_requirements, review_checks, take_project_snapshot, source_path
+    from delegation_guard import compare_project_snapshots, read_requirements, review_checks, take_project_snapshot, source_path
     from opencode_cli import locate_opencode
     from task_control_state import blocking_reason
 
@@ -763,7 +763,7 @@ class TaskMetrics:
                 raise ValueError('Executor edits already inspected; do not overwrite the evidence')
             before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
             after = take_project_snapshot(self.attempt_root(task, attempt))
-            changes = compare(before, after, attempt['files'])
+            changes = compare_project_snapshots(before, after, attempt['files'])
             filename = 'after-' + uuid.uuid4().hex + '.json'
             (self.task_dir(task) / filename).write_text(json.dumps(after), encoding='utf-8')
             return self.append(task, 'inspection', delegation_id=attempt['event_id'], work_item=work_item,
@@ -806,13 +806,13 @@ class TaskMetrics:
                 inspections = [e for e in events if e['kind'] == 'inspection' and
                                e['delegation_id'] == attempt['event_id']]
                 # compare function may create unexpected changes if the executor changed files that were not allowed; we need to check for that
-                changes = compare(before, after, attempt['files'])
+                changes = compare_project_snapshots(before, after, attempt['files'])
 
                 if inspections:
                     inspected = inspections[-1]
                     changes = {k: inspected[k] for k in ('changed', 'unexpected')}
                     frozen = json.loads((self.task_dir(task) / inspected['snapshot']).read_text(encoding='utf-8'))
-                    subsequent = compare(frozen, after, [])['changed']
+                    subsequent = compare_project_snapshots(frozen, after, [])['changed']
                     changes['reviewer_changes'] = subsequent
                     if result == 'accepted' and any(p in attempt['files'] for p in subsequent):
                         raise ValueError('Delegated source changed after inspection; register a fresh attempt')
@@ -858,7 +858,7 @@ class TaskMetrics:
                         raise ValueError('Acceptance needs a green test run for this scope after delegation')
                     # check that the project files have not changed since the last green test run; if they have, the tests must be rerun before acceptance
                     tested = json.loads((self.task_dir(task) / runs[-1]['snapshot']).read_text(encoding='utf-8'))
-                    if compare(tested, after, [])['changed']:
+                    if compare_project_snapshots(tested, after, [])['changed']:
                         raise ValueError('Project files changed since the green test; rerun tests before acceptance')
                     
             if result == 'blocked' and not pending:
@@ -1314,7 +1314,7 @@ class TaskMetrics:
                     raise ValueError('Every isolated work item needs an accepted, integrated latest attempt')
                 runs = [e for e in events if e['kind'] == 'test' and e.get('scope') == 'full' and not e.get('delegation_id')]
                 if (not runs or runs[-1]['status'] != 'passed' or not runs[-1].get('snapshot')
-                        or compare(json.loads((self.task_dir(task)/runs[-1]['snapshot']).read_text(encoding='utf-8')),
+                        or compare_project_snapshots(json.loads((self.task_dir(task)/runs[-1]['snapshot']).read_text(encoding='utf-8')),
                                    take_project_snapshot(self.root), [])['changed']):
                     raise ValueError('Finish needs a green full test of the integrated project')
             if (not finished and events[0].get('ux_review_required')

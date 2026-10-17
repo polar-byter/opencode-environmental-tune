@@ -56,7 +56,7 @@ def take_project_snapshot(root: Path) -> dict[str, str]:
     return files_of_the_snapshot
 
 
-def compare(before: dict[str, str], after: dict[str, str], allowed: list[str]) -> dict:
+def compare_project_snapshots(before: dict[str, str], after: dict[str, str], allowed: list[str]) -> dict:
     """Detect added, removed and modified files; never revert user files automatically."""
     changed = sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p))
     return dict(changed=changed, unexpected=[p for p in changed if p not in allowed])
