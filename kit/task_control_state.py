@@ -12,9 +12,20 @@ STATUSES = TRANSITIONS | {'running', 'paused', 'cancelled', 'deleted', 'error'}
 
 
 def plain_path(path: Path) -> Path:
-    """Reject redirected paths, including junctions, before mutation."""
-    if path.is_symlink() or getattr(path, 'is_junction', lambda: False)() or path.resolve() != path:
-        raise ValueError('Control paths must not contain links or junctions')
+    """Reject redirected paths, including junctions, before mutation.
+
+    Every existing component of the absolute path is checked for a symlink or junction.
+    Comparing with resolve() is not used: on Windows it also expands 8.3 short names
+    (C:\\Users\\RUNNER~1) and normalizes letter case, so a plain folder would look like a link.
+    """
+    if '..' in path.parts:
+        raise ValueError('Control paths must not contain ".."')
+    absolute = path.absolute()
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        current = current / part
+        if current.is_symlink() or getattr(current, 'is_junction', lambda: False)():
+            raise ValueError('Control paths must not contain links or junctions')
     return path
 
 
