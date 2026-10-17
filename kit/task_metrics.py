@@ -44,6 +44,13 @@ import sys
 import time
 import uuid
 import xml.etree.ElementTree as ET
+
+# The same file is loaded in two ways, and each needs its own import form:
+# - as part of the kit package (python -m kit..., or "from ..task_metrics import" in the dashboard):
+#   __package__ == 'kit' and the project root is on sys.path, so only the relative
+#   ".delegation_guard" ("from the same package as this module") can find the neighbour;
+# - as a script (kit/task_metrics.py) or from the tests, which put kit/ on sys.path:
+#   __package__ is empty, a relative import fails, and the plain "delegation_guard" works.
 if __package__:
     from .delegation_guard import compare_project_snapshots, read_requirements, review_checks, take_project_snapshot, normalize_delegated_path
     from .opencode_cli import locate_opencode
