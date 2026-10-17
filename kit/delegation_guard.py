@@ -57,7 +57,15 @@ def take_project_snapshot(root: Path) -> dict[str, str]:
 
 
 def compare_project_snapshots(before: dict[str, str], after: dict[str, str], allowed: list[str]) -> dict:
-    """Detect added, removed and modified files; never revert user files automatically."""
+    """
+    Compare two project snapshots and return {"changed": [...], "unexpected": [...]}.
+    The "before" snapshot is usually the one taken before the delegated executor ran,
+    the "after" snapshot is the one taken after it. With allowed=[] the function only
+    answers whether anything changed at all (task_metrics.py uses it this way after tests).
+    The "allowed" list is the list of files that are allowed to be changed by the delegated executor.
+    The "changed" list is the list of files that have changed between the two snapshots.
+    The "unexpected" list is the list of files that have changed but are not in the "allowed" list.
+    """
     changed = sorted(p for p in before.keys() | after.keys() if before.get(p) != after.get(p))
     return dict(changed=changed, unexpected=[p for p in changed if p not in allowed])
 
