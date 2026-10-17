@@ -28,5 +28,45 @@ class AppendTests(unittest.TestCase):
         self.assertEqual([e['kind'] for e in self.journal.read('task')], ['start'])
 
 
+class ReadTests(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.journal = TaskJournal(Path(folder.name))
+        self.journal.task_dir('task').mkdir(parents=True)
+        self.path = self.journal.task_dir('task') / 'events.jsonl'
+
+    def write(self, *lines):
+        self.path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+    def assert_refused(self, message):
+        with self.assertRaisesRegex(ValueError, message):
+            self.journal.read('task')
+
+    def test_good_journal(self):
+        self.write('{"kind": "start", "at": 1}', '{"kind": "test", "at": 2}')
+        self.assertEqual([e['kind'] for e in self.journal.read('task')], ['start', 'test'])
+
+    def test_each_problem_names_its_line(self):
+        start = '{"kind": "start", "at": 1}'
+        cases = [
+            ((start, '{oops'), 'line 2: invalid JSON'),
+            ((start, '[1, 2]'), 'line 2: not a JSON object'),
+            ((start, '{"kind": "test", "at": true}'), 'line 2: missing or invalid "at"'),
+            ((start, '{"kind": "test", "at": -5}'), 'line 2: missing or invalid "at"'),
+            ((start, '{"kind": "reveiw", "at": 2}'), "line 2: unknown event type 'reveiw'"),
+            (('{"kind": "test", "at": 1}',), 'line 1: the first event must be "start"'),
+        ]
+        for lines, message in cases:
+            with self.subTest(message=message):
+                self.write(*lines)
+                self.assert_refused(message)
+
+    def test_missing_and_empty_journal(self):
+        self.assert_refused('Cannot read task task')
+        self.path.write_text('', encoding='utf-8')
+        self.assert_refused('the journal is empty')
+
+
 if __name__ == '__main__':
     unittest.main()

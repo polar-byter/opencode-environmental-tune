@@ -144,20 +144,38 @@ class TaskJournal:
         return result
 
     def read(self, task: str) -> list[dict]:
+        """We check the journal for basic validity;
+        we do not check that the events are consistent with each other.
+        but integrity checks are done by TaskMetrics, which reads the journal and computes the task state.
+        
+        """
         try:
-            lines = (self.task_dir(task) / 'events.jsonl').read_text(encoding='utf-8').splitlines()
-            events = [json.loads(line) for line in lines]
-
-            if (not events or events[0].get('kind') != 'start' or
-                    any(not isinstance(e, dict) or not valid_number(e.get('at')) or
-                        e.get('kind') not in KNOWN_EVENT_TYPES for e in events)):
-                raise ValueError('Invalid journal events')
+            journal_jsonl_lines = (self.task_dir(task) / 'events.jsonl').read_text(encoding='utf-8').splitlines()
+            events = []
+            for number, line in enumerate(journal_jsonl_lines, start=1):
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError as error:
+                    raise ValueError(f'line {number}: invalid JSON ({error.msg})') from error
+            #checking sequence: first event must be start, all events must have a valid number "at" and a known kind
+            if not events:
+                raise ValueError('the journal is empty')
+            for number, event in enumerate(events, start=1):
+                if not isinstance(event, dict):
+                    raise ValueError(f'line {number}: not a JSON object')
+                if not valid_number(event.get('at')):
+                    raise ValueError(f'line {number}: missing or invalid "at" time')
+                if event.get('kind') not in KNOWN_EVENT_TYPES:
+                    raise ValueError(f'line {number}: unknown event type {event.get("kind")!r}')
+            if events[0]['kind'] != 'start':
+                raise ValueError(f'line 1: the first event must be "start", not {events[0]["kind"]!r}')
 
             return corrected_events(events)
         except (OSError, ValueError, AttributeError) as error:
             raise ValueError(f'Cannot read task {task}; start it first or inspect events.jsonl: {error}') from error
 
     # to use with statement for locking a task directory to prevent concurrent writes
+    # @contextmanager: the caller must use "with journal.lock(task):" to hold the lock while writing
     @contextmanager
     def lock(self, task: str):
         path = self.task_dir(task) / '.lock'
