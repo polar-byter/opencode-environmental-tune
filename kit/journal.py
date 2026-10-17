@@ -137,7 +137,8 @@ class TaskJournal:
 
         base = self.root / '.metrics'
         result = base / task
-
+        # this condition uses resolve() to prevent symlinks or junctions in the path
+        # junction means a Windows NTFS directory link, which is not a symlink but behaves like one.
         if base.resolve() != base or result.resolve() != result:
             raise ValueError('Metrics directories must not be symlinks or junctions')
         return result
@@ -173,6 +174,18 @@ class TaskJournal:
             path.unlink()
 
     def append(self, task: str, kind: str, **data) -> dict:
+        """Write one event to the end of the task journal and return it.
+
+        It is called by the task_metrics.py commands (main cycle, halt/resume, finish) and by
+        execution_controller.py, which writes the isolated worker events in parallel mode.
+        All of them write to the same journal of the task. The caller must hold lock(task).
+
+        The journal sets "at" and "event_id" itself, overriding any values in data.
+        After return the line is on disk (flush + fsync).
+        Raises ValueError for a kind outside KNOWN_EVENT_TYPES: read() would reject it later.
+        """
+        if kind not in KNOWN_EVENT_TYPES:
+            raise ValueError(f'Unknown journal event type: {kind!r}')
         event = dict(data, kind=kind, at=time.time(), event_id=uuid.uuid4().hex)
         with (self.task_dir(task) / 'events.jsonl').open('a', encoding='utf-8') as handle:
             handle.write(json.dumps(event, ensure_ascii=False, allow_nan=False) + '\n')
