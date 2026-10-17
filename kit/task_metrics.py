@@ -370,6 +370,10 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
     def review(self, task: str, work_item: str, result: str, checks: Path | None = None) -> dict:
         """Record the Chief's accepted/rework/failed/blocked decision and evidence.
 
+        result is not an outcome computed here: it is the decision the Master Chief proposes,
+        passed as `task_metrics.py review --result <decision>`. review() only checks whether
+        that decision may be recorded and writes it to the journal, or refuses it.
+
         Acceptance requires allowed edits, matching requirement checks and a green
         scoped/full run on unchanged files. "failed" means the executor returned no work
         (error, rate limit, unavailable model): it is allowed only when the attempt changed
@@ -378,13 +382,13 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         after a confirmed infrastructure interruption. Legacy tasks may have no delegation.
         """
 
-        # --- A. Check the arguments ---
+        # A. Check the arguments and read the journal under the task lock.
         work_item = work_item.strip()
         if not work_item or result not in REVIEW_RESULTS:
             raise ValueError('Review requires a work item and accepted/rework/failed/blocked result')
 
         with self.lock(task):
-            # --- B. Find the attempt this decision closes ---
+            # B. Find the attempt this review is about, and check that the work item matches it.
             events = self.read_events_if_work_allowed(task)
             # pending delegations are those that have not been reviewed yet; we need to find the last one for this work item
             pending = pending_attempts(events, work_item)
@@ -400,9 +404,12 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
                 if attempt['work_item'] != work_item:
                     raise ValueError('Review must match the pending delegated work item')
 
-                # --- C. Reconstruct who changed what: executor, then reviewer after inspect ---
+                # C. Reconstruct who changed what: executor, then reviewer after inspection. 
+                # If the executor changed unexpected files, acceptance is refused.
                 before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
                 after = take_project_snapshot(self.attempt_root(task, attempt))
+                # inspections are the inspection events for this attempt; 
+                # we need the last one to get the reviewer's changes
                 inspections = [e for e in events if e['kind'] == 'inspection' and
                                e['delegation_id'] == attempt['event_id']]
                 # compare function may create unexpected changes if the executor changed files that were not allowed; we need to check for that
@@ -422,7 +429,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
                 
                 evidence = dict(delegation_id=attempt['event_id'], **changes)
 
-                # --- D. Rules for blocked and failed ---
+                # D. Rules for blocked and failed
                 if result == 'blocked':
                     ended = [e for e in events if e['kind'] == 'attempt_end'
                              and e.get('delegation_id') == attempt['event_id']]
@@ -434,7 +441,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
                     raise ValueError('The executor changed files: review the attempt as accepted or rework, '
                                      'not failed: ' + ', '.join(changes['changed']))
 
-                # --- E. Rules for accepted: no foreign edits, full evidence, green test on these files ---
+                # E. Rules for accepted: no foreign edits, full evidence, green test on these files
                 if result == 'accepted':
                     if changes['unexpected']:
                         raise ValueError('Executor changed unexpected files: ' + ', '.join(changes['unexpected']))
@@ -463,7 +470,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
                     if compare_project_snapshots(tested, after, [])['changed']:
                         raise ValueError('Project files changed since the green test; rerun tests before acceptance')
 
-            # --- F. Record the decision with its evidence, then check the loop guards ---
+            # F. Record the decision with its evidence, then check the loop guards 
             if result == 'blocked' and not pending:
                 raise ValueError('Blocked requires an isolated attempt')
             event = self.append(task, 'review', work_item=work_item, result=result, **evidence)
