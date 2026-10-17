@@ -106,7 +106,7 @@ class InstallerTests(unittest.TestCase):
         (self.target / '.gitignore').write_text('original rules', encoding='utf-8')
         original = Path.open
         def fail(path, mode='r', *args, **kwargs):
-            if path == self.target / 'METRICS.ru.md' and mode == 'xb':
+            if path == self.target / 'docs/guide.md' and mode == 'xb':
                 raise PermissionError('simulated write failure')
             return original(path, mode, *args, **kwargs)
         with patch.object(Path, 'open', fail), self.assertRaises(PermissionError):
@@ -128,7 +128,7 @@ class InstallerTests(unittest.TestCase):
             def close(self): self.stream.close()
         def fail(path, mode='r', *args, **kwargs):
             stream = original(path, mode, *args, **kwargs)
-            return BrokenStream(stream) if path == self.target / 'METRICS.ru.md' and mode == 'xb' else stream
+            return BrokenStream(stream) if path == self.target / 'docs/guide.md' and mode == 'xb' else stream
         with patch.object(Path, 'open', fail), self.assertRaises(OSError):
             self.install()
         self.assertEqual([p.name for p in self.target.iterdir()], ['app.py'])
@@ -143,7 +143,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(config['agents']['executor']['model'], 'opencode/mimo-v2.6-flash-free')
         base = json.loads(run_opencode.strip_jsonc((self.target / 'opencode.jsonc').read_text(encoding='utf-8')))
         self.assertEqual(config['agents']['build'].get('model', base['agents']['build']['model']), 'opencode/deepseek-v4.1-flash-free')
-        self.assertTrue((self.target / 'OPENCODE_KIT.en.md').is_file())
+        self.assertTrue((self.target / 'docs/user/OPENCODE_KIT.en.md').is_file())
         self.assertIn('in this project root', (self.target / 'AGENTS.md').read_text(encoding='utf-8'))
         self.assertFalse((self.target / '.metrics/project-installer-20261016').exists())
         self.assertFalse((self.target / '.opencode/kit-models.json').exists())

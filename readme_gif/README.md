@@ -17,7 +17,7 @@ Russian diagrams live here, English ones in [`en/`](en/). File names match.
 
 Кадр 1200×675, GIF зациклены, данные — примеры. Подключены в
 [README.md](../README.md), [README.en.md](../README.en.md),
-[QUICKSTART.ru.md](../QUICKSTART.ru.md) и [QUICKSTART.en.md](../QUICKSTART.en.md).
+[QUICKSTART.ru.md](../docs/user/QUICKSTART.ru.md) и [QUICKSTART.en.md](../docs/user/QUICKSTART.en.md).
 Подписи интерфейса совпадают с реальными: дашборд и мастер установки — из
 `kit/locales/ru.json`, окно моделей — из `kit/configurator/i18n.py`.
 

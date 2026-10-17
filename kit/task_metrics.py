@@ -1,4 +1,4 @@
-"""Local task journal, test runner and OpenCode usage report. See METRICS.ru.md.
+"""Local task journal, test runner and OpenCode usage report. See docs/kit/METRICS.ru.md.
 
 Why this module is the core of the control loop:
 the Master Chief runs the executor, checks its work and tests it,

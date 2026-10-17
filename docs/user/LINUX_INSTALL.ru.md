@@ -55,7 +55,7 @@ flowchart LR
 **Desktop entry** — файл `.desktop`, добавляющий программу в меню. **Architecture: all**
 значит, что пакет содержит сценарии, а не процессорный машинный код. Bootstrap
 собирает закреплённый Python для процессора пользователя из официального архива;
-это [отдельный нативный этап без Python](PYTHON_RUNTIME.ru.md).
+это [отдельный нативный этап без Python](../kit/PYTHON_RUNTIME.ru.md).
 
 `kit/linux_package.py` → `build()` собирает стандартный Debian ar-архив с
 `debian-binary`, `control.tar.gz`, `data.tar.gz`. `archive()` выставляет права,

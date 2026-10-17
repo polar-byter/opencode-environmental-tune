@@ -1,6 +1,6 @@
 # OpenCode: the Master Chief and executors
 
-> Русская версия: [README.md](README.md) · Step-by-step start: [QUICKSTART.en.md](QUICKSTART.en.md) · [Быстрый старт (RU)](QUICKSTART.ru.md) · [Beginner guide](OPENCODE_KIT.en.md)
+> Русская версия: [README.md](README.md) · Step-by-step start: [QUICKSTART.en.md](docs/user/QUICKSTART.en.md) · [Быстрый старт (RU)](docs/user/QUICKSTART.ru.md) · [Beginner guide](docs/user/OPENCODE_KIT.en.md)
 
 You describe a task in OpenCode, and a team of AI agents takes it from there. The
 **Master Chief** (the main `build` agent) plans the work and the contracts between
@@ -18,7 +18,7 @@ Your part is to say what you need, answer questions and accept the result.
 ## How it works — in eight diagrams
 
 The diagrams are animated; their data is sample data. The same diagrams with detailed
-steps are in the [quick start](QUICKSTART.en.md).
+steps are in the [quick start](docs/user/QUICKSTART.en.md).
 
 ### 1. Installation in four steps
 
@@ -31,7 +31,7 @@ model settings. Free models are already filled in — just click "Save settings"
 "Prepare OpenCode". Then the project opens in Desktop: copy the example prompt, paste
 it into a new **build** chat and send it. The wizard never sends anything to a model itself.
 
-For Ubuntu, Debian and Mint, use the [`.deb` installer](docs/LINUX_INSTALL.ru.md)
+For Ubuntu, Debian and Mint, use the [`.deb` installer](docs/user/LINUX_INSTALL.ru.md)
 (Russian guide): open the package with the mouse, then launch OpenCode Project Setup from the applications menu.
 
 ![Installation in four steps](readme_gif/en/01_install.gif)
@@ -131,13 +131,13 @@ Russian, following the browser, with a manual switch.
 
 Diagram files and how to rebuild them: [readme_gif/README.md](readme_gif/README.md).
 To look inside: [developer guide with diagrams and a map of modules, classes and
-functions (Russian)](docs/EXECUTION_GUIDE.ru.md), [installer architecture (Russian)](docs/INSTALLER.ru.md),
-[localization (Russian)](docs/LOCALIZATION.ru.md), [role prompts](kit/prompts/README.ru.md).
+functions (Russian)](docs/kit/EXECUTION_GUIDE.ru.md), [installer architecture (Russian)](docs/kit/INSTALLER.ru.md),
+[localization (Russian)](docs/kit/LOCALIZATION.ru.md), [role prompts](kit/prompts/README.ru.md).
 
 ## How to use it
 
-The easiest path is the setup wizard (diagram 1) and the [beginner guide](OPENCODE_KIT.en.md).
-To add the kit to an existing project by hand, use the [quick start](QUICKSTART.en.md).
+The easiest path is the setup wizard (diagram 1) and the [beginner guide](docs/user/OPENCODE_KIT.en.md).
+To add the kit to an existing project by hand, use the [quick start](docs/user/QUICKSTART.en.md).
 Tools are installed once per computer.
 
 You can write the requirements straight into chat, or save them in `TASK.md` and send
@@ -151,7 +151,7 @@ The Master Chief proposes a solution. You discuss the requirements and approve t
 plan. After that it assigns jobs, calls the needed scripts and checks the result. If
 it lacks information or access, it explains what it needs from you.
 
-To change models during a task, pause it in the dashboard, save and prepare the new selection, then resume. See [live model changes](docs/LIVE_MODELS.ru.md) (Russian). If the executors use LM Studio, the
+To change models during a task, pause it in the dashboard, save and prepare the new selection, then resume. See [live model changes](docs/user/LIVE_MODELS.ru.md) (Russian). If the executors use LM Studio, the
 model must be loaded and its server running; other sources do not need that. The
 Master Chief prepares the selected models as described in `AGENTS.md`;
 `kit/run_opencode.py` remains the configuration preparer and an alternative launcher.
@@ -165,7 +165,7 @@ or delete its sessions and metrics while keeping the source code.
 Semantics and limits: [task controls](kit/dashboard/CONTROLS.ru.md) (Russian).
 The dashboard and configurator support **EN/RU**; agent messages stay in their original language.
 
-To repeat our experiment from Desktop there is a [short guide](DESKTOP_EXPERIMENT.ru.md) (Russian).
+To repeat our experiment from Desktop there is a [short guide](docs/history/DESKTOP_EXPERIMENT.ru.md) (Russian).
 Own API, the OpenRouter catalog with prices, roles and language are described in
 the [configurator guide](kit/configurator/UX.ru.md) (Russian).
 
@@ -241,7 +241,7 @@ of its orchestration. In a normal task you do not type these commands.
 
 If OpenCode returns no data, the report says "no data". Time includes waiting for your
 answers, and tokens of messages after the report is built are not counted yet. Details
-and debug commands: [statistics guide](METRICS.ru.md) (Russian).
+and debug commands: [statistics guide](docs/kit/METRICS.ru.md) (Russian).
 
 ## Continuing after a break
 
@@ -342,7 +342,7 @@ Useful for the first setup or if you want to change how the system works.
 several models the script picks the loaded model from the `executor` setting or asks for
 an ID. Launching OpenCode directly without preparation uses the fixed aliases from the
 original config. Details, including launching in an already open app:
-[model selection](LOCAL_MODELS.ru.md) (Russian). The `/plan-project` command also calls `build`.
+[model selection](docs/user/LOCAL_MODELS.ru.md) (Russian). The `/plan-project` command also calls `build`.
 
 For another project, copy the kit files and set its language, folders and test command
 in `AGENTS.md`. Step-by-step setup is in the quick start. After that you can give tasks
@@ -393,13 +393,13 @@ kit\python.cmd kit/task_metrics.py check <same report flags> -- <same test comma
 ```
 
 `CHECK OK` — ready to work. `CHECK FAILED` — hints appear below the line. Details:
-`METRICS.ru.md`, section 3 (Russian).
+`docs/kit/METRICS.ru.md`, section 3 (Russian).
 
 ## How results are checked
 
 The Chief records requirements before implementation, then links each requirement to code and a test during review. After integration, the full test suite must pass. A module test alone does not establish application readiness.
 
-See the [review reference](PIPELINE.ru.md) (Russian) for commands and examples.
+See the [review reference](docs/kit/PIPELINE.ru.md) (Russian) for commands and examples.
 
 ## License
 

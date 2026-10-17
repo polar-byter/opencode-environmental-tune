@@ -14,7 +14,7 @@ url=$(value linux_source_url) || fail 'Missing source URL.'
 digest=$(value linux_source_sha256) || fail 'Missing source checksum.'
 [ "$url" = "https://www.python.org/ftp/python/$version/Python-$version.tar.xz" ] || fail 'Invalid Python source URL.'
 printf '%s\n' "$digest" | grep -Eq '^[a-f0-9]{64}$' || fail 'Invalid Python checksum.'
-[ "$(uname -s)" = Linux ] || fail 'This bootstrap supports Linux. See docs/PYTHON_RUNTIME.ru.md for other systems.'
+[ "$(uname -s)" = Linux ] || fail 'This bootstrap supports Linux. See docs/kit/PYTHON_RUNTIME.ru.md for other systems.'
 architecture=$(uname -m)
 case "$architecture" in x86_64|aarch64) ;; *) fail 'Linux x86_64 and aarch64 are supported.' ;; esac
 cache=${OPENCODE_KIT_RUNTIME_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/opencode-kit/runtimes}
@@ -79,7 +79,7 @@ if ! { [ -f "$target/.kit-runtime-ready" ] && probe "$python"; }; then
         [ "$jobs" -le 4 ] || jobs=4
         make -j "$jobs"
         make altinstall prefix="$build/install" exec_prefix="$build/install"
-    ) >"$stage/build.log" 2>&1 || { tail -n 35 "$stage/build.log" >&2; fail 'Python build failed. Check free disk space and the dependencies from docs/PYTHON_RUNTIME.ru.md.'; }
+    ) >"$stage/build.log" 2>&1 || { tail -n 35 "$stage/build.log" >&2; fail 'Python build failed. Check free disk space and the dependencies from docs/kit/PYTHON_RUNTIME.ru.md.'; }
     cp -a -- "$build/install" "$stage/runtime"
     staged=$stage/runtime
     probe "$staged/bin/python${version%.*}" || fail 'Downloaded Python failed its version / Tk / SSL / SQLite check.'

@@ -109,8 +109,8 @@
 его фоновый сервис. Не передавай ключ сообщением в чат.
 
 Сброс удаляет выбор моделей, но сохраняет ключи Windows.
-Подробности: [LOCAL_MODELS.ru.md](../../LOCAL_MODELS.ru.md).
-Повтор опыта: [DESKTOP_EXPERIMENT.ru.md](../../DESKTOP_EXPERIMENT.ru.md).
+Подробности: [LOCAL_MODELS.ru.md](../../docs/user/LOCAL_MODELS.ru.md).
+Повтор опыта: [DESKTOP_EXPERIMENT.ru.md](../../docs/history/DESKTOP_EXPERIMENT.ru.md).
 
 ## Реализация, очистка и проверка
 

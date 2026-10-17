@@ -1,7 +1,7 @@
 # Quick start: the OpenCode kit, step by step in plain words
 
 > A from-scratch guide for people who do not write code every day.
-> Русская версия: [QUICKSTART.ru.md](QUICKSTART.ru.md) · Project overview: [README.en.md](README.en.md) ·
+> Русская версия: [QUICKSTART.ru.md](QUICKSTART.ru.md) · Project overview: [README.en.md](../../README.en.md) ·
 > Short setup-wizard guide: [OPENCODE_KIT.en.md](OPENCODE_KIT.en.md)
 
 This guide shows, step by step, how to install the kit, choose models and give the
@@ -36,7 +36,7 @@ The kit works the same way:
 Your part: say what you need, answer questions and accept the result.
 The Master Chief runs the commands, checks and statistics itself.
 
-![Who is in the team](readme_gif/en/02_team.gif)
+![Who is in the team](../../readme_gif/en/02_team.gif)
 
 ### How the Master Chief prepares the work
 
@@ -49,7 +49,7 @@ part it creates a blank — function names and a detailed description. It writes
 tests right away — small automatic checks. While the functions are empty the tests fail
 ("red") until the work is done.
 
-![How the Master Chief prepares the work](readme_gif/en/03_plan.gif)
+![How the Master Chief prepares the work](../../readme_gif/en/03_plan.gif)
 
 ### How the executors work
 
@@ -60,7 +60,7 @@ the model keeps repeating itself. The Master Chief reviews each copy separately:
 changed, whether its tests pass, whether every requirement is met. Accepted files are
 moved into the project one by one, and nothing else is overwritten on the way.
 
-![Several executors at once](readme_gif/en/04_parallel.gif)
+![Several executors at once](../../readme_gif/en/04_parallel.gif)
 
 ### When the Bug Fixer is called
 
@@ -70,7 +70,7 @@ Fixer once: the same file, the same requirements and the error output. A service
 the Bug Fixer. When the correction budget is exhausted, work stops with `STOP` and waits for your
 decision.
 
-![The Bug Fixer](readme_gif/en/05_bugfixer.gif)
+![The Bug Fixer](../../readme_gif/en/05_bugfixer.gif)
 
 ---
 
@@ -110,11 +110,11 @@ decision.
 
 ## 4. Path A: the setup wizard (recommended)
 
-![Installation in four steps](readme_gif/en/01_install.gif)
+![Installation in four steps](../../readme_gif/en/01_install.gif)
 
 Here is how it looks in the wizard itself:
 
-![The setup wizard](readme_gif/en/01_install_live.gif)
+![The setup wizard](../../readme_gif/en/01_install_live.gif)
 
 1. On the [repository page](https://github.com/polar-byter/opencode-environmental-tune)
    click **Code → Download ZIP** and fully extract the archive into a separate folder.
@@ -192,7 +192,7 @@ Add these lines to the project `.gitignore` so personal settings and journals st
 the plan lives in your vault; without it, in the project root.
 
 Ready-made test commands for other languages are in
-[Adding your language](README.en.md#adding-your-language).
+[Adding your language](../../README.en.md#adding-your-language).
 
 **Check that the kit can read test results.** Run this once in the project root:
 
@@ -211,7 +211,7 @@ project root (or ask the Master Chief to open it).
 
 ## 6. Models, number of executors and limits
 
-![Models, limits and keys](readme_gif/en/07_models.gif)
+![Models, limits and keys](../../readme_gif/en/07_models.gif)
 
 The "Project models" window opens from the setup wizard, the **Model settings** button
 in the dashboard, or when you ask the Master Chief. At the top there are four sections:
@@ -275,8 +275,8 @@ a new key, fully restart OpenCode Desktop.
 > mode), the kit keeps the earlier sequential protocol.
 
 The configurator follows the system language (English or Russian) until you choose one
-with Language. More: [configurator guide](kit/configurator/UX.ru.md),
-[LOCAL_MODELS.ru.md](LOCAL_MODELS.ru.md), [how executors and metrics work](docs/EXECUTION_GUIDE.ru.md)
+with Language. More: [configurator guide](../../kit/configurator/UX.ru.md),
+[LOCAL_MODELS.ru.md](LOCAL_MODELS.ru.md), [how executors and metrics work](../kit/EXECUTION_GUIDE.ru.md)
 (all in Russian).
 
 ---
@@ -316,7 +316,7 @@ plan, verify it, and show task statistics."
 
 ## 8. Watch the work in the dashboard
 
-![The dashboard](readme_gif/en/08_dashboard.gif)
+![The dashboard](../../readme_gif/en/08_dashboard.gif)
 
 While you do other things, the dashboard shows:
 
@@ -342,7 +342,7 @@ Task control buttons:
 | **Delete task…** | After confirmation, this task's sessions and journal are deleted. Your application code stays. |
 | **Model settings** | Opens the model selection window. Nothing applies by itself; the choice is for the next task. |
 
-Details and limits: [task controls](kit/dashboard/CONTROLS.ru.md) (in Russian).
+Details and limits: [task controls](../../kit/dashboard/CONTROLS.ru.md) (in Russian).
 
 ---
 
@@ -376,7 +376,7 @@ task. Moving between parts needs no further approval.
 
 ## 10. Get the result
 
-![The finish](readme_gif/en/06_final.gif)
+![The finish](../../readme_gif/en/06_final.gif)
 
 When every part is accepted and integrated, the UI/UX improvement stage begins. The
 Master Chief runs the application and walks through normal scenarios: opens forms,
@@ -428,7 +428,7 @@ The Master Chief writes what is done, the decisions and the next steps into
 | No "Key found" although you saved a key | OpenCode or the window started before the key was saved | Restart OpenCode Desktop and reopen the settings window |
 | The chat still uses the old model | The current chat never switches | "Prepare OpenCode", then a new build chat |
 | `/module` not visible | `.opencode/` not copied, or OpenCode opened outside the project root | Check the project folder |
-| OpenCode rejects `providers`/`agents` | An old OpenCode from PATH is running | See [Which OpenCode the kit uses](README.en.md#which-opencode-the-kit-uses) |
+| OpenCode rejects `providers`/`agents` | An old OpenCode from PATH is running | See [Which OpenCode the kit uses](../../README.en.md#which-opencode-the-kit-uses) |
 | Tests do not compile | An import is missing in the skeleton (executors never add imports) | Tell the Master Chief: "add the missing import to the skeleton" |
 | `CHECK FAILED` | The script cannot read test results | Read the hints; check the test command in `AGENTS.md` |
 | The Master Chief writes `STOP` and waits | A loop guard fired or the Bug Fixer failed | Read the reason, decide, and tell it to continue |
@@ -438,12 +438,12 @@ The Master Chief writes what is done, the decisions and the next steps into
 
 ## 13. Next steps
 
-- [README.en.md](README.en.md) — project overview, statistics, other languages.
+- [README.en.md](../../README.en.md) — project overview, statistics, other languages.
 - [OPENCODE_KIT.en.md](OPENCODE_KIT.en.md) — the setup wizard screen by screen.
-- [docs/EXECUTION_GUIDE.ru.md](docs/EXECUTION_GUIDE.ru.md) — how executors, the Bug Fixer and metrics work, with a map of modules and functions (Russian).
-- [PIPELINE.ru.md](PIPELINE.ru.md) — exactly how executor work is checked (Russian).
-- [METRICS.ru.md](METRICS.ru.md) — how statistics are counted (Russian).
-- [kit/prompts/README.ru.md](kit/prompts/README.ru.md) — the role prompts.
+- [docs/kit/EXECUTION_GUIDE.ru.md](../kit/EXECUTION_GUIDE.ru.md) — how executors, the Bug Fixer and metrics work, with a map of modules and functions (Russian).
+- [PIPELINE.ru.md](../kit/PIPELINE.ru.md) — exactly how executor work is checked (Russian).
+- [METRICS.ru.md](../kit/METRICS.ru.md) — how statistics are counted (Russian).
+- [kit/prompts/README.ru.md](../../kit/prompts/README.ru.md) — the role prompts.
 
 After the one-time setup you simply describe the task and approve the plan.
 The Master Chief manages the order of work, the executors, the checks and the statistics.
