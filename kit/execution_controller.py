@@ -91,7 +91,7 @@ class ExecutionController:
         """Freeze model selections and limits at the first dispatch, never raw keys."""
         path = plain_path(self.metrics.task_dir(self.task) / 'execution-settings.json')
         with self.metrics.lock(self.task):
-            self.metrics.running(self.task)
+            self.metrics.read_events_if_work_allowed(self.task)
             if path.exists():
                 choices = json.loads(path.read_text(encoding='utf-8'))
                 from .task_control_state import read_state
@@ -119,7 +119,7 @@ class ExecutionController:
 
     def record(self, kind, **fields):
         with self.metrics.lock(self.task):
-            self.metrics.active(self.task)
+            self.metrics.read_events_if_not_finished(self.task)
             return self.metrics.append(self.task, kind, **fields)
 
     def verify_permissions(self, sid, agent, workspace, source, progress, contracts):
@@ -153,7 +153,7 @@ class ExecutionController:
         Never starts a fallback model. A bug fixer must be a configured, eligible
         successor of one stopped/rejected attempt. The returned attempt is not accepted.
         """
-        events = self.metrics.running(self.task)
+        events = self.metrics.read_events_if_work_allowed(self.task)
         if work_item == 'full':
             raise ValueError('full is reserved for final root-project tests')
         if events[0].get('server_mode') in ('standalone', 'unknown'):
@@ -288,9 +288,9 @@ class ExecutionController:
                 text += (f' Correction budget used: {counts["bug_fixer"]}/{policy["fixerMaxAttempts"]}. Read the failed implementation already copied '
                          'into your file. Keep the same contract. Ask the Chief about an incorrect test or missing import. '
                          f'Previous attempt: {previous}. Its public test logs are available to the Chief; do not infer private reasoning.')
-            self.metrics.running(self.task)  # Recheck pause/cancel immediately before admission.
+            self.metrics.read_events_if_work_allowed(self.task)  # Recheck pause/cancel immediately before admission.
             self.start_watcher(attempt['event_id'])
-            self.metrics.running(self.task)
+            self.metrics.read_events_if_work_allowed(self.task)
             message_id = 'msg_' + attempt['event_id']
             admission = self.service.call('session.prompt', {'sessionID': child['id']}, {'id': message_id, 'text': text})
             if not isinstance(admission, dict) or admission.get('data', {}).get('id') != message_id:
@@ -456,7 +456,7 @@ class ExecutionController:
         """
         if not reason.strip():
             raise ValueError('A timeout correction needs the user-authorized repair reason')
-        events = self.metrics.active(self.task)
+        events = self.metrics.read_events_if_not_finished(self.task)
         if is_halted(events):
             raise ValueError('Resolve the task STOP before correcting an attempt')
         attempt = self.attempt(identifier)
@@ -486,7 +486,7 @@ class ExecutionController:
                 (self.metrics.task_dir(self.task) / inspections[-1]['snapshot']).read_text(encoding='utf-8')):
             raise ValueError('Inspected workspace changed; cannot correct its classification')
         with self.metrics.lock(self.task):
-            if self.metrics.active(self.task) != events:
+            if self.metrics.read_events_if_not_finished(self.task) != events:
                 raise ValueError('Journal changed during timeout verification; inspect again')
             event = self.metrics.append(self.task, 'attempt_reclassification', delegation_id=identifier,
                                         end_event=ended[-1]['event_id'], review_event=reviews[-1]['event_id'],
@@ -497,7 +497,7 @@ class ExecutionController:
     def integrate(self, identifier):
         """Apply one accepted file only if its source and shared contracts are unchanged."""
         with self.metrics.lock(self.task):
-            events = self.metrics.running(self.task)
+            events = self.metrics.read_events_if_work_allowed(self.task)
             attempt = self.attempt(identifier)
             if any(e['kind'] == 'integration' and e['delegation_id'] == identifier for e in events):
                 raise ValueError('Attempt already integrated')

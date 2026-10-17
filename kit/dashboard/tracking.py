@@ -88,7 +88,7 @@ def publish_plan(root: Path, task: str, document: str, functions: list[dict]) ->
     rows = validate_functions(root, functions)
     metrics = TaskMetrics(root)
     with launch_lock(root, 5), metrics.lock(task):
-        events = metrics.running(task)
+        events = metrics.read_events_if_work_allowed(task)
         closed = {event.get('delegation_id') for event in events if event['kind'] == 'review'}
         if any(event['kind'] == 'delegation' and event['event_id'] not in closed for event in events):
             raise ValueError('Do not change the plan during an executor attempt')

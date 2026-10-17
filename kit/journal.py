@@ -212,7 +212,16 @@ class TaskJournal:
         return event
 
     # check if the task is active (not finished) and return its events
-    def active(self, task):
+    def read_events_if_not_finished(self, task: str) -> list[dict]:
+        """Read the journal of a task that is not finished yet.
+
+        After a "finish" event the task is closed: no command may add events to it,
+        a new piece of work needs a new task ID. Pause and STOP are not checked here:
+        resume() and the dashboard controls must work while the task is stopped.
+        For commands that do work use TaskMetrics.read_events_if_work_allowed.
+        Returns all events (as read()); raises ValueError when the task is finished,
+        missing or its journal is broken.
+        """
         events = self.read(task)
         if any(e['kind'] == 'finish' for e in events):
             raise ValueError('Task is finished; start a new task ID')

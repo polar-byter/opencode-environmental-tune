@@ -181,9 +181,21 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
                                **server)
 
 
-    def running(self, task):
-        """Events of an active task that is not stopped by a loop guard; raises TaskHalted otherwise."""
-        events = self.active(task)
+    def read_events_if_work_allowed(self, task: str) -> list[dict]:
+        """Read the journal for a command that does work; refuse if the task may not work now.
+
+        Every command that changes the task (delegate, inspect, review, test) starts with it,
+        and execution_controller.py rechecks it before admitting a worker. Work is allowed when:
+          1. the task is not finished (read_events_if_not_finished);
+          2. the user did not pause, stop or delete it in the dashboard
+             (.metrics/.task-controls/<task>.json, see blocking_reason);
+          3. no loop guard STOP is active: no "halt" event without a later "resume".
+        Returns all events of the task (with audited corrections applied).
+        Raises ValueError when the task is finished or the journal is broken (exit code 2),
+        and TaskHalted with the reason when it is paused or stopped (exit code 3, STOP).
+        resume() uses read_events_if_not_finished instead: it must work while a STOP is active.
+        """
+        events = self.read_events_if_not_finished(task)
         reason = blocking_reason(self.root, task)
         if reason:
             raise TaskHalted(reason)
@@ -256,7 +268,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
             raise ValueError('Delegate exactly one source file per executor attempt')
         requirement_texts = read_requirements(self.root / requirements_file) if requirements_file else []
         with self.lock(task):
-            events = self.running(task)
+            events = self.read_events_if_work_allowed(task)
             if events[0].get('track_delegations') and not requirement_texts:
                 raise ValueError('Tracked delegation requires a requirements file')
             pending = pending_attempts(events)
@@ -332,7 +344,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         if the executor changed any other file, the review will refuse acceptance.
         """
         with self.lock(task):
-            events = self.running(task)
+            events = self.read_events_if_work_allowed(task)
             attempts = pending_attempts(events, work_item)
             if len(attempts) != 1:
                 raise ValueError('Inspect must match the pending delegated work item')
@@ -366,7 +378,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
             raise ValueError('Review requires a work item and accepted/rework/failed/blocked result')
         
         with self.lock(task):
-            events = self.running(task)
+            events = self.read_events_if_work_allowed(task)
             # pending delegations are those that have not been reviewed yet; we need to find the last one for this work item
             pending = pending_attempts(events, work_item)
             evidence = {}
@@ -455,7 +467,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         if not reason.strip():
             raise ValueError('Resume requires a reason: what the user decided')
         with self.lock(task):
-            events = self.active(task)
+            events = self.read_events_if_not_finished(task)
             if not is_halted(events):
                 raise ValueError('Task is not stopped; nothing to resume')
             return self.append(task, 'resume', reason=reason.strip())
@@ -514,7 +526,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
             reason = blocking_reason(self.root, task)
             if reason:
                 raise TaskHalted(reason)
-            events = self.active(task)
+            events = self.read_events_if_not_finished(task)
             if pending_attempts(events):
                 raise ValueError('Record a review for every executor attempt before the UI/UX stage')
             return self.append(task, 'ux_review', **data)
@@ -527,7 +539,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
             raise ValueError('Provide a non-empty scope and work/baseline phase')
         scope = scope.strip()
         with self.lock(task):
-            events = self.running(task)
+            events = self.read_events_if_work_allowed(task)
             runner, binding = self, {}
             if attempt_id:
                 candidates = [e for e in pending_attempts(events) if e['event_id'] == attempt_id and e.get('workspace')]

@@ -79,7 +79,7 @@ class Controls(unittest.TestCase):
         self.assertFalse(self.gateway.active_ids)
         self.assertFalse(self.gateway.cleared)
         self.assertEqual(len(self.metrics.read('task')), 1)
-        with self.assertRaises(TaskHalted): self.metrics.running('task')
+        with self.assertRaises(TaskHalted): self.metrics.read_events_if_work_allowed('task')
         with self.assertRaises(TaskHalted): self.metrics.finish('task')
         self.assertTrue(self.metrics.task_dir('task').exists())
 
@@ -88,7 +88,7 @@ class Controls(unittest.TestCase):
         result = self.perform('resume')
         self.assertEqual(result['status'], 'running')
         self.assertEqual(self.gateway.prompts[0][:2], ('ses_root', 'task'))
-        self.assertEqual(self.metrics.running('task'), before)
+        self.assertEqual(self.metrics.read_events_if_work_allowed('task'), before)
         self.perform('resume')
         self.assertEqual(len(self.gateway.prompts), 1)
 
@@ -103,7 +103,7 @@ class Controls(unittest.TestCase):
         self.assertEqual(result['status'], 'cancelled')
         self.assertEqual(set(self.gateway.cleared), set(self.gateway.ids))
         self.assertFalse(any(e['kind'] == 'finish' for e in self.metrics.read('task')))
-        with self.assertRaises(TaskHalted): self.metrics.running('task')
+        with self.assertRaises(TaskHalted): self.metrics.read_events_if_work_allowed('task')
         with self.assertRaises(ValueError): self.controls.request('task', 'resume')
 
     def test_delete_preserves_source_and_unrelated_task(self):
@@ -139,7 +139,7 @@ class Controls(unittest.TestCase):
         result = self.perform('pause')
         self.assertEqual(result['status'], 'error')
         self.assertEqual(result['error'], 'Unavailable')
-        with self.assertRaises(TaskHalted): self.metrics.running('task')
+        with self.assertRaises(TaskHalted): self.metrics.read_events_if_work_allowed('task')
         self.assertFalse(self.gateway.removed)
 
     def test_still_active_refuses_delete_and_retry_can_complete(self):
@@ -183,18 +183,18 @@ class Controls(unittest.TestCase):
         other = TaskControls(self.root, self.gateway)
         self.assertEqual(other.view('task')['status'], 'error')
         self.assertFalse(self.gateway.prompts)
-        with self.assertRaises(TaskHalted): self.metrics.running('task')
+        with self.assertRaises(TaskHalted): self.metrics.read_events_if_work_allowed('task')
 
     def test_resume_failure_blocks_work_without_resetting_guard(self):
         self.perform('pause')
         self.gateway.resume = Mock(side_effect=ControlError('No confirmation'))
         self.assertEqual(self.perform('resume')['status'], 'error')
-        with self.assertRaises(TaskHalted): self.metrics.running('task')
+        with self.assertRaises(TaskHalted): self.metrics.read_events_if_work_allowed('task')
         self.assertEqual([e['kind'] for e in self.metrics.read('task')], ['start'])
 
     def test_crash_during_admission_blocks_metrics_before_dashboard_recovery(self):
         state.write_state(self.root, 'task', status='resuming', allow_execution=True)
-        with self.assertRaises(TaskHalted): self.metrics.running('task')
+        with self.assertRaises(TaskHalted): self.metrics.read_events_if_work_allowed('task')
 
     def test_known_private_server_is_not_controlled_through_shared_api(self):
         self.metrics.append('task', 'test', scope='work', status='passed')
@@ -216,7 +216,7 @@ class Controls(unittest.TestCase):
             with self.assertRaises(ValueError): self.controls.request(task, 'pause')
         path = state.state_path(self.root, 'task'); path.parent.mkdir()
         path.write_text('{')
-        with self.assertRaises(ValueError): self.metrics.running('task')
+        with self.assertRaises(ValueError): self.metrics.read_events_if_work_allowed('task')
 
     def test_redirected_child_prevents_recursive_delete(self):
         link = self.metrics.task_dir('task') / 'linked'
