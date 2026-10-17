@@ -1,38 +1,17 @@
-# Dashboard learning mode
+# Dashboard
 
-The user implements function bodies to learn Python. The assistant acts as an
-architect and mentor: maintain signatures, specs, hints, focused tests and docs;
-review the user's code and explain mistakes. Do not implement bodies or delegate
-the exercises to an executor unless the user explicitly changes this mode.
+The dashboard is a read-only view of a task: it reads the journal
+(`.metrics/<ID>/events.jsonl`) and OpenCode sessions; `kit/task_metrics.py` owns the rules.
+Start with README.ru.md.
 
-- Start with README.ru.md and the current step in the vault's currentsteps.md.
-- The full learning roadmap is in the vault folder `Дашборд OpenCode`.
-- Operational `launcher.py`, `runtime.py`, and `static/runtime.html` provide the automatic task viewer. Keep learner implementations in `simple.py`/`simple.html` intact when maintaining this infrastructure. The user chose to keep plain HTML/JavaScript; React is an optional archived lesson. Continue learning by explaining one data projection or UI handler at a time.
-- Keep Russian teaching explanations in the vault lessons, not in source files.
-  Source comments and docstrings stay English. Do not add retrospective teaching
-  notes to completed functions or remove/change the learner's own comments.
-  Detailed function hints live in the vault note `06. Подсказки к функциям`.
-- Use console.py for iteration 1 and simple.py for the first browser iteration.
-- Prefer ordinary loops, explicit variables and small functions. Do not require
-  comprehensions, lambdas, decorators, async Python or design patterns to pass a step.
-- Explain inputs, output, one normal example and one error case before an exercise.
-- A method name alone is not a learning hint. Show concrete input and expected
-  output, explain each unfamiliar field/term, and give one first action the user
-  can try. Distinguish a temporary experiment from the final testable result.
-- Split larger exercises into numbered, independently understandable parts.
-  Use a small loop and explicit counters before introducing compact syntax.
-  Do not use Java analogies unless the user asks for them. Label prerequisites
-  and future hints; archived step numbers are not the learning order.
-- Keep explanations focused on the function currently being discussed. For every
-  hint, name the function it applies to, explain why it matters and state what the
-  learner should do now. Clearly label future information and say when no change
-  is needed in the current function. Distinguish a helper's intermediate result
-  from the enclosing function's return value or exception.
-- Prepare later exercises when their prerequisites are complete. Existing advanced
-  skeletons and their red tests are future work, not failures of the current step.
-- Give a small hint first, then a more concrete explanation when requested.
-  Do not change a learner's implementation without discussing it.
-- Update the current work file after a completed step; update roadmap milestones
-  and the dashboard learning log after a completed iteration.
-
-Russian is for the conversation and vault lessons; code documentation stays English.
+- Operational code: `launcher.py` (start, reuse, stop), `runtime.py` (JSON API and
+  `static/runtime.html`), `tracking.py`, `observations.py`, `delivery.py`, `controls.py`,
+  `session_control.py`, `quota_monitor.py`.
+- `journal.py` reads the journal for the views (`read_events`, `brief_summary`).
+  Loop guard rules live only in `kit/loop_guards.py`; do not duplicate them here.
+- `console.py`, `simple.py` and `static/simple.html` are small hand-written examples
+  from learning Python. Keep them working and keep the user's own comments in them.
+- The page stays plain HTML/JavaScript without frameworks.
+- Source comments and docstrings are English; human-facing docs may be Russian.
+- Run the dashboard tests from the project root:
+  `py -m unittest discover -s kit/dashboard/tests -t .`

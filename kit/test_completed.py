@@ -1,4 +1,4 @@
-"""Run all completed kit code; future dashboard exercises remain explicit opt-ins.
+"""Run all kit tests: the kit itself, the configurator and the dashboard.
 
 Usage: py kit/task_metrics.py test --task <ID> --scope full -- py -m kit.test_completed
 """
@@ -11,10 +11,8 @@ def suite():
     result = unittest.TestSuite()
     for directory in ('kit/tests', 'kit/configurator/tests'):
         result.addTests(loader.discover(directory))
-    names = ('test_journal.Step1ParseAndRead', 'test_journal.Step1Status', 'test_journal.Step1Tests',
-             'test_learning', 'test_simple', 'test_simple_page', 'test_runtime', 'test_launcher',
-             'test_tracking', 'test_observations', 'test_work_http', 'test_tokens_delivery', 'test_controls')
-    result.addTests(loader.loadTestsFromNames(['kit.dashboard.tests.' + name for name in names]))
+    # The dashboard tests import kit.dashboard as a package, so the project root is the top level.
+    result.addTests(loader.discover('kit/dashboard/tests', top_level_dir='.'))
     return result
 
 
