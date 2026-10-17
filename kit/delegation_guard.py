@@ -98,10 +98,15 @@ def compare_project_snapshots(before: dict[str, str], after: dict[str, str], all
     return dict(changed=changed, unexpected=[p for p in changed if p not in allowed])
 
 
-def review_checks(path: Path) -> list[dict]:
-    """Require explicit requirement/code/test evidence; correctness remains reviewer judgement."""
+def review_checks(checks_file: Path) -> list[dict]:
+    """Require explicit requirement/code/test evidence; correctness remains reviewer judgement.
+    checks_file is .metrics/<ID>/<work_item>-checks.json: the Master Chief writes it during
+    the review and passes it as `task_metrics.py review --result accepted --checks <file>`.
+    This function checks only the form of every entry; task_metrics.py then checks that
+    the entries cover every frozen requirement exactly once.
+    """
     # utf-8-sig also accepts a BOM: PowerShell writes UTF-8 files with one by default.
-    checks = json.loads(path.read_text(encoding='utf-8-sig'))
+    checks = json.loads(checks_file.read_text(encoding='utf-8-sig'))
     if not isinstance(checks, list) or not checks:
         raise ValueError('Review checks must be a non-empty JSON list')
     for item in checks:
@@ -112,7 +117,7 @@ def review_checks(path: Path) -> list[dict]:
     return checks
 
 
-def read_requirements(path: Path) -> list[str]:
+def read_requirements(requirements_file: Path) -> list[str]:
     """Read and validate unique, non-blank requirements; delegate saves them.
     The file is plain JSON (.metrics/<ID>/<work_item>-requirements.json), no comments allowed.
     The main idea is to have a single source of truth for requirements, frozen before
@@ -120,18 +125,18 @@ def read_requirements(path: Path) -> list[str]:
     prove every one of them in the checks file before the work can be accepted.
     Requirements must be unique, because the review compares them as a set.
     """
-    requirements = json.loads(path.read_text(encoding='utf-8-sig'))  # BOM-tolerant, see review_checks
+    requirements = json.loads(requirements_file.read_text(encoding='utf-8-sig'))  # BOM-tolerant, see review_checks
 
     if not isinstance(requirements, list):
-        raise ValueError(f'Requirements must be a JSON list: {path}')
+        raise ValueError(f'Requirements must be a JSON list: {requirements_file}')
     if not requirements:
         # An empty list would let any work be accepted without evidence.
-        raise ValueError(f'Requirements list is empty: {path}')
+        raise ValueError(f'Requirements list is empty: {requirements_file}')
     for requirement in requirements:
         if not isinstance(requirement, str) or not requirement.strip():
-            raise ValueError(f'Each requirement must be a non-blank string, got {requirement!r}: {path}')
+            raise ValueError(f'Each requirement must be a non-blank string, got {requirement!r}: {requirements_file}')
     # set() drops repeats, so a shorter set means the list has duplicates.
     if len(set(requirements)) != len(requirements):
-        raise ValueError(f'Requirements must be unique: {path}')
+        raise ValueError(f'Requirements must be unique: {requirements_file}')
 
     return requirements
