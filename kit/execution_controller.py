@@ -14,7 +14,7 @@ import threading
 import time
 import uuid
 
-from .delegation_guard import take_project_snapshot, source_path, read_requirements
+from .delegation_guard import take_project_snapshot, normalize_delegated_path, read_requirements
 from .execution_policy import limit_reason, next_action, normalize_policy, attempt_counts, budget_reason
 from .run_opencode import load_choices, strip_jsonc
 from .task_metrics import TaskMetrics, pending_attempts, message_info, is_halted
@@ -204,9 +204,9 @@ class ExecutionController:
                 raise ValueError('A bug fixer must preserve frozen requirements and contracts')
         elif role == 'bug_fixer':
             raise ValueError('A bug fixer requires the exact previous attempt')
-        allowed = source_path(self.root, file)
+        allowed = normalize_delegated_path(self.root, file)
         for contract in contracts:
-            source_path(self.root, contract)
+            normalize_delegated_path(self.root, contract)
         workspace_base = plain_path(self.metrics.task_dir(self.task) / 'workspaces')
         workspace_base.mkdir(exist_ok=True)
         worker = role + '-' + uuid.uuid4().hex[:10]

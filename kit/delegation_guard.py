@@ -15,15 +15,39 @@ from pathlib import Path
 GENERATED = {'.git', '.metrics', '__pycache__', '.venv', 'node_modules', 'target', 'build', 'dist', 'bin', 'obj'}
 
 
-def source_path(root: Path, name: str) -> str:
-    """Require a project-relative regular source file outside generated directories."""
+def normalize_delegated_path(root: Path, name: str) -> str:
+    """
+    Check the file the executor is allowed to edit and return its normalized path.
+    The returned path has the same form as the take_project_snapshot() keys:
+    project-relative with "/" separators, so compare_project_snapshots() can match it.
+    The file must already exist: the Master Chief creates the skeleton before delegation.
+    Raises ValueError with the exact reason when the path is rejected.
+    """
     path = Path(name)
-    if path.anchor or '..' in path.parts or not path.parts or any(p in GENERATED for p in path.parts):
-        raise ValueError('Delegated files must be project-relative source files')
-    target = root / path
-    if (not target.resolve().is_relative_to(root) or
-            target.resolve() != target.absolute() or not target.is_file()):
-        raise ValueError('Delegated file must exist and must not be a symlink or junction')
+
+    # First check the text of the path, without touching the disk.
+    if not path.parts:
+        raise ValueError(f'Delegated file path is empty: {name!r}')
+    if path.anchor:
+        # anchor is the root part ("C:\\" or "/"); a relative path has none.
+        raise ValueError(f'Delegated file must be project-relative, not absolute: {name}')
+    if '..' in path.parts:
+        raise ValueError(f'Delegated file must not leave the project with "..": {name}')
+    if any(part in GENERATED for part in path.parts):
+        # Generated directories are excluded from the snapshot, so edits there would go unnoticed.
+        raise ValueError(f'Delegated file must not be in a generated directory: {name}')
+
+    # Then check the real file on disk.
+    absolute_path = root / path
+    real_path = absolute_path.resolve()  # resolve() follows symlinks and junctions
+    if not real_path.is_relative_to(root):
+        raise ValueError(f'Delegated file resolves outside the project: {name}')
+    if real_path != absolute_path.absolute():
+        # absolute() keeps links as written; a difference means a link on the way.
+        raise ValueError(f'Delegated file must not be a symlink or junction: {name}')
+    if not absolute_path.is_file():
+        raise ValueError(f'Delegated file must exist and be a regular file: {name}')
+
     return path.as_posix()
 
 

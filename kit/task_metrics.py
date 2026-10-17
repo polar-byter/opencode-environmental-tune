@@ -16,11 +16,11 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 if __package__:
-    from .delegation_guard import compare_project_snapshots, read_requirements, review_checks, take_project_snapshot, source_path
+    from .delegation_guard import compare_project_snapshots, read_requirements, review_checks, take_project_snapshot, normalize_delegated_path
     from .opencode_cli import locate_opencode
     from .task_control_state import blocking_reason
 else:
-    from delegation_guard import compare_project_snapshots, read_requirements, review_checks, take_project_snapshot, source_path
+    from delegation_guard import compare_project_snapshots, read_requirements, review_checks, take_project_snapshot, normalize_delegated_path
     from opencode_cli import locate_opencode
     from task_control_state import blocking_reason
 
@@ -693,7 +693,7 @@ class TaskMetrics:
 
         # Validate paths and remove duplicate file names.
         target = self.attempt_root(task, {'workspace': workspace})
-        allowed = sorted({source_path(target, name) for name in files})
+        allowed = sorted({normalize_delegated_path(target, name) for name in files})
 
         # Allow exactly one unique file per attempt.
         if len(allowed) != 1:
@@ -729,7 +729,7 @@ class TaskMetrics:
                 reserved = pending + [e for e in events if e['kind'] == 'delegation' and e['event_id'] in accepted - integrated]
                 if any(set(e['files']) & set(allowed) for e in reserved):
                     raise ValueError('Source file is already assigned or awaiting integration')
-                contract_paths = sorted({source_path(self.root, p) for p in (contracts or [])})
+                contract_paths = sorted({normalize_delegated_path(self.root, p) for p in (contracts or [])})
                 if policy['maxExecutors'] > 1 and not contract_paths:
                     raise ValueError('Parallel work requires explicit shared contracts')
                 base = take_project_snapshot(self.root)
