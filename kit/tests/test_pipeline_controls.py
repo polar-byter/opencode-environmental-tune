@@ -11,7 +11,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import time
 from task_metrics import TaskHalted, TaskMetrics, main
-from delegation_guard import read_requirements, review_checks, snapshot
+from delegation_guard import read_requirements, review_checks, take_project_snapshot
 
 
 class EvidenceFilesWithBom(unittest.TestCase):

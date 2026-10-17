@@ -16,11 +16,11 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 if __package__:
-    from .delegation_guard import compare, read_requirements, review_checks, snapshot, source_path
+    from .delegation_guard import compare, read_requirements, review_checks, take_project_snapshot, source_path
     from .opencode_cli import locate_opencode
     from .task_control_state import blocking_reason
 else:
-    from delegation_guard import compare, read_requirements, review_checks, snapshot, source_path
+    from delegation_guard import compare, read_requirements, review_checks, take_project_snapshot, source_path
     from opencode_cli import locate_opencode
     from task_control_state import blocking_reason
 
@@ -732,13 +732,13 @@ class TaskMetrics:
                 contract_paths = sorted({source_path(self.root, p) for p in (contracts or [])})
                 if policy['maxExecutors'] > 1 and not contract_paths:
                     raise ValueError('Parallel work requires explicit shared contracts')
-                base = snapshot(self.root)
+                base = take_project_snapshot(self.root)
                 details = dict(workspace=workspace, worker_id=worker_id, role=role,
                                base_hashes={p: base.get(p) for p in allowed + contract_paths},
                                contracts=contract_paths)
             elif pending:
                 raise ValueError('Review the pending delegation before starting another')
-            before = snapshot(target)
+            before = take_project_snapshot(target)
             filename = 'before-' + uuid.uuid4().hex + '.json'
             (self.task_dir(task) / filename).write_text(json.dumps(before), encoding='utf-8')
             return self.append(task, 'delegation', work_item=work_item.strip(), files=allowed,
@@ -762,7 +762,7 @@ class TaskMetrics:
             if any(e['kind'] == 'inspection' and e['delegation_id'] == attempt['event_id'] for e in events):
                 raise ValueError('Executor edits already inspected; do not overwrite the evidence')
             before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
-            after = snapshot(self.attempt_root(task, attempt))
+            after = take_project_snapshot(self.attempt_root(task, attempt))
             changes = compare(before, after, attempt['files'])
             filename = 'after-' + uuid.uuid4().hex + '.json'
             (self.task_dir(task) / filename).write_text(json.dumps(after), encoding='utf-8')
@@ -802,7 +802,7 @@ class TaskMetrics:
                     raise ValueError('Review must match the pending delegated work item')
                 
                 before = json.loads((self.task_dir(task) / attempt['snapshot']).read_text(encoding='utf-8'))
-                after = snapshot(self.attempt_root(task, attempt))
+                after = take_project_snapshot(self.attempt_root(task, attempt))
                 inspections = [e for e in events if e['kind'] == 'inspection' and
                                e['delegation_id'] == attempt['event_id']]
                 # compare function may create unexpected changes if the executor changed files that were not allowed; we need to check for that
@@ -1009,7 +1009,7 @@ class TaskMetrics:
             closed = {e.get('delegation_id') for e in events if e['kind'] == 'review'}
             if pending_attempts(events) or any(e['kind'] == 'integration' for e in events):
                 filename = 'tested-' + uuid.uuid4().hex + '.json'
-                (self.task_dir(task) / filename).write_text(json.dumps(snapshot(runner.root)), encoding='utf-8')
+                (self.task_dir(task) / filename).write_text(json.dumps(take_project_snapshot(runner.root)), encoding='utf-8')
                 evidence['snapshot'] = filename
             started = time.monotonic()
             output, code, parsed, category = runner.execute(command, timeout, xml, folder)
@@ -1315,7 +1315,7 @@ class TaskMetrics:
                 runs = [e for e in events if e['kind'] == 'test' and e.get('scope') == 'full' and not e.get('delegation_id')]
                 if (not runs or runs[-1]['status'] != 'passed' or not runs[-1].get('snapshot')
                         or compare(json.loads((self.task_dir(task)/runs[-1]['snapshot']).read_text(encoding='utf-8')),
-                                   snapshot(self.root), [])['changed']):
+                                   take_project_snapshot(self.root), [])['changed']):
                     raise ValueError('Finish needs a green full test of the integrated project')
             if (not finished and events[0].get('ux_review_required')
                     and not any(e['kind'] == 'ux_review' for e in events)):

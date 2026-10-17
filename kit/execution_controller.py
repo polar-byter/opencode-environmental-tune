@@ -14,7 +14,7 @@ import threading
 import time
 import uuid
 
-from .delegation_guard import snapshot, source_path, read_requirements
+from .delegation_guard import take_project_snapshot, source_path, read_requirements
 from .execution_policy import limit_reason, next_action, normalize_policy, attempt_counts, budget_reason
 from .run_opencode import load_choices, strip_jsonc
 from .task_metrics import TaskMetrics, pending_attempts, message_info, is_halted
@@ -213,7 +213,7 @@ class ExecutionController:
         workspace = plain_path(workspace_base / worker)
         workspace.mkdir(parents=True)
         # Snapshot rejects links. Copy only regular source, never generated directories.
-        before = snapshot(self.root)
+        before = take_project_snapshot(self.root)
         for name in before:
             parts = Path(name).parts
             if any(p.startswith('.env') or p.lower() in ('.git', '.aws', '.ssh', '.codex', '.agents', 'auth.json', 'credentials.json') for p in parts):
@@ -223,7 +223,7 @@ class ExecutionController:
             shutil.copyfile(self.root / name, destination)
         if prior:
             shutil.copyfile(self.metrics.attempt_root(self.task, prior) / allowed, workspace / allowed)
-        if snapshot(self.root) != before:
+        if take_project_snapshot(self.root) != before:
             raise ValueError('Project changed while preparing the isolated workspace; try again from the current revision')
         attempt = self.metrics.delegate(self.task, work_item, [allowed], work_item, Path(requirements),
                                         workspace=workspace.relative_to(self.root).as_posix(), worker_id=worker,
@@ -325,7 +325,7 @@ class ExecutionController:
             policy.update(maxSteps=policy['fixerMaxSteps'], maxSeconds=policy['fixerMaxSeconds'])
         cache = plain_path(self.metrics.task_dir(self.task) / ('watch-' + identifier + '.json'))
         old = json.loads(cache.read_text(encoding='utf-8')) if cache.exists() else {}
-        current_hash = snapshot(self.metrics.attempt_root(self.task, attempt)).get(attempt['files'][0])
+        current_hash = take_project_snapshot(self.metrics.attempt_root(self.task, attempt)).get(attempt['files'][0])
         steps = 0
         repeat = old.get('repeat', 0) if old.get('hash') == current_hash else 0
         last = old.get('last') if old.get('hash') == current_hash else None
@@ -482,7 +482,7 @@ class ExecutionController:
         if not errors or any(not isinstance(e, dict) or e.get('type') != 'aborted' or e.get('message') != 'Step interrupted' for e in errors):
             raise ValueError('Provider error evidence cannot be relabelled as a deadline')
         inspections = [e for e in events if e['kind'] == 'inspection' and e['delegation_id'] == identifier]
-        if not inspections or snapshot(self.metrics.attempt_root(self.task, attempt)) != json.loads(
+        if not inspections or take_project_snapshot(self.metrics.attempt_root(self.task, attempt)) != json.loads(
                 (self.metrics.task_dir(self.task) / inspections[-1]['snapshot']).read_text(encoding='utf-8')):
             raise ValueError('Inspected workspace changed; cannot correct its classification')
         with self.metrics.lock(self.task):
@@ -505,18 +505,18 @@ class ExecutionController:
                 raise ValueError('Review and accept this exact attempt before integration')
             if self.binding(identifier) in self.service.active():
                 raise ValueError('Worker is still active')
-            now = snapshot(self.root)
+            now = take_project_snapshot(self.root)
             if any(now.get(p) != digest for p, digest in attempt['base_hashes'].items()):
                 raise ValueError('Source or shared contract changed; rebase and review a fresh attempt')
             workspace = self.metrics.attempt_root(self.task, attempt)
             review = next(e for e in reversed(events) if e['kind'] == 'review' and e.get('delegation_id') == identifier and e['result'] == 'accepted')
             runs = [e for e in events[:events.index(review)] if e['kind'] == 'test' and e.get('delegation_id') == identifier]
-            if not runs or snapshot(workspace) != json.loads((self.metrics.task_dir(self.task) / runs[-1]['snapshot']).read_text(encoding='utf-8')):
+            if not runs or take_project_snapshot(workspace) != json.loads((self.metrics.task_dir(self.task) / runs[-1]['snapshot']).read_text(encoding='utf-8')):
                 raise ValueError('Workspace changed after its accepted green test')
             inspection = next(e for e in reversed(events) if e['kind'] == 'inspection' and e['delegation_id'] == identifier)
             frozen = json.loads((self.metrics.task_dir(self.task) / inspection['snapshot']).read_text(encoding='utf-8'))
             name = attempt['files'][0]
-            if snapshot(workspace).get(name) != frozen.get(name):
+            if take_project_snapshot(workspace).get(name) != frozen.get(name):
                 raise ValueError('Accepted source changed after inspection')
             target = self.root / name
             temporary = target.with_name(target.name + '.kit-' + uuid.uuid4().hex + '.tmp')

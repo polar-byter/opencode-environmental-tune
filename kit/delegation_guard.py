@@ -27,7 +27,7 @@ def source_path(root: Path, name: str) -> str:
     return path.as_posix()
 
 
-def snapshot(root: Path) -> dict[str, str]:
+def take_project_snapshot(root: Path) -> dict[str, str]:
     """
     Hash files outside excluded directories, regardless of Git ignore rules.
     Why SHA-256: a short fixed-size fingerprint per file is enough for comparison,
