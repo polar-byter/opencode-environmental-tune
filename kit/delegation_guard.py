@@ -1,11 +1,17 @@
-"""Content snapshots for executor edits, including new and Git-ignored source files."""
+"""
+Its contents are used to detect unexpected changes in source files, done by delegated executors,
+and to provide snapshots for executor edits, including new and Git-ignored source files.
+It is a black box to the executor, which is not trusted to modify source files correctly.
+"""
 from __future__ import annotations
 
 import hashlib
 import os
 from pathlib import Path
 
-# Generated directories only. Source code must not be placed in these directories.
+# Generated directories only. Source code must not be placed in these directories:
+# they are excluded from the snapshot, so edits inside them are never detected.
+# It is a way to exclude files that are not source files, and to avoid false positives in the snapshot.
 GENERATED = {'.git', '.metrics', '__pycache__', '.venv', 'node_modules', 'target', 'build', 'dist', 'bin', 'obj'}
 
 
@@ -22,12 +28,19 @@ def source_path(root: Path, name: str) -> str:
 
 
 def snapshot(root: Path) -> dict[str, str]:
-    """Hash files outside excluded directories, regardless of Git ignore rules.
-
+    """
+    Hash files outside excluded directories, regardless of Git ignore rules.
+    Why SHA-256: a short fixed-size fingerprint per file is enough for comparison,
+    so no file copies are stored, and two different contents practically never get the same hash.
+    Returns {project-relative POSIX path: SHA-256 hex digest}.
     These hashes allow later comparison; they do not prevent or restore edits.
     """
-    files = {}
+    files_of_the_snapshot = {}
+    #followlinks=False: do not follow symlinks, to avoid infinite loops and to avoid including files outside the project.
     for current, dirs, names in os.walk(root, followlinks=False):
+        # [:] we modify existing dirs not create a new list,
+        # so that os.walk() does not recurse into excluded directories.
+        # ;walk uses the original dirs list to recurse, so we need to modify it in place.
         dirs[:] = sorted(d for d in dirs if d not in GENERATED)
         for name in dirs + names:
             path = Path(current) / name
@@ -35,8 +48,12 @@ def snapshot(root: Path) -> dict[str, str]:
                 raise ValueError(f'Snapshot cannot follow a symlink or junction: {path}')
         for name in sorted(names):
             path = Path(current) / name
-            files[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return files
+            # why relative path: the "before" snapshot we made in one folder,
+            # but the "after" snapshot may be made in isolated environments,
+            # in a copy of the project  - it is the .metrics/<ID>/workspaces.
+            # so we need to use relative paths to compare the two snapshots, and not absolute paths that may differ.
+            files_of_the_snapshot[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return files_of_the_snapshot
 
 
 def compare(before: dict[str, str], after: dict[str, str], allowed: list[str]) -> dict:
