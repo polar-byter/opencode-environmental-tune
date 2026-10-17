@@ -55,6 +55,25 @@ class PipelineControls(unittest.TestCase):
     def begin(self):
         return self.metrics.delegate('task', 'App', ['app.py'])
 
+    def test_inspect_without_a_delegation_says_so(self):
+        with self.assertRaisesRegex(ValueError, "No delegated attempt of 'App'"):
+            self.metrics.inspect('task', 'App')
+
+    def test_inspect_strips_the_work_item_name_like_delegate(self):
+        self.metrics.delegate('task', ' App ', ['app.py'])
+        self.assertEqual(self.metrics.inspect('task', ' App')['work_item'], 'App')
+
+    def test_inspect_refuses_several_open_attempts_and_review_closes_them(self):
+        first = self.begin()
+        # The rules never open a second attempt; simulate a damaged journal directly.
+        with self.metrics.lock('task'):
+            self.metrics.append('task', 'delegation', **{k: first[k] for k in
+                                ('work_item', 'files', 'scope', 'snapshot', 'requirements')})
+        with self.assertRaisesRegex(ValueError, "Several open attempts of 'App'"):
+            self.metrics.inspect('task', 'App')
+        self.metrics.review('task', 'App', 'rework')  # the way out: close the extra attempt
+        self.assertEqual(self.metrics.inspect('task', 'App')['delegation_id'], first['event_id'])
+
     def test_failed_attempt_without_changes_is_not_a_rework(self):
         self.begin()
         self.metrics.inspect('task', 'App')

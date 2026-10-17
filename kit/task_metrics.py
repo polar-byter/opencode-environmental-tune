@@ -345,10 +345,15 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
         """
         with self.lock(task):
             events = self.read_events_if_work_allowed(task)
+            work_item = work_item.strip()  # delegate() records the stripped name
             attempts = pending_attempts(events, work_item)
-            if len(attempts) != 1:
-                raise ValueError('Inspect must match the pending delegated work item')
-            attempt = attempts[-1]
+            if not attempts:
+                raise ValueError(f'No delegated attempt of {work_item!r} is waiting for inspection; '
+                                 'register it with delegate first')
+            if len(attempts) > 1:
+                raise ValueError(f'Several open attempts of {work_item!r}; the journal is inconsistent, '
+                                 'close the extra attempts with review --result rework before inspecting')
+            attempt = attempts[0]
             if attempt.get('workspace') and not any(e['kind'] == 'attempt_end' and e['delegation_id'] == attempt['event_id']
                                                    and e.get('stopped') is True for e in events):
                 raise ValueError('Confirm that this isolated worker stopped before inspection')
@@ -387,7 +392,7 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
             # if the task is tracking delegations, we must have a pending delegation to review; otherwise, raise an error
             if events[0].get('track_delegations') and not pending:
                 raise ValueError('Register the executor attempt with delegate before reviewing')
-            
+
             if pending:
                 attempt = pending[-1]
                 if attempt['work_item'] != work_item:
