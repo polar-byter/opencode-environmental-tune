@@ -210,12 +210,36 @@ class TaskMetrics(TaskJournal, SuiteRunnerMixin, UsageReportMixin):
     def delegate(self, task: str, work_item: str, files: list[str], scope: str | None = None,
                  requirements_file: Path | None = None, *, workspace: str | None = None,
                  worker_id: str | None = None, role: str = 'executor', contracts: list[str] | None = None) -> dict:
+        """Register one executor attempt before the executor starts: what it may change and how it is judged.
 
-        """Log one executor attempt and save pre-execution file hashes.
+        The Master Chief calls it as `task_metrics.py delegate` right before every executor
+        call, including every retry: each retry after a review is a new attempt.
+        In sequential mode a new attempt is refused while the previous one has no review.
 
-        work item names the task; files must identify one unique allowed file.
-        scope names the test scope and defaults to work_item.
-        Each retry after review is a new attempt.
+        Parameters given by the Master Chief (command line):
+            task: the task ID from `start`; the journal is .metrics/<task>/events.jsonl.
+            work_item: the name of the assignment, for example a class "GameService".
+                Reviews, inspections and loop guard counters are grouped by this name.
+            files: the source file the executor may edit, relative to the project root.
+                A list for the command line, but after removing duplicates it must be exactly
+                one file: the snapshot comparison treats any other changed file as unexpected.
+            scope: the test scope of this work item, for example "GameService"; defaults to
+                work_item. review() accepts only a green test run in this scope or in "full".
+            requirements_file: a JSON list of requirement texts, relative to the project root.
+                The list is copied into the journal now, so later edits of the file do not
+                change what the review must prove. Required when the task tracks delegations.
+
+        Parameters given only by execution_controller.py (parallel mode, keyword-only):
+            workspace: the worker's own copy of the project under .metrics/<task>/workspaces/;
+                files are checked and the snapshot is taken there instead of the project root.
+            worker_id: the worker slot that runs this attempt; one open attempt per worker.
+            role: "executor" or "bug_fixer" (the fixer that continues a failed attempt).
+            contracts: shared read-only files (interfaces, common types), relative to the
+                project root; required when more than one executor may run at the same time.
+
+        Writes a "before" snapshot file and appends a "delegation" event with the allowed
+        file, the scope, the snapshot file name and the requirement texts. Returns that event.
+        Raises ValueError when a rule is broken and TaskHalted when the task is stopped or paused.
         """
         # Require a work item name, file list and non-blank effective test scope.
         if not work_item.strip() or not files or not (scope or work_item).strip():
